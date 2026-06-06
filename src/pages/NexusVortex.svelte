@@ -82,6 +82,9 @@
     let selectedInstallFilter: InstallFilter = "all";
     let selectedNexusSort: NexusSortMode = "attention";
     let selectedInstalledSort: InstalledSortMode = "attention";
+    let nexusCategoryOptions: string[] = [];
+    let visibleNexusMods: NexusMod[] = [];
+    let visibleInstalledEntries: InstalledInventoryEntry[] = [];
     let isLoading = false;
     let isDetailLoading = false;
     let status = "";
@@ -125,8 +128,6 @@
     $: if (selectedNexusCategory !== "all" && !nexusCategoryOptions.includes(selectedNexusCategory)) {
         selectedNexusCategory = "all";
     }
-    $: visibleNexusMods = sortNexusMods(mods.filter(matchesNexusFilters));
-    $: visibleInstalledEntries = sortInstalledEntries(inventory.filter(matchesInstalledFilters));
     $: installedCount = inventory.length;
     $: vortexCount = inventory.filter(entry => entry.installSource === "vortex").length;
     $: nativeCount = inventory.filter(entry => entry.installSource === "native").length;
@@ -142,6 +143,24 @@
     $: localConflicts = findLocalConflicts(inventory);
     $: localConflictEntryKeys = new Set(localConflicts.flatMap(conflict => conflict.entries.map(inventoryEntryKey)));
     $: conflictCount = localConflictEntryKeys.size;
+    $: {
+        nexusSearchTerm;
+        selectedNexusCategory;
+        selectedInstallFilter;
+        selectedNexusSort;
+        inventory;
+        trackedMods;
+        localConflictEntryKeys;
+        visibleNexusMods = sortNexusMods(mods.filter(matchesNexusFilters));
+    }
+    $: {
+        nexusSearchTerm;
+        selectedInstallFilter;
+        selectedInstalledSort;
+        trackedMods;
+        localConflictEntryKeys;
+        visibleInstalledEntries = sortInstalledEntries(inventory.filter(matchesInstalledFilters));
+    }
     $: resolvedDependencies = selectedDependencies.map(resolveDependencyStatus);
     $: dependencyIssueCount = resolvedDependencies.filter(dependency =>
         dependency.status === "missing" || dependency.status === "version-mismatch"
@@ -766,6 +785,7 @@
     }
 
     function showLocalConflicts() {
+        catalogMode = "installed";
         selectedInstallFilter = "conflicts";
     }
 
@@ -2224,6 +2244,39 @@
                         </div>
                     </div>
 
+                    {#if selectedInstallConflict}
+                        <div class="detail-conflict-box" aria-live="polite">
+                            <div class="detail-conflict-head">
+                                <span class="detail-section-title">Local Conflict</span>
+                                <b>{selectedInstallConflict.entries.length} installs</b>
+                            </div>
+                            <span class="detail-conflict-note">{selectedInstallConflict.label} · {conflictGroupSummary(selectedInstallConflict)}</span>
+
+                            <div class="detail-conflict-list">
+                                {#each selectedInstallConflict.entries as entry}
+                                    <div class="conflict-entry">
+                                        <div class="conflict-entry-main">
+                                            <span>{entry.name}</span>
+                                            <small>{describeInstallSource(entry)} · {loaderTypeLabel(entry)} · {entry.expectedLocation} · {entry.enabled ? "Enabled" : "Disabled"}</small>
+                                            <small>{conflictEntryPath(entry)}</small>
+                                        </div>
+                                        <div class="conflict-entry-actions">
+                                            <span>{entry.version ?? "-"}</span>
+                                            <button
+                                                class:disable-action={entry.enabled}
+                                                disabled={entry.installSource === "vortex" || activeConflictEntryKey === inventoryEntryKey(entry)}
+                                                on:click={() => setConflictEntryState(entry, !entry.enabled)}
+                                            >
+                                                {conflictEntryActionLabel(entry)}
+                                            </button>
+                                            <button on:click={() => openInventoryLocation(entry)}>Open Folder</button>
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
+
                     <div class="file-picker">
                         <span class="detail-section-title">Files</span>
                         {#if selectedModFiles.length === 0 && !isDetailLoading}
@@ -3229,6 +3282,7 @@
     .changelog-box,
     .file-picker,
     .dependency-box,
+    .detail-conflict-box,
     .install-plan,
     .detail-facts {
         background: rgba(18, 18, 18, 0.88);
@@ -3354,6 +3408,77 @@
 
     .install-plan-ready .install-plan-notes span {
         color: #98d9af;
+    }
+
+    .detail-conflict-box {
+        border-color: rgba(253, 198, 109, 0.28);
+        flex: 0 0 auto;
+        max-height: clamp(135px, 20vh, 230px);
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .detail-conflict-head {
+        align-items: center;
+        display: flex;
+        gap: 0.65em;
+        justify-content: space-between;
+        min-width: 0;
+    }
+
+    .detail-conflict-head b {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #fdc66d;
+        flex: 0 0 auto;
+        font-size: 0.72em;
+        font-weight: 900;
+        padding: 0.2em 0.5em;
+        text-transform: uppercase;
+    }
+
+    .detail-conflict-note {
+        color: #9aa5af;
+        display: block;
+        font-size: 0.76em;
+        font-weight: 700;
+        margin-top: 0.45em;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .detail-conflict-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.45em;
+        margin-top: 0.5em;
+        max-height: calc(clamp(135px, 20vh, 230px) - 4.5em);
+        min-height: 0;
+        overflow-y: auto;
+        padding-right: 0.2em;
+    }
+
+    .detail-conflict-box .conflict-entry {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 0.45em;
+    }
+
+    .detail-conflict-box .conflict-entry-actions {
+        flex-wrap: wrap;
+        width: 100%;
+    }
+
+    .detail-conflict-box .conflict-entry-actions span {
+        flex: 1 1 4.5em;
+        max-width: none;
+    }
+
+    .detail-conflict-box .conflict-entry-actions button {
+        flex: 1 1 8em;
+        min-width: 0;
     }
 
     .file-picker,
