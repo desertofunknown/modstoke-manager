@@ -224,7 +224,7 @@
     const NEXUS_PLACEHOLDER_IMAGE = nexusFallbackImage;
     const NEXUS_DETAIL_PLACEHOLDER_IMAGE = nexusFallbackImage;
     const NEXUS_DESCRIPTION_FALLBACK = "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing.";
-    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "del", "sub", "sup", "url", "img", "color", "background", "bgcolor", "highlight", "size", "center", "left", "right", "justify", "align", "indent", "code", "pre", "quote", "spoiler", "font", "heading", "h1", "h2", "h3", "h4", "h5", "h6", "float", "youtube", "video", "columns", "cols", "column", "col", "nextcol", "tabs", "tab", "note", "info", "warning", "important", "tip"]);
+    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "del", "sub", "sup", "small", "big", "mark", "url", "img", "color", "background", "bgcolor", "highlight", "size", "center", "left", "right", "justify", "align", "indent", "code", "pre", "quote", "spoiler", "collapse", "details", "accordion", "accordionitem", "font", "heading", "h", "header", "title", "subtitle", "caption", "h1", "h2", "h3", "h4", "h5", "h6", "float", "youtube", "video", "columns", "cols", "column", "col", "nextcol", "tabs", "tab", "note", "info", "warning", "important", "tip", "box", "panel", "fieldset", "notice", "success", "danger", "error"]);
     const NEXUS_SAFE_COLOR_NAMES = new Set(["black", "white", "gray", "grey", "silver", "red", "maroon", "orange", "yellow", "olive", "lime", "green", "aqua", "cyan", "teal", "blue", "navy", "fuchsia", "magenta", "purple", "pink"]);
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
     const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
@@ -3448,9 +3448,9 @@
             .replace(/\[youtube[^\]]*\]([\s\S]*?)\[\/youtube\]/gi, "YouTube: $1")
             .replace(/\[video[^\]]*\]([\s\S]*?)\[\/video\]/gi, "Video: $1")
             .replace(/\[(?:nextcol|nextcolumn)\s*\/?\]/gi, "\n")
-            .replace(/\[\/?(?:columns|cols|column|col|tabs|tab|note|info|warning|important|tip)[^\]]*\]/gi, "\n")
+            .replace(/\[\/?(?:columns|cols|column|col|tabs|tab|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error|collapse|details|accordion|accordionitem|caption)[^\]]*\]/gi, "\n")
             .replace(/\[\/?\s*(?:list|ul|ol|olist)[^\]]*\]/gi, "")
-            .replace(/\[\/?(?:b|i|u|s|strike|del|sub|sup|size|color|background|bgcolor|highlight|font|center|left|right|justify|align|indent|quote|spoiler|code|heading|h[1-6]|float|div|p|paragraph|span)[^\]]*\]/gi, "")
+            .replace(/\[\/?(?:b|i|u|s|strike|del|sub|sup|small|big|mark|size|color|background|bgcolor|highlight|font|center|left|right|justify|align|indent|quote|spoiler|code|heading|h|header|title|subtitle|h[1-6]|float|div|p|paragraph|span)[^\]]*\]/gi, "")
             .replace(/\[\/?[a-z0-9_-]+[^\]]*\]/gi, "")
             .replace(/[ \t]+/g, " ")
             .replace(/\n\s+/g, "\n")
@@ -3491,32 +3491,28 @@
             .replace(/<\/code>/gi, "[/code]")
             .replace(/<center\b[^>]*>/gi, "\n\n[center]")
             .replace(/<\/center>/gi, "[/center]\n\n")
-            .replace(/<(p|div|section|article)\b([^>]*)>([\s\S]*?)<\/\1>/gi, (_match, tag: string, attrs: string, body: string) => {
+            .replace(/<(p|div|section|article)\b([^>]*)>([\s\S]*?)<\/\1>/gi, (_match, _tag: string, attrs: string, body: string) => {
                 const alignment = htmlAlignmentAttribute(attrs);
-                return alignment ? `\n\n[align=${alignment}]${body}[/align]\n\n` : `\n\n${body}\n\n`;
+                const indent = htmlIndentLevelAttribute(attrs);
+                const styled = hasNexusBlockishMarkup(body) ? body : nexusHtmlStyledInline(attrs, body);
+                const aligned = alignment ? `[align=${alignment}]${styled}[/align]` : styled;
+                const indented = indent ? `[indent=${indent}]${aligned}[/indent]` : aligned;
+                return `\n\n${indented}\n\n`;
             })
             .replace(/<font\b([^>]*)>([\s\S]*?)<\/font>/gi, (_match, attrs: string, body: string) => {
-                const color = htmlColorAttribute(attrs);
-                const background = htmlBackgroundColorAttribute(attrs);
-                return [
-                    color ? `[color=${color}]` : "",
-                    background ? `[background=${background}]` : "",
-                    body,
-                    background ? "[/background]" : "",
-                    color ? "[/color]" : ""
-                ].join("");
+                return nexusHtmlStyledInline(attrs, body);
             })
             .replace(/<span\b([^>]*)>([\s\S]*?)<\/span>/gi, (_match, attrs: string, body: string) => {
-                const color = htmlColorAttribute(attrs);
-                const background = htmlBackgroundColorAttribute(attrs);
-                return [
-                    color ? `[color=${color}]` : "",
-                    background ? `[background=${background}]` : "",
-                    body,
-                    background ? "[/background]" : "",
-                    color ? "[/color]" : ""
-                ].join("");
+                return nexusHtmlStyledInline(attrs, body);
             })
+            .replace(/<small\b[^>]*>([\s\S]*?)<\/small>/gi, "[small]$1[/small]")
+            .replace(/<big\b[^>]*>([\s\S]*?)<\/big>/gi, "[big]$1[/big]")
+            .replace(/<mark\b([^>]*)>([\s\S]*?)<\/mark>/gi, (_match, attrs: string, body: string) => {
+                const background = htmlBackgroundColorAttribute(attrs) ?? "yellow";
+                return `[highlight=${background}]${body}[/highlight]`;
+            })
+            .replace(/<sub\b[^>]*>([\s\S]*?)<\/sub>/gi, "[sub]$1[/sub]")
+            .replace(/<sup\b[^>]*>([\s\S]*?)<\/sup>/gi, "[sup]$1[/sup]")
             .replace(/<strong\b[^>]*>|<b\b[^>]*>/gi, "[b]")
             .replace(/<\/strong>|<\/b>/gi, "[/b]")
             .replace(/<em\b[^>]*>|<i\b[^>]*>/gi, "[i]")
@@ -3527,6 +3523,15 @@
             .replace(/<\/s>|<\/strike>/gi, "[/s]")
             .replace(/<del\b[^>]*>/gi, "[s]")
             .replace(/<\/del>/gi, "[/s]")
+            .replace(/<figure\b[^>]*>/gi, "\n\n[box=Media]\n")
+            .replace(/<\/figure>/gi, "\n[/box]\n\n")
+            .replace(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/gi, "\n[caption]$1[/caption]\n")
+            .replace(/<dl\b[^>]*>/gi, "\n[list]\n")
+            .replace(/<\/dl>/gi, "\n[/list]\n")
+            .replace(/<dt\b[^>]*>/gi, "\n[*][b]")
+            .replace(/<\/dt>/gi, "[/b] ")
+            .replace(/<dd\b[^>]*>/gi, "")
+            .replace(/<\/dd>/gi, "\n")
             .replace(/<table\b[^>]*>/gi, "\n\n[table]\n")
             .replace(/<\/table>/gi, "\n[/table]\n\n")
             .replace(/<\/?(?:tbody|thead|tfoot)\b[^>]*>/gi, "")
@@ -3566,11 +3571,18 @@
             .replace(/\[\/(?:pre|raw|noparse)\]/gi, "[/code]")
             .replace(/\[(?:p|paragraph)\]/gi, "\n\n")
             .replace(/\[\/(?:p|paragraph)\]/gi, "\n\n")
-            .replace(/\[\s*li(?:\s[^\]]*|=[^\]]*)?\]/gi, "\n[*]")
+            .replace(/\[\s*li([^\]]*)\]/gi, (_match, attrs: string) => {
+                const label = safeNexusListItemLabel(nexusBbTagAttribute("li", attrs));
+                return label ? `\n[*][b]${label}[/b] ` : "\n[*]";
+            })
             .replace(/\[\/\s*li\]/gi, "\n")
             .replace(/\[h([1-6])\]/gi, "[heading=$1]")
             .replace(/\[\/h[1-6]\]/gi, "[/heading]")
-            .replace(/\[(url|img|color|background|bgcolor|highlight|size|align|indent|quote|spoiler|heading|float|youtube|video|list|olist|ol|ul|columns|cols|column|col|tabs|tab|note|info|warning|important|tip)([ \t][^\]]+)\]/gi, (_match, tag: string, attrs: string) => normalizeNexusBbOpeningTag(tag, attrs))
+            .replace(/\[(url|img|color|background|bgcolor|highlight|size|align|indent|quote|spoiler|collapse|details|accordion|accordionitem|heading|h|header|title|subtitle|caption|float|youtube|video|list|olist|ol|ul|columns|cols|column|col|tabs|tab|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error|small|big|mark)([ \t][^\]]+)\]/gi, (_match, tag: string, attrs: string) => normalizeNexusBbOpeningTag(tag, attrs))
+            .replace(/\[(?:h|header|title)(?:=([^\]]+))?\]/gi, (_match, level: string | undefined) => `[heading=${safeNexusHeadingLevel(level ?? "2")}]`)
+            .replace(/\[\/(?:h|header|title)\]/gi, "[/heading]")
+            .replace(/\[subtitle(?:=[^\]]+)?\]/gi, "[heading=4]")
+            .replace(/\[\/subtitle\]/gi, "[/heading]")
             .replace(/\[(?:ul|list)(?:=([^\]]+))?\]/gi, (_match, attr: string | undefined) => {
                 if (isOrderedNexusListAttr(attr)) {
                     const type = nexusOrderedListType(attr);
@@ -3598,6 +3610,16 @@
             .replace(/\[\/tabs\]/gi, "\n[/tabs]\n\n")
             .replace(/\[(note|info|warning|important|tip)([^\]]*)\]/gi, (_match, tag: string, attrs: string) => `\n\n[${tag.toLowerCase()}${attrs ?? ""}]\n`)
             .replace(/\[\/(note|info|warning|important|tip)\]/gi, (_match, tag: string) => `\n[/${tag.toLowerCase()}]\n\n`)
+            .replace(/\[(box|panel|fieldset|notice|success|danger|error)([^\]]*)\]/gi, (_match, tag: string, attrs: string) => `\n\n[${tag.toLowerCase()}${attrs ?? ""}]\n`)
+            .replace(/\[\/(box|panel|fieldset|notice|success|danger|error)\]/gi, (_match, tag: string) => `\n[/${tag.toLowerCase()}]\n\n`)
+            .replace(/\[(collapse|details|accordion|accordionitem)([^\]]*)\]/gi, (_match, tag: string, attrs: string) => `\n\n[${tag.toLowerCase()}${attrs ?? ""}]\n`)
+            .replace(/\[\/(collapse|details|accordion|accordionitem)\]/gi, (_match, tag: string) => `\n[/${tag.toLowerCase()}]\n\n`)
+            .replace(/\[caption([^\]]*)\]/gi, (_match, attrs: string) => `\n[caption${attrs ?? ""}]`)
+            .replace(/\[\/caption\]/gi, "[/caption]\n")
+            .replace(/\[(?:row)\]/gi, "[tr]")
+            .replace(/\[\/(?:row)\]/gi, "[/tr]")
+            .replace(/\[(?:cell)([^\]]*)\]/gi, (_match, attrs: string) => `[td${attrs ?? ""}]`)
+            .replace(/\[\/(?:cell)\]/gi, "[/td]")
             .replace(/\[table[^\]]*\]/gi, "\n\n[table]\n")
             .replace(/\[\/table\]/gi, "\n[/table]\n\n")
             .replace(/\[\/?(?:tbody|thead|tfoot)[^\]]*\]/gi, "")
@@ -3633,7 +3655,7 @@
 
     function nexusBlockChunks(text: string): NexusBlockChunk[] {
         const chunks: NexusBlockChunk[] = [];
-        const structuralPattern = /\[(table|list|olist|quote|spoiler|indent|center|left|right|align|justify|code|heading|float|columns|cols|tabs|note|info|warning|important|tip)([^\]]*)\]/gi;
+        const structuralPattern = /\[(table|list|olist|quote|spoiler|collapse|details|accordion|accordionitem|indent|center|left|right|align|justify|code|heading|float|columns|cols|tabs|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error)([^\]]*)\]/gi;
         let cursor = 0;
         let match: RegExpExecArray | null;
 
@@ -3762,6 +3784,19 @@
             return `<div class="nexus-rich-callout nexus-rich-callout-${kind}"><span>${escapeHtml(label)}</span>${renderNexusBlocks(callout[3], depth + 1)}</div>`;
         }
 
+        const box = block.match(/^\[(box|panel|fieldset|notice|success|danger|error)(?:=([^\]]+))?\]([\s\S]*?)\[\/\1\]$/i);
+        if (box) {
+            const kind = safeNexusBoxKind(box[1]);
+            const label = safeNexusLabel(box[2]) || nexusBoxLabel(kind);
+            return `<div class="nexus-rich-box nexus-rich-box-${kind}">${label ? `<span>${escapeHtml(label)}</span>` : ""}${renderNexusBlocks(box[3], depth + 1)}</div>`;
+        }
+
+        const collapsible = block.match(/^\[(collapse|details|accordion|accordionitem)(?:=([^\]]+))?\]([\s\S]*?)\[\/\1\]$/i);
+        if (collapsible) {
+            const label = safeNexusLabel(collapsible[2]) || "Details";
+            return `<div class="nexus-rich-spoiler-block nexus-rich-details-block"><span>${escapeHtml(label)}</span>${renderNexusBlocks(collapsible[3], depth + 1)}</div>`;
+        }
+
         if (/^\[hr\]$/i.test(block)) {
             return `<hr class="nexus-rich-rule" />`;
         }
@@ -3888,7 +3923,7 @@
     }
 
     function hasNexusBlockStructure(value: string): boolean {
-        return /\[(?:table|list|olist|quote|spoiler|indent|center|left|right|align|justify|code|heading|float|columns|cols|tabs|note|info|warning|important|tip)(?:=[^\]]+)?\]/i.test(value);
+        return /\[(?:table|list|olist|quote|spoiler|collapse|details|accordion|accordionitem|indent|center|left|right|align|justify|code|heading|float|columns|cols|tabs|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error)(?:=[^\]]+)?\]/i.test(value);
     }
 
     function nexusStandaloneSectionHeading(block: string): string | null {
@@ -4104,6 +4139,14 @@
                 return `<sub>${inner}</sub>`;
             case "sup":
                 return `<sup>${inner}</sup>`;
+            case "small":
+                return `<span class="nexus-rich-size-small">${inner}</span>`;
+            case "big":
+                return `<span class="nexus-rich-size-large">${inner}</span>`;
+            case "mark": {
+                const color = safeNexusColor(node.attr) ?? "yellow";
+                return `<span class="nexus-rich-highlight" style="background-color: ${escapeAttribute(color)}">${inner}</span>`;
+            }
             case "url": {
                 const url = safeNexusUrl(node.attr ?? collectNexusNodeText(node.children));
                 return url ? `<a href="${escapeAttribute(url)}" target="_blank" rel="noreferrer noopener">${inner || escapeHtml(url)}</a>` : inner;
@@ -4169,8 +4212,21 @@
                 return `<blockquote>${inner}</blockquote>`;
             case "spoiler":
                 return `<span class="nexus-rich-spoiler">${safeNexusLabel(node.attr) ? `<b>${escapeHtml(safeNexusLabel(node.attr) ?? "")}</b> ` : ""}${inner}</span>`;
+            case "collapse":
+            case "details":
+            case "accordion":
+            case "accordionitem":
+                return `<span class="nexus-rich-spoiler">${safeNexusLabel(node.attr) ? `<b>${escapeHtml(safeNexusLabel(node.attr) ?? "")}</b> ` : ""}${inner}</span>`;
             case "heading":
                 return `<span class="nexus-rich-heading nexus-rich-heading-${safeNexusHeadingLevel(node.attr)}">${inner}</span>`;
+            case "h":
+            case "header":
+            case "title":
+                return `<span class="nexus-rich-heading nexus-rich-heading-2">${inner}</span>`;
+            case "subtitle":
+                return `<span class="nexus-rich-heading nexus-rich-heading-4">${inner}</span>`;
+            case "caption":
+                return `<span class="nexus-rich-caption">${inner}</span>`;
             case "h1":
             case "h2":
             case "h3":
@@ -4195,6 +4251,17 @@
                     background ? `background-color: ${background}` : ""
                 ].filter(Boolean).join("; ");
                 return style ? `<span class="nexus-rich-font" style="${escapeAttribute(style)}">${inner}</span>` : inner;
+            }
+            case "box":
+            case "panel":
+            case "fieldset":
+            case "notice":
+            case "success":
+            case "danger":
+            case "error": {
+                const kind = safeNexusBoxKind(node.name);
+                const label = safeNexusLabel(node.attr) || nexusBoxLabel(kind);
+                return `<span class="nexus-rich-box-inline nexus-rich-box-${kind}">${label ? `<b>${escapeHtml(label)}</b> ` : ""}${inner}</span>`;
             }
             default:
                 return inner;
@@ -4272,6 +4339,10 @@
                     ?? direct
                     ?? nexusBbFirstAttributeValue(rawAttrs);
             case "spoiler":
+            case "collapse":
+            case "details":
+            case "accordion":
+            case "accordionitem":
                 return nexusBbAttribute(rawAttrs, "title")
                     ?? nexusBbAttribute(rawAttrs, "label")
                     ?? nexusBbAttribute(rawAttrs, "name")
@@ -4283,6 +4354,14 @@
             case "warning":
             case "important":
             case "tip":
+            case "box":
+            case "panel":
+            case "fieldset":
+            case "notice":
+            case "success":
+            case "danger":
+            case "error":
+            case "li":
                 return nexusBbAttribute(rawAttrs, "title")
                     ?? nexusBbAttribute(rawAttrs, "label")
                     ?? nexusBbAttribute(rawAttrs, "name")
@@ -4394,6 +4473,111 @@
         return safeNexusColor(direct ?? styled ?? "");
     }
 
+    function nexusHtmlStyledInline(attrs: string, body: string): string {
+        const style = htmlAttribute(attrs, "style") ?? "";
+        const color = htmlColorAttribute(attrs);
+        const background = htmlBackgroundColorAttribute(attrs);
+        const size = htmlSizeAttribute(attrs);
+        const weight = style.match(/(?:^|;)\s*font-weight\s*:\s*([^;]+)/i)?.[1]?.trim().toLowerCase();
+        const fontStyle = style.match(/(?:^|;)\s*font-style\s*:\s*([^;]+)/i)?.[1]?.trim().toLowerCase();
+        const textDecoration = style.match(/(?:^|;)\s*text-decoration(?:-line)?\s*:\s*([^;]+)/i)?.[1]?.trim().toLowerCase() ?? "";
+        const wrappers: Array<[string, string]> = [];
+
+        if (color) {
+            wrappers.push([`[color=${color}]`, "[/color]"]);
+        }
+
+        if (background) {
+            wrappers.push([`[background=${background}]`, "[/background]"]);
+        }
+
+        if (size) {
+            wrappers.push([`[size=${size}]`, "[/size]"]);
+        }
+
+        if (weight && (weight === "bold" || weight === "bolder" || Number.parseInt(weight, 10) >= 600)) {
+            wrappers.push(["[b]", "[/b]"]);
+        }
+
+        if (fontStyle === "italic" || fontStyle === "oblique") {
+            wrappers.push(["[i]", "[/i]"]);
+        }
+
+        if (textDecoration.includes("underline")) {
+            wrappers.push(["[u]", "[/u]"]);
+        }
+
+        if (textDecoration.includes("line-through")) {
+            wrappers.push(["[s]", "[/s]"]);
+        }
+
+        return wrappers.reduce((text, [open, close]) => `${open}${text}${close}`, body);
+    }
+
+    function hasNexusBlockishMarkup(value: string): boolean {
+        return /<(?:blockquote|details|div|dl|figure|h[1-6]|ol|p|pre|section|table|ul)\b/i.test(value)
+            || /\[(?:table|list|olist|quote|spoiler|collapse|details|accordion|accordionitem|columns|cols|tabs|box|panel|fieldset|notice|note|info|warning|important|tip)(?:[=\s\]])/i.test(value);
+    }
+
+    function htmlSizeAttribute(attrs: string): string | null {
+        const direct = htmlAttribute(attrs, "size");
+        const style = htmlAttribute(attrs, "style");
+        const styled = style?.match(/(?:^|;)\s*font-size\s*:\s*([^;]+)/i)?.[1];
+        const raw = decodeHtmlEntities(direct ?? styled ?? "").trim().toLowerCase();
+        if (!raw) {
+            return null;
+        }
+
+        const named = raw.match(/^(?:xx-small|x-small|small|medium|large|x-large|xx-large|smaller|larger)$/)?.[0];
+        if (named) {
+            return named;
+        }
+
+        const numeric = raw.match(/^(\d+(?:\.\d+)?)(px|em|rem|%)?$/);
+        if (!numeric) {
+            return null;
+        }
+
+        const value = Number.parseFloat(numeric[1]);
+        if (!Number.isFinite(value)) {
+            return null;
+        }
+
+        const unit = numeric[2] ?? "px";
+        if (unit === "%") {
+            return `${Math.max(60, Math.min(180, value))}%`;
+        }
+
+        if (unit === "em" || unit === "rem") {
+            return `${Math.max(0.7, Math.min(1.8, value))}${unit}`;
+        }
+
+        return `${Math.max(9, Math.min(28, value))}px`;
+    }
+
+    function htmlIndentLevelAttribute(attrs: string): 1 | 2 | 3 | 4 | null {
+        const style = htmlAttribute(attrs, "style") ?? "";
+        const raw = style.match(/(?:^|;)\s*(?:margin-left|padding-left)\s*:\s*([^;]+)/i)?.[1];
+        if (!raw) {
+            return null;
+        }
+
+        const numeric = Number.parseFloat(raw);
+        if (!Number.isFinite(numeric) || numeric <= 0) {
+            return null;
+        }
+
+        if (raw.includes("%")) {
+            return Math.max(1, Math.min(4, Math.round(numeric / 6))) as 1 | 2 | 3 | 4;
+        }
+
+        if (raw.includes("em") || raw.includes("rem")) {
+            return Math.max(1, Math.min(4, Math.round(numeric / 1.5))) as 1 | 2 | 3 | 4;
+        }
+
+        return Math.max(1, Math.min(4, Math.round(numeric / 28))) as 1 | 2 | 3 | 4;
+    }
+
     function nexusHtmlTableCellAttributes(attrs: string): string {
         const colspan = safeNexusTableSpan(htmlAttribute(attrs, "colspan") ?? htmlAttribute(attrs, "col") ?? undefined);
         const rowspan = safeNexusTableSpan(htmlAttribute(attrs, "rowspan") ?? htmlAttribute(attrs, "row") ?? undefined);
@@ -4479,6 +4663,33 @@
                 return "Tip";
             default:
                 return "Note";
+        }
+    }
+
+    function safeNexusBoxKind(value?: string): "box" | "panel" | "fieldset" | "notice" | "success" | "danger" | "error" {
+        const normalized = decodeHtmlEntities(value ?? "").trim().toLowerCase().replace(/^['"]|['"]$/g, "");
+        if (normalized === "panel" || normalized === "fieldset" || normalized === "notice" || normalized === "success" || normalized === "danger" || normalized === "error") {
+            return normalized;
+        }
+
+        return "box";
+    }
+
+    function nexusBoxLabel(kind: "box" | "panel" | "fieldset" | "notice" | "success" | "danger" | "error"): string {
+        switch (kind) {
+            case "panel":
+                return "Panel";
+            case "fieldset":
+                return "Section";
+            case "notice":
+                return "Notice";
+            case "success":
+                return "Confirmed";
+            case "danger":
+            case "error":
+                return "Important";
+            default:
+                return "";
         }
     }
 
@@ -4622,20 +4833,79 @@
             return color;
         }
 
+        const rgb = color.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(0|1|0?\.\d+))?\s*\)$/i);
+        if (rgb) {
+            const red = Math.max(0, Math.min(255, Number.parseInt(rgb[1], 10)));
+            const green = Math.max(0, Math.min(255, Number.parseInt(rgb[2], 10)));
+            const blue = Math.max(0, Math.min(255, Number.parseInt(rgb[3], 10)));
+            if (rgb[4] !== undefined) {
+                const alpha = Math.max(0, Math.min(1, Number.parseFloat(rgb[4])));
+                return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+            }
+
+            return `rgb(${red}, ${green}, ${blue})`;
+        }
+
         const lowered = color.toLowerCase();
         return NEXUS_SAFE_COLOR_NAMES.has(lowered) ? lowered : null;
     }
 
     function nexusSizeClass(value?: string): string {
         const raw = decodeHtmlEntities(value ?? "").trim().toLowerCase();
+        if (raw === "xx-small" || raw === "x-small" || raw === "tiny") {
+            return "nexus-rich-size-tiny";
+        }
+
+        if (raw === "small" || raw === "smaller") {
+            return "nexus-rich-size-small";
+        }
+
+        if (raw === "large" || raw === "larger" || raw === "x-large") {
+            return "nexus-rich-size-large";
+        }
+
+        if (raw === "xx-large" || raw === "huge") {
+            return "nexus-rich-size-xlarge";
+        }
+
         const numeric = Number.parseFloat(raw);
         if (Number.isFinite(numeric)) {
             const looksLikePixels = raw.includes("px") || numeric > 7;
-            if (looksLikePixels ? numeric <= 11 : numeric <= 2) {
+            const looksLikePercent = raw.includes("%");
+            const looksLikeRelative = raw.includes("em") || raw.includes("rem");
+            if (!looksLikePixels && !looksLikePercent && !looksLikeRelative) {
+                if (numeric <= 1) {
+                    return "nexus-rich-size-tiny";
+                }
+
+                if (numeric <= 2) {
+                    return "nexus-rich-size-small";
+                }
+
+                if (numeric >= 7) {
+                    return "nexus-rich-size-xlarge";
+                }
+
+                if (numeric >= 5) {
+                    return "nexus-rich-size-large";
+                }
+
+                return "nexus-rich-size-medium";
+            }
+
+            if (looksLikePercent ? numeric <= 75 : looksLikeRelative ? numeric <= 0.8 : looksLikePixels ? numeric <= 9 : numeric <= 0.85) {
+                return "nexus-rich-size-tiny";
+            }
+
+            if (looksLikePercent ? numeric <= 90 : looksLikeRelative ? numeric < 1 : looksLikePixels ? numeric <= 11 : numeric <= 2) {
                 return "nexus-rich-size-small";
             }
 
-            if (looksLikePixels ? numeric >= 18 : numeric >= 5) {
+            if (looksLikePercent ? numeric >= 150 : looksLikeRelative ? numeric >= 1.55 : looksLikePixels ? numeric >= 24 : numeric >= 1.45) {
+                return "nexus-rich-size-xlarge";
+            }
+
+            if (looksLikePercent ? numeric >= 115 : looksLikeRelative ? numeric >= 1.2 : looksLikePixels ? numeric >= 18 : numeric >= 5) {
                 return "nexus-rich-size-large";
             }
         }
@@ -7122,6 +7392,7 @@
     .nexus-rich-text :global(pre:first-child),
     .nexus-rich-text :global(.nexus-rich-table-wrap:first-child),
     .nexus-rich-text :global(.nexus-rich-spoiler-block:first-child),
+    .nexus-rich-text :global(.nexus-rich-box:first-child),
     .nexus-rich-text :global(.nexus-rich-rule:first-child) {
         margin-top: 0;
     }
@@ -7330,6 +7601,11 @@
         font-size: 0.86em;
     }
 
+    .nexus-rich-text :global(.nexus-rich-size-tiny) {
+        color: #9aaab6;
+        font-size: 0.76em;
+    }
+
     .nexus-rich-text :global(.nexus-rich-size-medium) {
         font-size: 1em;
     }
@@ -7338,6 +7614,24 @@
         color: #eefcff;
         font-size: 1.12em;
         font-weight: 900;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-size-xlarge) {
+        color: #eefcff;
+        display: inline-block;
+        font-size: 1.28em;
+        font-weight: 900;
+        line-height: 1.16;
+        margin-top: 0.1em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-caption) {
+        color: #8fa3b5;
+        display: block;
+        font-size: 0.82em;
+        font-style: italic;
+        margin-top: 0.35em;
+        text-align: center;
     }
 
     .nexus-rich-text :global(.nexus-rich-spoiler) {
@@ -7357,6 +7651,10 @@
         border: 1px solid rgba(255, 255, 255, 0.12);
         margin: 0.75em 0 0;
         padding: 0.65em 0.75em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-details-block) {
+        border-left: 3px solid rgba(120, 217, 244, 0.3);
     }
 
     .nexus-rich-text :global(.nexus-rich-spoiler-block > span) {
@@ -7429,6 +7727,51 @@
     .nexus-rich-text :global(.nexus-rich-callout-tip) {
         background: rgba(98, 240, 155, 0.06);
         border-color: rgba(98, 240, 155, 0.22);
+    }
+
+    .nexus-rich-text :global(.nexus-rich-box) {
+        background: rgba(15, 18, 20, 0.58);
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        border-left: 3px solid rgba(198, 208, 217, 0.24);
+        margin: 0.8em 0 0;
+        padding: 0.65em 0.75em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-box > span),
+    .nexus-rich-text :global(.nexus-rich-box-inline > b) {
+        color: #eefcff;
+        display: block;
+        font-size: 0.82em;
+        font-weight: 900;
+        margin-bottom: 0.25em;
+        text-transform: uppercase;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-box-success) {
+        background: rgba(98, 240, 155, 0.06);
+        border-color: rgba(98, 240, 155, 0.22);
+    }
+
+    .nexus-rich-text :global(.nexus-rich-box-danger),
+    .nexus-rich-text :global(.nexus-rich-box-error) {
+        background: rgba(253, 126, 126, 0.07);
+        border-color: rgba(253, 126, 126, 0.28);
+    }
+
+    .nexus-rich-text :global(.nexus-rich-box-notice),
+    .nexus-rich-text :global(.nexus-rich-box-panel),
+    .nexus-rich-text :global(.nexus-rich-box-fieldset) {
+        background: rgba(120, 217, 244, 0.05);
+        border-color: rgba(120, 217, 244, 0.18);
+    }
+
+    .nexus-rich-text :global(.nexus-rich-box-inline) {
+        background: rgba(15, 18, 20, 0.58);
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        color: #d6dde5;
+        display: inline-block;
+        margin-top: 0.25em;
+        padding: 0.35em 0.5em;
     }
 
     .nexus-rich-text :global(.nexus-rich-media-link) {
