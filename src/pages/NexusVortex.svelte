@@ -100,6 +100,7 @@
         tone: "blocked",
         notes: ["Select a Nexus file before handing it to Vortex."]
     };
+    let selectedInstallActionButtonLabel = "Choose File";
     let activeNexusActionId: number | null = null;
     let activeNexusEndorseId: number | null = null;
     let activeNexusTrackId: number | null = null;
@@ -158,6 +159,11 @@
         resolvedDependencies,
         vortexStagingPath
     );
+    $: selectedInstallActionButtonLabel = selectedInstallPlan.tone === "blocked"
+        ? "Choose File"
+        : selectedInstallPlan.tone === "review"
+            ? `${selectedInstallPlan.action} Anyway`
+            : selectedInstallPlan.action;
 
     onMount(async () => {
         loadEndorsementPreferences();
@@ -1049,16 +1055,6 @@
             default:
                 return "Review";
         }
-    }
-
-    function selectedInstallButtonLabel(): string {
-        if (selectedInstallPlan.tone === "blocked") {
-            return "Choose File";
-        }
-
-        return selectedInstallPlan.tone === "review"
-            ? `${selectedInstallPlan.action} Anyway`
-            : selectedInstallPlan.action;
     }
 
     async function openDependencyPage(dependency: ResolvedDependency) {
@@ -2108,7 +2104,7 @@
                     </div>
 
                     <div class="detail-actions">
-                        <button class="install" disabled={!selectedNexusFile} on:click={installSelectedFileWithVortex}>{selectedInstallButtonLabel()}</button>
+                        <button class="install" disabled={!selectedNexusFile} on:click={installSelectedFileWithVortex}>{selectedInstallActionButtonLabel}</button>
                         <button class="track-btn" disabled={activeNexusTrackId === selectedMod.mod_id} on:click={toggleSelectedModTracking}>
                             {activeNexusTrackId === selectedMod.mod_id ? "Saving..." : isNexusModTracked(selectedMod.mod_id) ? "Tracked" : "Track"}
                         </button>
