@@ -6,6 +6,8 @@
   - Refreshed the manager UI toward a darker Sons-style options shell with flatter controls and chromatic hover states.
   - Merged the SOTF Mods and Nexus/Vortex storefronts into one top-level Mods workspace with a local source switch.
   - Compacted SOTF Mods list rows with measured scroller sizing so more mods stay visible in the unified Mods workspace, and retired the unstable SOTF grid toggle.
+  - Improved compact Nexus detail drawers so the mod name, preview image, and formatted author description stay first, with files, dependencies, and install actions reachable below.
+  - Preserved safe Nexus BBCode/HTML formatting for descriptions and changelogs, including headings, emphasis, lists, quotes, code blocks, links, and bounded inline images.
   - Rebuilt and signed portable/setup EXEs as `0.2.0`.
 
 - 0.1.2

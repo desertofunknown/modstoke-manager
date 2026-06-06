@@ -104,8 +104,12 @@
     let knownNexusDetails: Record<number, NexusMod> = {};
     let catalogPreviewIndexes: Record<number, number> = {};
     let selectedDetailPreviewIndex = 0;
+    let detailDescriptionExpanded = false;
     let currentDetailPreviewUrls: string[] = [];
     let currentDetailPreviewIndex = 0;
+    let selectedDetailDescription = "";
+    let selectedDetailDescriptionHtml = "";
+    let selectedDetailDescriptionCanToggle = false;
     let nexusCategories: NexusCategory[] = [];
     let endorsements: NexusEndorsement[] = [];
     let endorsementsLoaded = false;
@@ -197,6 +201,9 @@
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
     const NEXUS_PLACEHOLDER_IMAGE = "https://placehold.co/320x180/252525/FFF?text=Nexus";
     const NEXUS_DETAIL_PLACEHOLDER_IMAGE = "https://placehold.co/640x360/252525/FFF?text=Nexus";
+    const NEXUS_DESCRIPTION_FALLBACK = "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing.";
+    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "url", "img", "color", "size", "center", "left", "right", "code", "quote", "spoiler", "font", "heading"]);
+    const NEXUS_SAFE_COLOR_NAMES = new Set(["black", "white", "gray", "grey", "silver", "red", "maroon", "orange", "yellow", "olive", "lime", "green", "aqua", "cyan", "teal", "blue", "navy", "fuchsia", "magenta", "purple", "pink"]);
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
     const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
     const MOD_TYPE_FILTERS: ModTypeFilter[] = ["all", "bepinex-plugin", "redloader-mod", "redloader-library", "vortex", "native", "manual"];
@@ -231,6 +238,16 @@
         selectedDetailPreviewIndex;
         currentDetailPreviewUrls;
         currentDetailPreviewIndex = selectedDetailPreviewIndexValue(currentDetailPreviewUrls);
+    }
+    $: {
+        selectedMod;
+        selectedModDetails;
+        selectedDetailDescription = selectedDetailDescriptionText();
+        selectedDetailDescriptionHtml = selectedDetailDescriptionMarkup();
+        selectedDetailDescriptionCanToggle = shouldOfferDetailDescriptionToggle(selectedDetailDescription);
+        if (!selectedDetailDescriptionCanToggle && detailDescriptionExpanded) {
+            detailDescriptionExpanded = false;
+        }
     }
     $: localConflicts = findLocalConflicts(inventory);
     $: localConflictEntryKeys = new Set(localConflicts.flatMap(conflict => conflict.entries.map(inventoryEntryKey)));
@@ -1322,6 +1339,22 @@
         return urls[selectedDetailPreviewIndexValue(urls)] ?? NEXUS_DETAIL_PLACEHOLDER_IMAGE;
     }
 
+    function selectedDetailDescriptionSource(): string | undefined {
+        return selectedModDetails?.description ?? selectedModDetails?.summary ?? selectedMod?.summary;
+    }
+
+    function selectedDetailDescriptionText(): string {
+        return plainText(selectedDetailDescriptionSource()) || NEXUS_DESCRIPTION_FALLBACK;
+    }
+
+    function selectedDetailDescriptionMarkup(): string {
+        return renderNexusRichText(selectedDetailDescriptionSource(), NEXUS_DESCRIPTION_FALLBACK);
+    }
+
+    function shouldOfferDetailDescriptionToggle(description: string): boolean {
+        return description.length > 900 || description.split("\n").length > 12;
+    }
+
     function cycleCatalogPreview(mod: NexusMod, urls: string[], step: number, event: MouseEvent) {
         event.stopPropagation();
         if (urls.length < 2) {
@@ -1397,6 +1430,7 @@
         selectedMod = mod;
         selectedModDetails = mod;
         selectedDetailPreviewIndex = 0;
+        detailDescriptionExpanded = false;
         selectedModFiles = [];
         selectedFileId = null;
         selectedInstallPlacement = "auto";
@@ -1470,6 +1504,7 @@
         selectedMod = null;
         selectedModDetails = null;
         selectedDetailPreviewIndex = 0;
+        detailDescriptionExpanded = false;
         selectedModFiles = [];
         selectedFileId = null;
         selectedDependencies = [];
@@ -2994,25 +3029,330 @@
         return `${Math.round(value)} KB`;
     }
 
+    type NexusRichNode =
+        | { kind: "text"; value: string }
+        | { kind: "tag"; name: string; attr?: string; children: NexusRichNode[] };
+
     function plainText(value?: string): string {
-        return (value ?? "")
-            .replace(/<br\s*\/?>/gi, "\n")
-            .replace(/<\/p>/gi, "\n\n")
-            .replace(/<[^>]*>/g, " ")
+        return normalizeNexusMarkup(value)
             .replace(/\[img[^\]]*\][\s\S]*?\[\/img\]/gi, " ")
             .replace(/\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi, "$2 ($1)")
+            .replace(/\[url\]([\s\S]*?)\[\/url\]/gi, "$1")
             .replace(/\[\*\]/g, "\n- ")
-            .replace(/\[\/\*\]/g, "")
-            .replace(/\[\/?(?:b|i|u|s|size|color|font|center|left|right|list|quote|spoiler|code)[^\]]*\]/gi, "")
+            .replace(/\[\/?\s*(?:list|ul|ol)[^\]]*\]/gi, "")
+            .replace(/\[\/?(?:b|i|u|s|size|color|font|center|left|right|quote|spoiler|code|heading)[^\]]*\]/gi, "")
             .replace(/\[\/?[a-z0-9_-]+[^\]]*\]/gi, "")
-            .replace(/&#92;/g, "\\")
-            .replace(/&amp;/g, "&")
-            .replace(/&lt;/g, "<")
-            .replace(/&gt;/g, ">")
             .replace(/[ \t]+/g, " ")
             .replace(/\n\s+/g, "\n")
             .replace(/\n{3,}/g, "\n\n")
             .trim();
+    }
+
+    function renderNexusRichText(value?: string, fallback = ""): string {
+        const normalized = normalizeNexusMarkup(value);
+        if (!normalized) {
+            return `<p>${escapeHtml(fallback)}</p>`;
+        }
+
+        return renderNexusBlocks(normalized, 0);
+    }
+
+    function normalizeNexusMarkup(value?: string): string {
+        let text = (value ?? "")
+            .replace(/\r\n?/g, "\n")
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi, "\n\n[heading]$2[/heading]\n\n")
+            .replace(/<blockquote\b[^>]*>/gi, "\n\n[quote]")
+            .replace(/<\/blockquote>/gi, "[/quote]\n\n")
+            .replace(/<pre\b[^>]*>/gi, "\n\n[code]")
+            .replace(/<\/pre>/gi, "[/code]\n\n")
+            .replace(/<code\b[^>]*>/gi, "[code]")
+            .replace(/<\/code>/gi, "[/code]")
+            .replace(/<strong\b[^>]*>|<b\b[^>]*>/gi, "[b]")
+            .replace(/<\/strong>|<\/b>/gi, "[/b]")
+            .replace(/<em\b[^>]*>|<i\b[^>]*>/gi, "[i]")
+            .replace(/<\/em>|<\/i>/gi, "[/i]")
+            .replace(/<u\b[^>]*>/gi, "[u]")
+            .replace(/<\/u>/gi, "[/u]")
+            .replace(/<s\b[^>]*>|<strike\b[^>]*>/gi, "[s]")
+            .replace(/<\/s>|<\/strike>/gi, "[/s]")
+            .replace(/<ul\b[^>]*>|<ol\b[^>]*>/gi, "\n[list]\n")
+            .replace(/<\/ul>|<\/ol>/gi, "\n[/list]\n")
+            .replace(/<li\b[^>]*>/gi, "\n[*]")
+            .replace(/<\/li>/gi, "\n")
+            .replace(/<\/p>/gi, "\n\n")
+            .replace(/<p\b[^>]*>/gi, "");
+
+        text = text
+            .replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi, (_match, attrs: string, label: string) => {
+                const href = htmlAttribute(attrs, "href");
+                return href ? `[url=${href}]${label}[/url]` : label;
+            })
+            .replace(/<img\b([^>]*)>/gi, (_match, attrs: string) => {
+                const src = htmlAttribute(attrs, "src");
+                return src ? `[img]${src}[/img]` : "";
+            })
+            .replace(/<[^>]*>/g, " ");
+
+        return decodeHtmlEntities(text)
+            .replace(/\[\/\*\]/g, "")
+            .replace(/\[(?:ul|ol|list)(?:=[^\]]+)?\]/gi, "\n[list]\n")
+            .replace(/\[\/(?:ul|ol|list)\]/gi, "\n[/list]\n")
+            .replace(/\[\*\]/g, "\n[*]")
+            .replace(/\[list\]\n{2,}/gi, "[list]\n")
+            .replace(/\n{2,}\[\/list\]/gi, "\n[/list]")
+            .replace(/([^\n])\[list\]/gi, "$1\n\n[list]")
+            .replace(/\[\/list\]([^\n])/gi, "[/list]\n\n$1")
+            .replace(/([^\n])\n\[list\]/gi, "$1\n\n[list]")
+            .replace(/\[\/list\]\n(?!\n|$)/gi, "[/list]\n\n")
+            .replace(/[ \t]+/g, " ")
+            .replace(/\n\s+/g, "\n")
+            .replace(/\n{4,}/g, "\n\n\n")
+            .trim();
+    }
+
+    function renderNexusBlocks(text: string, depth: number): string {
+        if (depth > 3) {
+            return `<p>${renderNexusInline(text)}</p>`;
+        }
+
+        return text
+            .split(/\n{2,}/)
+            .map(block => renderNexusBlock(block.trim(), depth))
+            .join("");
+    }
+
+    function renderNexusBlock(block: string, depth: number): string {
+        if (!block) {
+            return "";
+        }
+
+        const heading = block.match(/^\[heading\]([\s\S]*?)\[\/heading\]$/i);
+        if (heading) {
+            return `<p class="nexus-rich-heading">${renderNexusInline(heading[1])}</p>`;
+        }
+
+        const code = block.match(/^\[code\]([\s\S]*?)\[\/code\]$/i);
+        if (code) {
+            return `<pre><code>${escapeHtml(code[1])}</code></pre>`;
+        }
+
+        const quote = block.match(/^\[quote(?:=[^\]]+)?\]([\s\S]*?)\[\/quote\]$/i);
+        if (quote) {
+            return `<blockquote>${renderNexusBlocks(quote[1], depth + 1)}</blockquote>`;
+        }
+
+        const listItems = nexusListItems(block);
+        if (listItems.length > 0) {
+            return `<ul>${listItems.map(item => `<li>${renderNexusInline(item)}</li>`).join("")}</ul>`;
+        }
+
+        return `<p>${renderNexusInline(block)}</p>`;
+    }
+
+    function nexusListItems(block: string): string[] {
+        const cleaned = block
+            .replace(/^\[list\]\s*/i, "")
+            .replace(/\s*\[\/list\]$/i, "")
+            .trim();
+        const lines = cleaned.split("\n").map(line => line.trim()).filter(Boolean);
+
+        if (lines.length > 0 && lines.every(line => /^(?:\[\*\]|[-*]\s+)/.test(line))) {
+            return lines.map(line => line.replace(/^(?:\[\*\]|[-*]\s+)/, "").trim()).filter(Boolean);
+        }
+
+        if (!cleaned.startsWith("[*]")) {
+            return [];
+        }
+
+        return cleaned
+            .split(/(?=\[\*\])/)
+            .map(item => item.replace(/^\[\*\]/, "").trim())
+            .filter(Boolean);
+    }
+
+    function renderNexusInline(value: string): string {
+        const inlineValue = value
+            .replace(/\[\/?(?:ul|ol|list)(?:=[^\]]+)?\]/gi, "\n")
+            .replace(/\[\*\]/g, "\n- ");
+        return renderNexusNodes(parseNexusRichNodes(inlineValue));
+    }
+
+    function parseNexusRichNodes(value: string): NexusRichNode[] {
+        const root: { children: NexusRichNode[] } = { children: [] };
+        const stack: Array<{ name: string; children: NexusRichNode[] }> = [{ name: "root", children: root.children }];
+        const tagPattern = /\[(\/?)([a-z][a-z0-9_-]*)(?:=([^\]]+))?\]/gi;
+        let lastIndex = 0;
+        let match: RegExpExecArray | null;
+
+        while ((match = tagPattern.exec(value)) !== null) {
+            if (match.index > lastIndex) {
+                stack[stack.length - 1].children.push({ kind: "text", value: value.slice(lastIndex, match.index) });
+            }
+
+            const full = match[0];
+            const name = match[2].toLowerCase();
+            const isClosing = match[1] === "/";
+
+            if (!NEXUS_RICH_BB_TAGS.has(name)) {
+                stack[stack.length - 1].children.push({ kind: "text", value: full });
+            } else if (isClosing) {
+                if (stack.length > 1 && stack[stack.length - 1].name === name) {
+                    stack.pop();
+                } else {
+                    stack[stack.length - 1].children.push({ kind: "text", value: full });
+                }
+            } else {
+                const node: NexusRichNode = { kind: "tag", name, attr: match[3], children: [] };
+                stack[stack.length - 1].children.push(node);
+                stack.push(node);
+            }
+
+            lastIndex = tagPattern.lastIndex;
+        }
+
+        if (lastIndex < value.length) {
+            stack[stack.length - 1].children.push({ kind: "text", value: value.slice(lastIndex) });
+        }
+
+        return root.children;
+    }
+
+    function renderNexusNodes(nodes: NexusRichNode[]): string {
+        return nodes.map(node => renderNexusNode(node)).join("");
+    }
+
+    function renderNexusNode(node: NexusRichNode): string {
+        if (node.kind === "text") {
+            return escapeHtml(node.value).replace(/\n/g, "<br>");
+        }
+
+        const inner = renderNexusNodes(node.children);
+        switch (node.name) {
+            case "b":
+                return `<strong>${inner}</strong>`;
+            case "i":
+                return `<em>${inner}</em>`;
+            case "u":
+                return `<u>${inner}</u>`;
+            case "s":
+                return `<s>${inner}</s>`;
+            case "url": {
+                const url = safeNexusUrl(node.attr ?? collectNexusNodeText(node.children));
+                return url ? `<a href="${escapeAttribute(url)}" target="_blank" rel="noreferrer noopener">${inner || escapeHtml(url)}</a>` : inner;
+            }
+            case "img": {
+                const url = safeNexusUrl(collectNexusNodeText(node.children));
+                return url ? `<img class="nexus-rich-image" src="${escapeAttribute(url)}" alt="" />` : "";
+            }
+            case "color": {
+                const color = safeNexusColor(node.attr);
+                return color ? `<span style="color: ${escapeAttribute(color)}">${inner}</span>` : inner;
+            }
+            case "size":
+                return `<span class="${nexusSizeClass(node.attr)}">${inner}</span>`;
+            case "center":
+            case "left":
+            case "right":
+                return `<span class="nexus-rich-align-${node.name}">${inner}</span>`;
+            case "code":
+                return `<code>${escapeHtml(collectNexusNodeText(node.children))}</code>`;
+            case "quote":
+                return `<blockquote>${inner}</blockquote>`;
+            case "spoiler":
+                return `<span class="nexus-rich-spoiler">${inner}</span>`;
+            case "heading":
+                return `<span class="nexus-rich-heading">${inner}</span>`;
+            case "font":
+                return inner;
+            default:
+                return inner;
+        }
+    }
+
+    function collectNexusNodeText(nodes: NexusRichNode[]): string {
+        return nodes.map(node => node.kind === "text" ? node.value : collectNexusNodeText(node.children)).join("");
+    }
+
+    function htmlAttribute(attrs: string, name: string): string | null {
+        const pattern = new RegExp(`${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i");
+        const match = attrs.match(pattern);
+        return match ? decodeHtmlEntities(match[1] ?? match[2] ?? match[3] ?? "") : null;
+    }
+
+    function safeNexusUrl(value?: string): string | null {
+        const trimmed = decodeHtmlEntities(value ?? "").trim();
+        const candidate = /^www\./i.test(trimmed) ? `https://${trimmed}` : trimmed;
+        try {
+            const url = new URL(candidate);
+            return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+        } catch {
+            return null;
+        }
+    }
+
+    function safeNexusColor(value?: string): string | null {
+        const color = decodeHtmlEntities(value ?? "").trim().replace(/^['"]|['"]$/g, "");
+        if (/^#[0-9a-f]{3}(?:[0-9a-f]{3})?(?:[0-9a-f]{2})?$/i.test(color)) {
+            return color;
+        }
+
+        const lowered = color.toLowerCase();
+        return NEXUS_SAFE_COLOR_NAMES.has(lowered) ? lowered : null;
+    }
+
+    function nexusSizeClass(value?: string): string {
+        const raw = decodeHtmlEntities(value ?? "").trim().toLowerCase();
+        const numeric = Number.parseFloat(raw);
+        if (Number.isFinite(numeric)) {
+            const looksLikePixels = raw.includes("px") || numeric > 7;
+            if (looksLikePixels ? numeric <= 11 : numeric <= 2) {
+                return "nexus-rich-size-small";
+            }
+
+            if (looksLikePixels ? numeric >= 18 : numeric >= 5) {
+                return "nexus-rich-size-large";
+            }
+        }
+
+        return "nexus-rich-size-medium";
+    }
+
+    function decodeHtmlEntities(value: string): string {
+        return value
+            .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => decodeNumericEntity(Number.parseInt(hex, 16)))
+            .replace(/&#(\d+);/g, (_match, decimal: string) => decodeNumericEntity(Number.parseInt(decimal, 10)))
+            .replace(/&nbsp;/gi, " ")
+            .replace(/&quot;/gi, "\"")
+            .replace(/&#39;/g, "'")
+            .replace(/&apos;/gi, "'")
+            .replace(/&#92;/g, "\\")
+            .replace(/&amp;/gi, "&")
+            .replace(/&lt;/gi, "<")
+            .replace(/&gt;/gi, ">");
+    }
+
+    function decodeNumericEntity(codePoint: number): string {
+        try {
+            return Number.isFinite(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff
+                ? String.fromCodePoint(codePoint)
+                : "";
+        } catch {
+            return "";
+        }
+    }
+
+    function escapeHtml(value: string): string {
+        return value
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function escapeAttribute(value: string): string {
+        return escapeHtml(value);
     }
 </script>
 
@@ -3522,7 +3862,17 @@
 
                     <div class="detail-text">
                         <span class="detail-section-title">Directions / Description</span>
-                        <p>{plainText(selectedModDetails?.description ?? selectedModDetails?.summary ?? selectedMod.summary) || "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing."}</p>
+                        <div
+                            class="nexus-rich-text"
+                            class:detail-description-collapsed={selectedDetailDescriptionCanToggle && !detailDescriptionExpanded}
+                        >
+                            {@html selectedDetailDescriptionHtml}
+                        </div>
+                        {#if selectedDetailDescriptionCanToggle}
+                            <button class="description-toggle" type="button" on:click={() => detailDescriptionExpanded = !detailDescriptionExpanded}>
+                                {detailDescriptionExpanded ? "Show Less" : "Show More"}
+                            </button>
+                        {/if}
                     </div>
 
                     <div class="changelog-box">
@@ -3533,7 +3883,9 @@
                             {#each selectedChangelogs as changelog}
                                 <div class="changelog-row">
                                     <span>{changelog.version}</span>
-                                    <p>{plainText(changelog.changes)}</p>
+                                    <div class="nexus-rich-text changelog-rich-text">
+                                        {@html renderNexusRichText(changelog.changes, "No changelog text was returned.")}
+                                    </div>
                                 </div>
                             {/each}
                         {/if}
@@ -5038,12 +5390,147 @@
         overflow-y: auto;
     }
 
-    .detail-text p {
+    .detail-text .nexus-rich-text,
+    .changelog-row .nexus-rich-text {
         color: #b8c0c8;
         font-size: 0.9em;
         line-height: 1.45;
         margin: 0.55em 0 0;
+        overflow-wrap: anywhere;
+    }
+
+    .nexus-rich-text :global(p) {
+        margin: 0.55em 0 0;
+    }
+
+    .nexus-rich-text :global(p:first-child),
+    .nexus-rich-text :global(ul:first-child),
+    .nexus-rich-text :global(blockquote:first-child),
+    .nexus-rich-text :global(pre:first-child) {
+        margin-top: 0;
+    }
+
+    .nexus-rich-text :global(ul) {
+        margin: 0.65em 0 0;
+        padding-left: 1.4em;
+    }
+
+    .nexus-rich-text :global(li) {
+        margin: 0.18em 0;
+    }
+
+    .nexus-rich-text :global(strong),
+    .nexus-rich-text :global(.nexus-rich-heading) {
+        color: #eefcff;
+        font-weight: 900;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-heading) {
+        display: block;
+        font-size: 1.05em;
+        margin-top: 0.75em;
+    }
+
+    .nexus-rich-text :global(a) {
+        color: #78d9f4;
+        font-weight: 800;
+        text-decoration: underline;
+        text-decoration-color: rgba(120, 217, 244, 0.45);
+        text-underline-offset: 0.18em;
+    }
+
+    .nexus-rich-text :global(blockquote) {
+        border-left: 3px solid rgba(120, 217, 244, 0.35);
+        color: #d6dde5;
+        margin: 0.75em 0 0;
+        padding: 0.1em 0 0.1em 0.8em;
+    }
+
+    .nexus-rich-text :global(code),
+    .nexus-rich-text :global(pre) {
+        background: rgba(0, 0, 0, 0.28);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #d6dde5;
+        font-family: Consolas, "Courier New", monospace;
+    }
+
+    .nexus-rich-text :global(code) {
+        padding: 0.08em 0.3em;
+    }
+
+    .nexus-rich-text :global(pre) {
+        margin: 0.75em 0 0;
+        overflow-x: auto;
+        padding: 0.65em;
         white-space: pre-wrap;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-image) {
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-sizing: border-box;
+        display: block;
+        margin: 0.75em 0 0;
+        max-height: clamp(140px, 28vh, 320px);
+        max-width: 100%;
+        object-fit: contain;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-align-center),
+    .nexus-rich-text :global(.nexus-rich-align-left),
+    .nexus-rich-text :global(.nexus-rich-align-right) {
+        display: block;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-align-center) {
+        text-align: center;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-align-left) {
+        text-align: left;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-align-right) {
+        text-align: right;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-size-small) {
+        font-size: 0.86em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-size-medium) {
+        font-size: 1em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-size-large) {
+        color: #eefcff;
+        font-size: 1.12em;
+        font-weight: 900;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-spoiler) {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #d6dde5;
+        padding: 0.05em 0.3em;
+    }
+
+    .description-toggle {
+        background: rgba(120, 217, 244, 0.08);
+        border: 1px solid rgba(120, 217, 244, 0.22);
+        box-shadow: none;
+        color: #78d9f4;
+        font-size: 0.76em;
+        font-weight: 900;
+        margin: 0.65em 0 0;
+        min-height: 2.25em;
+        min-width: 7em;
+        padding: 0.35em 0.7em;
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+
+    .description-toggle:hover {
+        background: rgba(120, 217, 244, 0.14);
     }
 
     .detail-section-title {
@@ -5336,12 +5823,11 @@
         font-weight: 900;
     }
 
-    .changelog-row p {
+    .changelog-row .nexus-rich-text {
         color: #b8c0c8;
         font-size: 0.82em;
         line-height: 1.35;
         margin: 0.3em 0 0;
-        white-space: pre-wrap;
     }
 
     .file-row {
@@ -5541,6 +6027,22 @@
             padding-right: 0;
         }
 
+        .detail-main {
+            display: contents;
+        }
+
+        .detail-media-frame {
+            order: 1;
+        }
+
+        .detail-text {
+            order: 2;
+        }
+
+        .detail-side {
+            order: 3;
+        }
+
         .detail-side {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5554,38 +6056,82 @@
             grid-column: 1 / -1;
         }
 
+        .dependency-box {
+            order: 3;
+        }
+
+        .file-picker {
+            order: 2;
+        }
+
+        .install-plan {
+            order: 4;
+        }
+
+        .nxm-link-box {
+            order: 5;
+        }
+
+        .detail-conflict-box {
+            order: 6;
+        }
+
+        .detail-actions {
+            order: 7;
+        }
+
+        .detail-link-actions {
+            order: 8;
+        }
+
         .file-picker,
         .dependency-box,
         .changelog-box {
-            max-height: clamp(220px, 36vh, 420px);
-            min-height: 14em;
+            max-height: none;
+            min-height: 0;
+            overflow-y: visible;
         }
 
         .detail-text {
             flex: 0 0 auto;
-            max-height: clamp(220px, 36vh, 430px);
+            max-height: none;
+            overflow-y: visible;
+        }
+
+        .detail-text .detail-description-collapsed {
+            max-height: clamp(12em, 32vh, 18em);
+            overflow: hidden;
+        }
+
+        .changelog-box {
+            flex: 0 0 auto;
+            min-height: 0;
+            order: 4;
         }
 
         .detail-media-frame {
-            min-height: clamp(140px, 22vh, 230px);
+            min-height: clamp(116px, 18vh, 180px);
         }
 
         .detail-img {
-            height: clamp(140px, 22vh, 230px);
+            height: clamp(116px, 18vh, 180px);
         }
 
         .detail-header {
-            align-items: stretch;
-            flex-direction: column;
+            align-items: flex-start;
+            flex-direction: row;
+            gap: 0.65em;
         }
 
         .detail-header-actions {
-            width: 100%;
+            flex-wrap: wrap;
+            margin-left: auto;
+            width: auto;
         }
 
         .detail-header-actions button {
-            flex: 1 1 0;
-            min-width: 0;
+            flex: 0 0 auto;
+            min-width: 7em;
         }
 
         .nxm-link-row {
@@ -5750,6 +6296,21 @@
         .vortex-summary,
         .detail-side {
             grid-template-columns: 1fr;
+        }
+
+        .detail-header {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .detail-header-actions {
+            margin-left: 0;
+            width: 100%;
+        }
+
+        .detail-header-actions button {
+            flex: 1 1 0;
+            min-width: 0;
         }
 
         .nexus-card {
