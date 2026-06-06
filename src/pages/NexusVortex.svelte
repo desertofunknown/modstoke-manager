@@ -45,7 +45,9 @@
     import { Command } from "@tauri-apps/plugin-shell";
 
     type CatalogMode = "online" | "installed";
-    type InstallFilter = "all" | "installed" | "missing" | "vortex" | "native" | "manual" | "tracked" | "conflicts";
+    type InstallFilter = "all" | "attention" | "installed" | "missing" | "updates" | "disabled" | "vortex" | "native" | "manual" | "tracked" | "conflicts";
+    type NexusSortMode = "attention" | "updated" | "downloads" | "endorsements" | "name" | "version";
+    type InstalledSortMode = "attention" | "name" | "source" | "location" | "state" | "version";
     type DependencyStatus = "installed" | "missing" | "version-mismatch" | "review";
     type ResolvedDependency = NexusModDependency & {
         match: InstalledInventoryEntry | null;
@@ -71,6 +73,8 @@
     let nexusSearchTerm = "";
     let selectedNexusCategory = "all";
     let selectedInstallFilter: InstallFilter = "all";
+    let selectedNexusSort: NexusSortMode = "attention";
+    let selectedInstalledSort: InstalledSortMode = "attention";
     let isLoading = false;
     let isDetailLoading = false;
     let status = "";
@@ -104,12 +108,16 @@
     $: if (selectedNexusCategory !== "all" && !nexusCategoryOptions.includes(selectedNexusCategory)) {
         selectedNexusCategory = "all";
     }
-    $: visibleNexusMods = mods.filter(matchesNexusFilters);
-    $: visibleInstalledEntries = inventory.filter(matchesInstalledFilters);
+    $: visibleNexusMods = sortNexusMods(mods.filter(matchesNexusFilters));
+    $: visibleInstalledEntries = sortInstalledEntries(inventory.filter(matchesInstalledFilters));
     $: installedCount = inventory.length;
     $: vortexCount = inventory.filter(entry => entry.installSource === "vortex").length;
     $: nativeCount = inventory.filter(entry => entry.installSource === "native").length;
     $: manualCount = inventory.filter(entry => entry.installSource === "manual").length;
+    $: updateCount = inventory.filter(hasInventoryUpdate).length;
+    $: disabledCount = inventory.filter(entry => !entry.enabled).length;
+    $: onlineAttentionCount = mods.filter(nexusNeedsAttention).length;
+    $: installedAttentionCount = inventory.filter(inventoryNeedsAttention).length;
     $: trackedCount = trackedMods.length;
     $: selectedNexusFile = selectedModFiles.find(file => file.file_id === selectedFileId) ?? null;
     $: localConflicts = findLocalConflicts(inventory);
@@ -1052,6 +1060,123 @@
         ) ?? null;
     }
 
+    function hasNexusUpdate(mod: NexusMod): boolean {
+        return nexusUpdateLabel(mod) === "Update available";
+    }
+
+    function hasInventoryUpdate(entry: InstalledInventoryEntry): boolean {
+        return inventoryUpdateLabel(entry) === "Update available";
+    }
+
+    function nexusNeedsAttention(mod: NexusMod): boolean {
+        const match = installedMatch(mod);
+        return hasNexusUpdate(mod)
+            || isConflictedEntry(match)
+            || (!!match && !match.enabled)
+            || (!match && isNexusModTracked(mod.mod_id));
+    }
+
+    function inventoryNeedsAttention(entry: InstalledInventoryEntry): boolean {
+        return hasInventoryUpdate(entry)
+            || isConflictedEntry(entry)
+            || !entry.enabled;
+    }
+
+    function sortNexusMods(items: NexusMod[]): NexusMod[] {
+        return [...items].sort((left, right) => {
+            switch (selectedNexusSort) {
+                case "updated":
+                    return compareNumbers(modUpdatedValue(right), modUpdatedValue(left)) || compareText(left.name, right.name);
+                case "downloads":
+                    return compareNumbers(right.mod_downloads, left.mod_downloads) || compareText(left.name, right.name);
+                case "endorsements":
+                    return compareNumbers(right.endorsement_count, left.endorsement_count) || compareText(left.name, right.name);
+                case "name":
+                    return compareText(left.name, right.name);
+                case "version":
+                    return compareText(left.version ?? "", right.version ?? "") || compareText(left.name, right.name);
+                default:
+                    return compareNumbers(nexusAttentionRank(left), nexusAttentionRank(right))
+                        || compareNumbers(modUpdatedValue(right), modUpdatedValue(left))
+                        || compareText(left.name, right.name);
+            }
+        });
+    }
+
+    function sortInstalledEntries(items: InstalledInventoryEntry[]): InstalledInventoryEntry[] {
+        return [...items].sort((left, right) => {
+            switch (selectedInstalledSort) {
+                case "name":
+                    return compareText(left.name, right.name);
+                case "source":
+                    return compareText(left.installSource, right.installSource) || compareText(left.name, right.name);
+                case "location":
+                    return compareText(left.expectedLocation, right.expectedLocation) || compareText(left.name, right.name);
+                case "state":
+                    return compareNumbers(Number(right.enabled), Number(left.enabled)) || compareText(left.name, right.name);
+                case "version":
+                    return compareText(left.version ?? "", right.version ?? "") || compareText(left.name, right.name);
+                default:
+                    return compareNumbers(installedAttentionRank(left), installedAttentionRank(right))
+                        || compareText(left.name, right.name);
+            }
+        });
+    }
+
+    function nexusAttentionRank(mod: NexusMod): number {
+        const match = installedMatch(mod);
+        if (isConflictedEntry(match)) {
+            return 0;
+        }
+
+        if (hasNexusUpdate(mod)) {
+            return 1;
+        }
+
+        if (match && !match.enabled) {
+            return 2;
+        }
+
+        if (!match && isNexusModTracked(mod.mod_id)) {
+            return 3;
+        }
+
+        return match ? 4 : 5;
+    }
+
+    function installedAttentionRank(entry: InstalledInventoryEntry): number {
+        if (isConflictedEntry(entry)) {
+            return 0;
+        }
+
+        if (hasInventoryUpdate(entry)) {
+            return 1;
+        }
+
+        if (!entry.enabled) {
+            return 2;
+        }
+
+        return 3;
+    }
+
+    function modUpdatedValue(mod: NexusMod): number {
+        if (mod.updated_timestamp) {
+            return mod.updated_timestamp;
+        }
+
+        const parsed = mod.updated_time ? Date.parse(mod.updated_time) : Number.NaN;
+        return Number.isFinite(parsed) ? parsed / 1000 : 0;
+    }
+
+    function compareText(left: string, right: string): number {
+        return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
+    }
+
+    function compareNumbers(left: number | undefined, right: number | undefined): number {
+        return (left ?? 0) - (right ?? 0);
+    }
+
     function buildNexusCategoryOptions(categories: NexusCategory[], loadedMods: NexusMod[]): string[] {
         const ordered = categories
             .map(category => category.name)
@@ -1090,6 +1215,14 @@
             return false;
         }
 
+        if (selectedInstallFilter === "updates" && !hasNexusUpdate(mod)) {
+            return false;
+        }
+
+        if (selectedInstallFilter === "disabled" && (!match || match.enabled)) {
+            return false;
+        }
+
         if (selectedInstallFilter === "vortex" && match?.installSource !== "vortex") {
             return false;
         }
@@ -1107,6 +1240,10 @@
         }
 
         if (selectedInstallFilter === "conflicts" && !isConflictedEntry(match)) {
+            return false;
+        }
+
+        if (selectedInstallFilter === "attention" && !nexusNeedsAttention(mod)) {
             return false;
         }
 
@@ -1139,6 +1276,14 @@
             return false;
         }
 
+        if (selectedInstallFilter === "updates" && !hasInventoryUpdate(entry)) {
+            return false;
+        }
+
+        if (selectedInstallFilter === "disabled" && entry.enabled) {
+            return false;
+        }
+
         if (selectedInstallFilter === "missing") {
             return false;
         }
@@ -1148,6 +1293,10 @@
         }
 
         if (selectedInstallFilter === "conflicts" && !isConflictedEntry(entry)) {
+            return false;
+        }
+
+        if (selectedInstallFilter === "attention" && !inventoryNeedsAttention(entry)) {
             return false;
         }
 
@@ -1424,9 +1573,19 @@
                 <span class="summary-label">Installed</span>
                 <span class="summary-value">{installedCount}</span>
             </div>
+            <div class="summary-card" class:attention-summary={(catalogMode === "online" ? onlineAttentionCount : installedAttentionCount) > 0}>
+                <span class="summary-label">Attention</span>
+                <span class="summary-value">{catalogMode === "online" ? onlineAttentionCount : installedAttentionCount}</span>
+                <span class="summary-note">{catalogMode === "online" ? "Tracked missing, updates, conflicts" : "Updates, disabled, conflicts"}</span>
+            </div>
             <div class="summary-card">
                 <span class="summary-label">Vortex / Native / Manual</span>
                 <span class="summary-value">{vortexCount} / {nativeCount} / {manualCount}</span>
+            </div>
+            <div class="summary-card" class:update-summary={updateCount > 0 || disabledCount > 0}>
+                <span class="summary-label">Updates / Disabled</span>
+                <span class="summary-value">{updateCount} / {disabledCount}</span>
+                <span class="summary-note">Local deployment state</span>
             </div>
             <div class="summary-card" class:conflict-summary={conflictCount > 0}>
                 <span class="summary-label">Local Conflicts</span>
@@ -1453,9 +1612,9 @@
             <div class="notice api-note">
                 <span>Nexus requests are cached locally for {NEXUS_CACHE_TTL_MINUTES} minutes.</span>
                 {#if catalogMode === "online"}
-                    <span>{visibleNexusMods.length} shown from {mods.length} loaded. {trackedModsLoaded ? `${trackedCount} tracked.` : ""} {conflictCount > 0 ? `${conflictCount} in conflicts.` : ""}</span>
+                    <span>{visibleNexusMods.length} shown from {mods.length} loaded. {onlineAttentionCount > 0 ? `${onlineAttentionCount} need attention.` : ""} {trackedModsLoaded ? `${trackedCount} tracked.` : ""} {conflictCount > 0 ? `${conflictCount} in conflicts.` : ""}</span>
                 {:else}
-                    <span>{visibleInstalledEntries.length} shown from {installedCount} installed. {trackedModsLoaded ? `${trackedCount} tracked.` : ""} {conflictCount > 0 ? `${conflictCount} in conflicts.` : ""}</span>
+                    <span>{visibleInstalledEntries.length} shown from {installedCount} installed. {installedAttentionCount > 0 ? `${installedAttentionCount} need attention.` : ""} {trackedModsLoaded ? `${trackedCount} tracked.` : ""} {conflictCount > 0 ? `${conflictCount} in conflicts.` : ""}</span>
                 {/if}
             </div>
 
@@ -1469,14 +1628,36 @@
                 </select>
                 <select bind:value={selectedInstallFilter}>
                     <option value="all">All installs</option>
+                    <option value="attention">Needs attention</option>
                     <option value="installed">Installed</option>
                     <option value="missing">Not installed</option>
+                    <option value="updates">Updates</option>
+                    <option value="disabled">Disabled</option>
                     <option value="vortex">Vortex</option>
                     <option value="native">OpenACAI store</option>
                     <option value="manual">Manual</option>
                     <option value="tracked">Tracked</option>
                     <option value="conflicts">Conflicts</option>
                 </select>
+                {#if catalogMode === "online"}
+                    <select bind:value={selectedNexusSort} aria-label="Sort Nexus mods">
+                        <option value="attention">Sort: attention</option>
+                        <option value="updated">Sort: updated</option>
+                        <option value="downloads">Sort: downloads</option>
+                        <option value="endorsements">Sort: endorsements</option>
+                        <option value="name">Sort: name</option>
+                        <option value="version">Sort: version</option>
+                    </select>
+                {:else}
+                    <select bind:value={selectedInstalledSort} aria-label="Sort installed mods">
+                        <option value="attention">Sort: attention</option>
+                        <option value="name">Sort: name</option>
+                        <option value="source">Sort: source</option>
+                        <option value="location">Sort: location</option>
+                        <option value="state">Sort: state</option>
+                        <option value="version">Sort: version</option>
+                    </select>
+                {/if}
             </div>
 
             <div class="nexus-scroller" aria-live="polite">
@@ -1968,7 +2149,7 @@
         display: grid;
         flex: 0 0 auto;
         gap: 0.6em;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
     }
 
     .summary-card {
@@ -2020,6 +2201,11 @@
         color: #fdc66d;
     }
 
+    .attention-summary .summary-value,
+    .update-summary .summary-value {
+        color: #fdc66d;
+    }
+
     .catalog-panel {
         display: flex;
         flex: 1 1 auto;
@@ -2061,7 +2247,7 @@
         display: grid;
         flex: 0 0 auto;
         gap: 0.6em;
-        grid-template-columns: minmax(16em, 1fr) minmax(10em, 0.55fr) minmax(10em, 0.55fr);
+        grid-template-columns: minmax(16em, 1fr) repeat(3, minmax(10em, 0.55fr));
         width: 100%;
     }
 
