@@ -104,6 +104,7 @@
     let activeNexusActionId: number | null = null;
     let activeNexusEndorseId: number | null = null;
     let activeNexusTrackId: number | null = null;
+    let activeConflictEntryKey: string | null = null;
     let autoEndorseDownloadedMods = false;
     let autoEndorseAttemptedIds: number[] = [];
     let ssoSocket: WebSocket | null = null;
@@ -920,6 +921,25 @@
         }
     }
 
+    async function setConflictEntryState(entry: InstalledInventoryEntry, shouldEnable: boolean) {
+        const key = inventoryEntryKey(entry);
+        activeConflictEntryKey = key;
+
+        try {
+            await setInventoryEntryEnabled(entry, shouldEnable);
+            await refreshInventory();
+        } catch (error) {
+            await dialog.message(`${error}`, {
+                title: "Conflict state",
+                kind: "info"
+            });
+        } finally {
+            if (activeConflictEntryKey === key) {
+                activeConflictEntryKey = null;
+            }
+        }
+    }
+
     function installedMatch(mod: NexusMod): InstalledInventoryEntry | null {
         return findMatchingInstall(inventory, mod.name, mod.mod_id, [
             mod.author ?? "",
@@ -1272,6 +1292,18 @@
 
     function conflictEntryPath(entry: InstalledInventoryEntry): string {
         return entry.packagePath ?? entry.assemblyPath ?? entry.vortexPackage ?? entry.id;
+    }
+
+    function conflictEntryActionLabel(entry: InstalledInventoryEntry): string {
+        if (activeConflictEntryKey === inventoryEntryKey(entry)) {
+            return "Saving...";
+        }
+
+        if (entry.installSource === "vortex") {
+            return "Use Vortex";
+        }
+
+        return entry.enabled ? "Disable" : "Enable";
     }
 
     function isConflictedEntry(entry: InstalledInventoryEntry | null | undefined): boolean {
@@ -1916,6 +1948,13 @@
                                         </div>
                                         <div class="conflict-entry-actions">
                                             <span>{entry.version ?? "-"}</span>
+                                            <button
+                                                class:disable-action={entry.enabled}
+                                                disabled={entry.installSource === "vortex" || activeConflictEntryKey === inventoryEntryKey(entry)}
+                                                on:click={() => setConflictEntryState(entry, !entry.enabled)}
+                                            >
+                                                {conflictEntryActionLabel(entry)}
+                                            </button>
                                             <button on:click={() => openInventoryLocation(entry)}>Open Folder</button>
                                         </div>
                                     </div>
@@ -2742,6 +2781,10 @@
         margin: 0;
         min-width: 7.4em;
         padding: 0.48em 0.65em;
+    }
+
+    .conflict-entry-actions .disable-action {
+        color: #fd9b9d;
     }
 
     .nexus-scroller {
