@@ -249,7 +249,7 @@
     const NEXUS_PLACEHOLDER_IMAGE = nexusFallbackImage;
     const NEXUS_DETAIL_PLACEHOLDER_IMAGE = nexusFallbackImage;
     const NEXUS_DESCRIPTION_FALLBACK = "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing.";
-    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "strikethrough", "del", "sub", "sup", "small", "big", "mark", "abbr", "acronym", "cite", "q", "url", "img", "image", "thumb", "thumbnail", "color", "colour", "background", "bgcolor", "bgcolour", "backgroundcolour", "bcolor", "highlight", "size", "center", "centre", "left", "right", "justify", "align", "indent", "code", "pre", "tt", "kbd", "samp", "var", "quote", "spoiler", "collapse", "details", "accordion", "accordionitem", "font", "heading", "h", "header", "title", "subtitle", "caption", "h1", "h2", "h3", "h4", "h5", "h6", "float", "clear", "anchor", "goto", "jump", "youtube", "video", "media", "embed", "columns", "cols", "column", "col", "nextcol", "tabs", "tab", "dl", "dt", "dd", "note", "info", "warning", "important", "tip", "box", "panel", "fieldset", "notice", "success", "danger", "error"]);
+    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "strikethrough", "del", "sub", "sup", "small", "big", "mark", "abbr", "acronym", "cite", "q", "url", "img", "image", "thumb", "thumbnail", "color", "colour", "background", "bgcolor", "bgcolour", "backgroundcolour", "bcolor", "highlight", "size", "center", "centre", "left", "right", "justify", "align", "indent", "code", "pre", "tt", "kbd", "samp", "var", "quote", "spoiler", "collapse", "details", "accordion", "accordionitem", "font", "heading", "h", "header", "title", "subtitle", "caption", "h1", "h2", "h3", "h4", "h5", "h6", "float", "clear", "anchor", "bookmark", "target", "goto", "jump", "youtube", "video", "media", "embed", "columns", "cols", "column", "col", "nextcol", "tabs", "tab", "dl", "dt", "dd", "note", "info", "warning", "important", "tip", "box", "panel", "fieldset", "notice", "success", "danger", "error"]);
     const NEXUS_SAFE_COLOR_NAMES = new Set(["black", "white", "gray", "grey", "silver", "red", "maroon", "orange", "yellow", "olive", "lime", "green", "aqua", "cyan", "teal", "blue", "navy", "fuchsia", "magenta", "purple", "pink"]);
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
     const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
@@ -3927,6 +3927,8 @@
         header: boolean;
         colspan?: number;
         rowspan?: number;
+        width?: string;
+        align?: "left" | "center" | "right" | "justify";
     };
 
     function plainText(value?: string): string {
@@ -4165,9 +4167,7 @@
             .replace(/\[\/tr\]/gi, "[/tr]\n")
             .replace(/\[(td|th)([^\]]*)\]/gi, (_match, cell: string, attrs: string) => `[${cell.toLowerCase()}${attrs ?? ""}]`)
             .replace(/\[\/(td|th)\]/gi, (_match, cell: string) => `[/${cell.toLowerCase()}]`)
-            .replace(/\[hr\s*\/?\]/gi, "\n\n[hr]\n\n")
-            .replace(/\[line\s*\/?\]/gi, "\n\n[hr]\n\n")
-            .replace(/\[(?:rule|divider|separator|hrule|horizontalrule)\s*\/?\]/gi, "\n\n[hr]\n\n")
+            .replace(/\[(?:hr|line|rule|divider|separator|hrule|horizontalrule)([^\]]*)\]/gi, (_match, attrs: string) => nexusRuleMarkup(attrs))
             .replace(/\[\/(?:hr|line|rule|divider|separator|hrule|horizontalrule)\]/gi, "\n")
             .replace(/\[clear\s*\/?\]/gi, "\n[clear/]\n")
             .replace(/(^|\n)[ \t]*(?:-{3,}|={3,}|_{3,}|\*{3,})[ \t]*(?=\n|$)/g, "$1\n\n[hr]\n\n")
@@ -4182,6 +4182,17 @@
             .replace(/[ \t]+\n/g, "\n")
             .replace(/\n{4,}/g, "\n\n\n")
             .trim();
+    }
+
+    function nexusRuleMarkup(rawAttrs?: string): string {
+        const label = safeNexusBbLabel(
+            nexusBbAttribute(rawAttrs, "title")
+            ?? nexusBbAttribute(rawAttrs, "label")
+            ?? nexusBbAttribute(rawAttrs, "name")
+            ?? nexusBbTagAttribute("hr", rawAttrs)
+            ?? nexusBbFirstAttributeValue(rawAttrs)
+        );
+        return label ? `\n\n[hr]\n[heading=4]${label}[/heading]\n\n` : "\n\n[hr]\n\n";
     }
 
     function renderNexusBlocks(text: string, depth: number): string {
@@ -4982,7 +4993,11 @@
                     cell.colspan ? ` colspan="${cell.colspan}"` : "",
                     cell.rowspan ? ` rowspan="${cell.rowspan}"` : ""
                 ].join("");
-                return `<${tag}${spanAttributes}>${renderNexusBlocks(cell.value, depth + 1)}</${tag}>`;
+                const style = [
+                    cell.width ? `width: ${cell.width}` : "",
+                    cell.align ? `text-align: ${cell.align}` : ""
+                ].filter(Boolean).join("; ");
+                return `<${tag}${spanAttributes}${style ? ` style="${escapeAttribute(style)}"` : ""}>${renderNexusBlocks(cell.value, depth + 1)}</${tag}>`;
             }).join("");
             return `<tr>${cells}</tr>`;
         }).join("")}</tbody></table></div>`;
@@ -5038,12 +5053,47 @@
             cells.push({
                 value: cellMatch[3].trim(),
                 header: cellMatch[1].toLowerCase() === "th",
-                colspan: safeNexusTableSpan(nexusBbAttribute(attrs, "colspan") ?? nexusBbAttribute(attrs, "col") ?? nexusBbFirstAttributeValue(attrs)),
-                rowspan: safeNexusTableSpan(nexusBbAttribute(attrs, "rowspan") ?? nexusBbAttribute(attrs, "row"))
+                colspan: nexusTableCellColspan(attrs),
+                rowspan: safeNexusTableSpan(nexusBbAttribute(attrs, "rowspan") ?? nexusBbAttribute(attrs, "row")),
+                width: nexusTableCellWidth(attrs),
+                align: nexusTableCellAlignment(attrs)
             });
         }
 
         return cells;
+    }
+
+    function nexusTableCellColspan(attrs: string): number | undefined {
+        const explicit = nexusBbAttribute(attrs, "colspan") ?? nexusBbAttribute(attrs, "col");
+        if (explicit) {
+            return safeNexusTableSpan(explicit);
+        }
+
+        const direct = nexusBbFirstAttributeValue(attrs);
+        if (!direct || !/^\d{1,2}$/.test(direct.trim())) {
+            return undefined;
+        }
+
+        return safeNexusTableSpan(direct);
+    }
+
+    function nexusTableCellWidth(attrs: string): string | undefined {
+        const direct = nexusBbFirstAttributeValue(attrs);
+        const candidate = nexusBbAttribute(attrs, "width")
+            ?? nexusBbAttribute(attrs, "w")
+            ?? (direct && (!/^\d{1,2}$/.test(direct.trim()) || Number.parseInt(direct, 10) > 6) ? direct : undefined);
+        return safeNexusCssLength(candidate) ?? undefined;
+    }
+
+    function nexusTableCellAlignment(attrs: string): "left" | "center" | "right" | "justify" | undefined {
+        const candidate = nexusBbAttribute(attrs, "align")
+            ?? nexusBbAttribute(attrs, "text-align")
+            ?? nexusBbAttribute(attrs, "halign");
+        if (!candidate) {
+            return undefined;
+        }
+
+        return safeNexusAlignment(candidate);
     }
 
     function nexusListItems(block: string): string[] {
@@ -5181,6 +5231,10 @@
             return true;
         }
 
+        if ((name === "anchor" || name === "bookmark" || name === "target") && nexusBbTagAttribute(name, rawAttrs)) {
+            return true;
+        }
+
         if (name !== "img" && name !== "image" && name !== "thumb" && name !== "thumbnail") {
             return false;
         }
@@ -5199,7 +5253,10 @@
             || name === "thumb"
             || name === "thumbnail"
             || name === "clear"
-            || name === "nextcol";
+            || name === "nextcol"
+            || name === "anchor"
+            || name === "bookmark"
+            || name === "target";
     }
 
     function renderNexusNodes(nodes: NexusRichNode[]): string {
@@ -5347,10 +5404,14 @@
             case "caption":
                 return `<span class="nexus-rich-caption">${inner}</span>`;
             case "anchor":
-                return `<span class="nexus-rich-anchor">${inner}</span>`;
+            case "bookmark":
+            case "target": {
+                const label = safeNexusLabel(node.attr);
+                return `<span class="nexus-rich-anchor"${label ? ` title="${escapeAttribute(label)}"` : ""}>${inner}</span>`;
+            }
             case "goto":
             case "jump":
-                return `<span class="nexus-rich-anchor-ref">${inner}</span>`;
+                return `<span class="nexus-rich-anchor-ref">${inner || escapeHtml(safeNexusLabel(node.attr) || "Jump")}</span>`;
             case "h1":
             case "h2":
             case "h3":
@@ -5514,6 +5575,19 @@
                 return nexusBbAttribute(rawAttrs, "title")
                     ?? nexusBbAttribute(rawAttrs, "label")
                     ?? nexusBbAttribute(rawAttrs, "name")
+                    ?? direct
+                    ?? nexusBbFirstAttributeValue(rawAttrs);
+            case "anchor":
+            case "bookmark":
+            case "target":
+            case "goto":
+            case "jump":
+                return nexusBbAttribute(rawAttrs, "id")
+                    ?? nexusBbAttribute(rawAttrs, "href")
+                    ?? nexusBbAttribute(rawAttrs, "name")
+                    ?? nexusBbAttribute(rawAttrs, "target")
+                    ?? nexusBbAttribute(rawAttrs, "title")
+                    ?? nexusBbAttribute(rawAttrs, "label")
                     ?? direct
                     ?? nexusBbFirstAttributeValue(rawAttrs);
             case "tab":
@@ -5837,9 +5911,15 @@
     function nexusHtmlTableCellAttributes(attrs: string): string {
         const colspan = safeNexusTableSpan(htmlAttribute(attrs, "colspan") ?? htmlAttribute(attrs, "col") ?? undefined);
         const rowspan = safeNexusTableSpan(htmlAttribute(attrs, "rowspan") ?? htmlAttribute(attrs, "row") ?? undefined);
+        const style = htmlAttribute(attrs, "style") ?? "";
+        const styledWidth = style.match(/(?:^|;)\s*width\s*:\s*([^;]+)/i)?.[1];
+        const width = safeNexusCssLength(htmlAttribute(attrs, "width") ?? styledWidth);
+        const alignment = htmlAlignmentAttribute(attrs);
         return [
             colspan ? `colspan="${colspan}"` : "",
-            rowspan ? `rowspan="${rowspan}"` : ""
+            rowspan ? `rowspan="${rowspan}"` : "",
+            width ? `width="${width}"` : "",
+            alignment ? `align="${alignment}"` : ""
         ].filter(Boolean).map(attribute => ` ${attribute}`).join("");
     }
 
@@ -9231,6 +9311,18 @@
     }
 
     .nexus-rich-text :global(.nexus-rich-anchor-ref) {
+        color: #9fb1bf;
+        font-weight: 800;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-anchor:empty) {
+        display: inline-block;
+        height: 0;
+        overflow: hidden;
+        width: 0;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-anchor:not(:empty)) {
         color: #9fb1bf;
         font-weight: 800;
     }
