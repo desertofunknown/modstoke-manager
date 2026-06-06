@@ -1012,6 +1012,14 @@
         }
     }
 
+    async function openSelectedModTab(tab: "description" | "files" | "posts" | "images" | "bugs") {
+        if (!selectedMod) {
+            return;
+        }
+
+        await shell.open(`${getNexusModPageUrl(selectedMod)}?tab=${tab}`);
+    }
+
     async function installRecommendedWithVortex(mod: NexusMod) {
         activeNexusActionId = mod.mod_id;
         status = `Preparing ${mod.name} for Vortex...`;
@@ -2477,8 +2485,15 @@
                                 </button>
                             {/if}
                         {/if}
-                        <button on:click={openSelectedModPage}>Open Nexus Page</button>
-                        <button on:click={openSelectedDownloadPage}>Open Files Page</button>
+                        <button on:click={openSelectedModPage}>Open Page</button>
+                    </div>
+
+                    <div class="detail-link-actions" aria-label="Nexus page sections">
+                        <button on:click={() => openSelectedModTab("description")}>Description</button>
+                        <button on:click={openSelectedDownloadPage}>Files</button>
+                        <button on:click={() => openSelectedModTab("posts")}>Posts</button>
+                        <button on:click={() => openSelectedModTab("images")}>Images</button>
+                        <button on:click={() => openSelectedModTab("bugs")}>Bugs</button>
                     </div>
                 </div>
             </div>
@@ -3391,6 +3406,19 @@
         justify-content: space-between;
     }
 
+    .detail-link-actions {
+        display: grid;
+        gap: 0.45em;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .detail-link-actions button {
+        margin: 0;
+        min-width: 0;
+        padding: 0 0.45em;
+        width: 100%;
+    }
+
     .detail-title {
         display: flex;
         flex-direction: column;
@@ -3877,6 +3905,10 @@
 
         .detail-panel {
             max-height: 92vh;
+        }
+
+        .detail-link-actions {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
     }
 </style>
