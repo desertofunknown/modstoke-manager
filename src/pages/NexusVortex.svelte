@@ -975,6 +975,10 @@
             notes.push("Vortex deployment metadata was not detected in this game folder yet.");
         }
 
+        if (/^(archived|old_version|removed)$/i.test(file.category_name ?? "")) {
+            notes.push(`The selected file is marked ${file.category_name}.`);
+        }
+
         if (missingCount > 0) {
             notes.push(`${missingCount} dependency ${missingCount === 1 ? "is" : "are"} missing locally.`);
         }
@@ -1048,13 +1052,13 @@
     }
 
     function selectedInstallButtonLabel(): string {
-        if (!selectedNexusFile) {
+        if (selectedInstallPlan.tone === "blocked") {
             return "Choose File";
         }
 
-        return dependencyIssueCount > 0 || selectedInstallConflict
-            ? "Install With Vortex Anyway"
-            : "Install Selected With Vortex";
+        return selectedInstallPlan.tone === "review"
+            ? `${selectedInstallPlan.action} Anyway`
+            : selectedInstallPlan.action;
     }
 
     async function openDependencyPage(dependency: ResolvedDependency) {
