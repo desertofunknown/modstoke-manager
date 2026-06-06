@@ -28,6 +28,7 @@
   - Added source labels and matched-text snippets to inferred Nexus author requirement hints so users can audit why a runtime/library review hint appeared.
   - Classified author runtime/library mentions with incompatibility, removal, or conflict wording as compatibility warnings instead of satisfied dependencies.
   - Improved Nexus dependency section rails and install-plan facts so author warning/review/detected summaries stay visible before scrolling into individual rows.
+  - Added dependency review shortcuts and status-aware dependency row actions so missing, mismatched, and review dependencies open as `Install`, `Update`, or `Review` instead of generic details.
   - Added direct Review Conflict actions on conflicted Nexus rows, installed rows, detail conflict panels, and the deployment footer so duplicate local deployments can jump straight to the installed conflict review panel.
   - Added local inventory refresh actions to the Nexus/Vortex account row and detail deployment footer so users can rescan Vortex/native/manual install state immediately after a Vortex handoff without making extra Nexus requests.
   - Improved Nexus description formatting fidelity with monospaced column-style line blocks, codebox/plain/fixed preformatted BBCode aliases, hidden/spoilerblock aliases, legacy horizontal-rule tags, and relative/point size hints.

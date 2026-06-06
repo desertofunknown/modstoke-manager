@@ -2555,6 +2555,75 @@
         }
     }
 
+    function dependencyPrimaryActionLabel(dependency: ResolvedDependency): string {
+        switch (dependency.status) {
+            case "missing":
+                return "Install";
+            case "version-mismatch":
+                return "Update";
+            case "review":
+                return "Review";
+            default:
+                return "Details";
+        }
+    }
+
+    function dependencyPrimaryActionTitle(dependency: ResolvedDependency): string {
+        switch (dependency.status) {
+            case "missing":
+                return "Open this dependency in the manager so you can choose a file and hand it to Vortex.";
+            case "version-mismatch":
+                return "Open this dependency in the manager to review the required version.";
+            case "review":
+                return "Open this dependency in the manager to review version or range details.";
+            default:
+                return "Open this dependency in the manager.";
+        }
+    }
+
+    function shouldShowDependencyFooterReviewAction(): boolean {
+        return totalDependencyIssueCount > 0
+            || totalDependencyReviewCount > 0
+            || selectedAuthorRequirements.length > 0
+            || nestedDependencyCheckAvailable();
+    }
+
+    function dependencyFooterReviewLabel(): string {
+        if (totalDependencyIssueCount > 0) {
+            return "Review Dependencies";
+        }
+
+        if (authorRequirementWarningCount > 0) {
+            return "Review Warnings";
+        }
+
+        if (totalDependencyReviewCount > 0 || selectedAuthorRequirements.length > 0) {
+            return "Review Requirements";
+        }
+
+        if (nestedDependencyCheckAvailable()) {
+            return "Check Dependencies";
+        }
+
+        return "Review Dependencies";
+    }
+
+    function dependencyFooterReviewTitle(): string {
+        if (totalDependencyIssueCount > 0) {
+            return "Jump to missing or version-mismatched dependency rows before Vortex handoff.";
+        }
+
+        if (totalDependencyReviewCount > 0 || selectedAuthorRequirements.length > 0) {
+            return "Jump to API, nested, or author requirement review details before Vortex handoff.";
+        }
+
+        if (nestedDependencyCheckAvailable()) {
+            return "Jump to dependency checks; nested dependency lookup is available for this file.";
+        }
+
+        return "Jump to dependency details.";
+    }
+
     function dependencyRequirementLabel(dependency: NexusModDependency): string {
         return dependency.version ? `v${dependency.version}` : dependency.version_requirement ?? "";
     }
@@ -7160,7 +7229,14 @@
                                     <small>{dependencyStatusLabel(dependency)}</small>
                                     <div class="dependency-actions">
                                         {#if dependency.mod_id}
-                                            <button on:click={() => openDependencyDetails(dependency)}>Details</button>
+                                            <button
+                                                class="dependency-primary-action"
+                                                class:dependency-primary-warn={dependency.status === "missing" || dependency.status === "version-mismatch"}
+                                                title={dependencyPrimaryActionTitle(dependency)}
+                                                on:click={() => openDependencyDetails(dependency)}
+                                            >
+                                                {dependencyPrimaryActionLabel(dependency)}
+                                            </button>
                                             <button on:click={() => openDependencyPage(dependency)}>Nexus</button>
                                         {/if}
                                         {#if dependency.match}
@@ -7219,7 +7295,14 @@
                                         <small>{nestedDependencyStatusLabel(source)}</small>
                                         <div class="dependency-actions">
                                             {#if source.dependency.mod_id}
-                                                <button on:click={() => openDependencyDetails(source.dependency)}>Details</button>
+                                                <button
+                                                    class="dependency-primary-action"
+                                                    class:dependency-primary-warn={source.dependency.status === "missing" || source.dependency.status === "version-mismatch"}
+                                                    title={dependencyPrimaryActionTitle(source.dependency)}
+                                                    on:click={() => openDependencyDetails(source.dependency)}
+                                                >
+                                                    {dependencyPrimaryActionLabel(source.dependency)}
+                                                </button>
                                                 <button on:click={() => openDependencyPage(source.dependency)}>Nexus</button>
                                             {/if}
                                             {#if source.dependency.match}
@@ -7242,6 +7325,15 @@
                 </div>
 
                 <div class="detail-actions">
+                    {#if shouldShowDependencyFooterReviewAction()}
+                        <button
+                            class="dependency-review-btn"
+                            title={dependencyFooterReviewTitle()}
+                            on:click={() => scrollDetailSection("dependencies")}
+                        >
+                            {dependencyFooterReviewLabel()}
+                        </button>
+                    {/if}
                     <button class="install" disabled={!selectedNexusFile} on:click={installSelectedFileWithVortex}>{selectedInstallActionButtonLabel}</button>
                     <button class="track-btn" disabled={activeNexusTrackId === selectedMod.mod_id} on:click={toggleSelectedModTracking}>
                         {activeNexusTrackId === selectedMod.mod_id ? "Saving..." : isNexusModTracked(selectedMod.mod_id) ? "Tracked" : "Track"}
@@ -8246,6 +8338,11 @@
     .detail-conflict-head .conflict-review-btn {
         color: #fdc66d;
         min-width: 9.6em;
+    }
+
+    .detail-actions .dependency-review-btn {
+        color: #fdc66d;
+        min-width: 10.4em;
     }
 
     .button-row .endorse-btn,
@@ -10144,6 +10241,15 @@
         min-height: 2.15em;
         min-width: 6em;
         padding: 0.35em 0.55em;
+    }
+
+    .dependency-actions .dependency-primary-action {
+        color: #78d9f4;
+        min-width: 7.2em;
+    }
+
+    .dependency-actions .dependency-primary-warn {
+        color: #fdc66d;
     }
 
     @media (max-width: 1240px) {
