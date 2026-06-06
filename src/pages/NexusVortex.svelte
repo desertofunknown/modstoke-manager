@@ -1903,6 +1903,33 @@
         return typeof value === "number" ? value.toLocaleString() : "-";
     }
 
+    function rateLimitLabel(remaining?: string, limit?: string): string {
+        return `${remaining ?? "-"} / ${limit ?? "-"}`;
+    }
+
+    function rateLimitStyle(remaining?: string, limit?: string): string {
+        return `--rate-percent: ${rateLimitPercent(remaining, limit)}%`;
+    }
+
+    function rateLimitPercent(remaining?: string, limit?: string): number {
+        const remainingValue = Number(remaining);
+        const limitValue = Number(limit);
+        if (!Number.isFinite(remainingValue) || !Number.isFinite(limitValue) || limitValue <= 0) {
+            return 0;
+        }
+
+        return Math.max(0, Math.min(100, Math.round((remainingValue / limitValue) * 100)));
+    }
+
+    function isRateLimitLow(remaining?: string, limit?: string): boolean {
+        return rateLimitPercent(remaining, limit) > 0 && rateLimitPercent(remaining, limit) <= 10;
+    }
+
+    function isRateLimitWarning(remaining?: string, limit?: string): boolean {
+        const percent = rateLimitPercent(remaining, limit);
+        return percent > 10 && percent <= 25;
+    }
+
     function formatSizeKb(value?: number): string {
         if (!value) {
             return "-";
@@ -1994,8 +2021,24 @@
 
     {#if session.rate_limit}
         <div class="rate-row">
-            <span>Hourly {session.rate_limit.hourly_remaining ?? "-"} / {session.rate_limit.hourly_limit ?? "-"}</span>
-            <span>Daily {session.rate_limit.daily_remaining ?? "-"} / {session.rate_limit.daily_limit ?? "-"}</span>
+            <div
+                class="rate-meter"
+                class:rate-meter-warning={isRateLimitWarning(session.rate_limit.hourly_remaining, session.rate_limit.hourly_limit)}
+                class:rate-meter-low={isRateLimitLow(session.rate_limit.hourly_remaining, session.rate_limit.hourly_limit)}
+                style={rateLimitStyle(session.rate_limit.hourly_remaining, session.rate_limit.hourly_limit)}
+            >
+                <span><b>Hourly</b> {rateLimitLabel(session.rate_limit.hourly_remaining, session.rate_limit.hourly_limit)}</span>
+                <div class="rate-track"><span></span></div>
+            </div>
+            <div
+                class="rate-meter"
+                class:rate-meter-warning={isRateLimitWarning(session.rate_limit.daily_remaining, session.rate_limit.daily_limit)}
+                class:rate-meter-low={isRateLimitLow(session.rate_limit.daily_remaining, session.rate_limit.daily_limit)}
+                style={rateLimitStyle(session.rate_limit.daily_remaining, session.rate_limit.daily_limit)}
+            >
+                <span><b>Daily</b> {rateLimitLabel(session.rate_limit.daily_remaining, session.rate_limit.daily_limit)}</span>
+                <div class="rate-track"><span></span></div>
+            </div>
         </div>
     {/if}
 
@@ -2695,11 +2738,58 @@
 
     .rate-row {
         color: #9eb0bf;
+        display: grid;
         flex: 0 0 auto;
         font-size: 0.78em;
-        justify-content: flex-end;
-        line-height: 1;
+        gap: 0.55em;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        line-height: 1.1;
         margin-top: -0.15em;
+    }
+
+    .rate-meter {
+        background: rgba(18, 18, 18, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3em;
+        min-width: 0;
+        padding: 0.42em 0.55em;
+    }
+
+    .rate-meter > span {
+        display: flex;
+        gap: 0.6em;
+        justify-content: space-between;
+        min-width: 0;
+        white-space: nowrap;
+    }
+
+    .rate-meter b {
+        color: #e4edf4;
+    }
+
+    .rate-track {
+        background: rgba(255, 255, 255, 0.09);
+        height: 4px;
+        overflow: hidden;
+        width: 100%;
+    }
+
+    .rate-track span {
+        background: #62f09b;
+        display: block;
+        height: 100%;
+        width: var(--rate-percent, 0%);
+    }
+
+    .rate-meter-warning .rate-track span {
+        background: #fdc66d;
+    }
+
+    .rate-meter-low .rate-track span {
+        background: #fd7e7e;
     }
 
     .notice {
@@ -3902,6 +3992,7 @@
         }
 
         .nexus-filter-row,
+        .rate-row,
         .vortex-summary {
             grid-template-columns: 1fr;
         }
