@@ -45,7 +45,7 @@
     import { Command } from "@tauri-apps/plugin-shell";
 
     type CatalogMode = "online" | "installed";
-    type InstallFilter = "all" | "attention" | "installed" | "missing" | "updates" | "disabled" | "vortex" | "native" | "manual" | "tracked" | "conflicts";
+    type InstallFilter = "all" | "attention" | "installed" | "missing" | "updates" | "disabled" | "vortex" | "native" | "manual" | "tracked" | "endorsements" | "conflicts";
     type NexusSortMode = "attention" | "updated" | "downloads" | "endorsements" | "name" | "version";
     type InstalledSortMode = "attention" | "name" | "source" | "location" | "state" | "version";
     type DependencyStatus = "installed" | "missing" | "version-mismatch" | "review";
@@ -97,6 +97,8 @@
     let updateCount = 0;
     let onlineAttentionCount = 0;
     let installedAttentionCount = 0;
+    let endorsementQueueCount = 0;
+    let trackedMissingCount = 0;
     let resolvedDependencies: ResolvedDependency[] = [];
     let hasActiveNexusFilters = false;
     let isLoading = false;
@@ -150,7 +152,7 @@
     const MAX_AUTO_ENDORSE_PER_REFRESH = 3;
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
-    const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "conflicts"];
+    const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
     const NEXUS_SORT_MODES: NexusSortMode[] = ["attention", "updated", "downloads", "endorsements", "name", "version"];
     const INSTALLED_SORT_MODES: InstalledSortMode[] = ["attention", "name", "source", "location", "state", "version"];
     let nextManualRefreshAt = 0;
@@ -189,6 +191,17 @@
         mods;
         localConflictEntryKeys;
         installedAttentionCount = inventory.filter(inventoryNeedsAttention).length;
+    }
+    $: {
+        inventory;
+        endorsements;
+        endorsementsLoaded;
+        endorsementQueueCount = inventory.filter(inventoryEntryNeedsEndorsement).length;
+    }
+    $: {
+        inventory;
+        trackedMods;
+        trackedMissingCount = trackedMods.filter(tracked => !inventoryHasNexusModId(tracked.mod_id)).length;
     }
     $: {
         nexusSearchTerm;
@@ -982,6 +995,22 @@
         selectedInstallFilter = "conflicts";
     }
 
+    function showEndorsementQueue() {
+        catalogMode = "installed";
+        selectedInstallFilter = "endorsements";
+        selectedInstalledSort = "attention";
+    }
+
+    function showTrackedQueue() {
+        catalogMode = "online";
+        selectedInstallFilter = "tracked";
+        selectedNexusSort = "attention";
+
+        if (selectedView !== "all") {
+            void loadMods("all");
+        }
+    }
+
     function clearNexusFilters() {
         nexusSearchTerm = "";
         selectedNexusCategory = "all";
@@ -1709,6 +1738,25 @@
             || !entry.enabled;
     }
 
+    function inventoryEntryNeedsEndorsement(entry: InstalledInventoryEntry): boolean {
+        if (!endorsementsLoaded) {
+            return false;
+        }
+
+        const modId = numericNexusId(entry.nexusModId);
+        return !!modId && !isNexusModEndorsed(modId);
+    }
+
+    function nexusModNeedsEndorsement(mod: NexusMod): boolean {
+        const match = installedMatch(mod);
+        return !!match && inventoryEntryNeedsEndorsement(match);
+    }
+
+    function inventoryHasNexusModId(modId: number | string | null | undefined): boolean {
+        const normalizedModId = numericNexusId(modId);
+        return !!normalizedModId && inventory.some(entry => numericNexusId(entry.nexusModId) === normalizedModId);
+    }
+
     function sortNexusMods(items: NexusMod[]): NexusMod[] {
         return [...items].sort((left, right) => {
             switch (selectedNexusSort) {
@@ -1866,6 +1914,10 @@
             return false;
         }
 
+        if (selectedInstallFilter === "endorsements" && !nexusModNeedsEndorsement(mod)) {
+            return false;
+        }
+
         if (selectedInstallFilter === "conflicts" && !isConflictedEntry(match)) {
             return false;
         }
@@ -1916,6 +1968,10 @@
         }
 
         if (selectedInstallFilter === "tracked" && !isNexusModTracked(entry.nexusModId)) {
+            return false;
+        }
+
+        if (selectedInstallFilter === "endorsements" && !inventoryEntryNeedsEndorsement(entry)) {
             return false;
         }
 
@@ -2316,6 +2372,44 @@
                 {/if}
             </div>
 
+            <div class="action-queue" aria-label="Nexus action queue">
+                <button type="button" class="queue-chip" class:queue-chip-hot={endorsementQueueCount > 0} class:queue-chip-selected={catalogMode === "installed" && selectedInstallFilter === "endorsements"} on:click={showEndorsementQueue}>
+                    <b>{endorsementQueueCount}</b>
+                    <span>
+                        <span>Endorse</span>
+                        <small>{endorsementsLoaded ? "Installed Nexus mods" : "Loading state"}</small>
+                    </span>
+                </button>
+                <button type="button" class="queue-chip" class:queue-chip-hot={trackedMissingCount > 0} class:queue-chip-selected={catalogMode === "online" && selectedInstallFilter === "tracked"} on:click={showTrackedQueue}>
+                    <b>{trackedMissingCount}</b>
+                    <span>
+                        <span>Tracked Missing</span>
+                        <small>{trackedModsLoaded ? "Watch list gaps" : "Loading tracked"}</small>
+                    </span>
+                </button>
+                <button type="button" class="queue-chip" class:queue-chip-hot={updateCount > 0} class:queue-chip-selected={selectedInstallFilter === "updates"} on:click={() => { catalogMode = "installed"; selectedInstallFilter = "updates"; }}>
+                    <b>{updateCount}</b>
+                    <span>
+                        <span>Updates</span>
+                        <small>Version review</small>
+                    </span>
+                </button>
+                <button type="button" class="queue-chip" class:queue-chip-hot={disabledCount > 0} class:queue-chip-selected={catalogMode === "installed" && selectedInstallFilter === "disabled"} on:click={() => { catalogMode = "installed"; selectedInstallFilter = "disabled"; }}>
+                    <b>{disabledCount}</b>
+                    <span>
+                        <span>Disabled</span>
+                        <small>Local state</small>
+                    </span>
+                </button>
+                <button type="button" class="queue-chip" class:queue-chip-hot={conflictCount > 0} class:queue-chip-selected={selectedInstallFilter === "conflicts"} on:click={showLocalConflicts}>
+                    <b>{conflictCount}</b>
+                    <span>
+                        <span>Conflicts</span>
+                        <small>Duplicate installs</small>
+                    </span>
+                </button>
+            </div>
+
             <div class="nexus-filter-row">
                 <input class="generic-input key-input" bind:value={nexusSearchTerm} placeholder="Search Nexus" />
                 <select bind:value={selectedNexusCategory}>
@@ -2335,6 +2429,7 @@
                     <option value="native">OpenACAI store</option>
                     <option value="manual">Manual</option>
                     <option value="tracked">Tracked</option>
+                    <option value="endorsements">Needs endorsement</option>
                     <option value="conflicts">Conflicts</option>
                 </select>
                 {#if catalogMode === "online"}
@@ -3164,6 +3259,90 @@
         justify-content: space-between;
         line-height: 1.2;
         padding: 0.5em 0.75em;
+    }
+
+    .action-queue {
+        display: grid;
+        flex: 0 0 auto;
+        gap: 0.5em;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        min-width: 0;
+    }
+
+    .queue-chip {
+        -webkit-mask-image: none;
+        align-items: center;
+        background: rgba(15, 15, 15, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-sizing: border-box;
+        color: #c9d4dd;
+        cursor: pointer;
+        display: grid;
+        gap: 0.55em;
+        grid-template-columns: auto minmax(0, 1fr);
+        margin: 0;
+        mask-image: none;
+        min-height: 3em;
+        min-width: 0;
+        padding: 0.45em 0.65em;
+        text-align: left;
+        text-transform: none;
+        width: 100%;
+    }
+
+    .queue-chip:hover,
+    .queue-chip:focus-visible {
+        border-color: rgba(120, 217, 244, 0.52);
+        box-shadow: inset 0 0 0 1px rgba(120, 217, 244, 0.12);
+        outline: none;
+    }
+
+    .queue-chip b {
+        color: #e6f4fb;
+        font-size: 1.1em;
+        font-weight: 900;
+        min-width: 1.6em;
+        text-align: center;
+    }
+
+    .queue-chip > span {
+        display: flex;
+        flex-direction: column;
+        gap: 0.05em;
+        line-height: 1.05;
+        min-width: 0;
+    }
+
+    .queue-chip > span > span,
+    .queue-chip small {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .queue-chip > span > span {
+        color: #d9e5ed;
+        font-size: 0.78em;
+        font-weight: 900;
+    }
+
+    .queue-chip small {
+        color: #8295a5;
+        font-size: 0.68em;
+        font-weight: 800;
+    }
+
+    .queue-chip-hot b {
+        color: #fdc66d;
+    }
+
+    .queue-chip-selected {
+        border-color: rgba(98, 240, 155, 0.62);
+        box-shadow: inset 0 0 0 1px rgba(98, 240, 155, 0.16);
+    }
+
+    .queue-chip-selected b {
+        color: #62f09b;
     }
 
     .nexus-filter-row {
