@@ -15,7 +15,7 @@ These builds are signed with the OpenACAI Inc Azure Trusted Signing certificate.
 
 Dependency/source links:
 
-- OpenACAI Loader package: `https://github.com/desertofunknown/openacai-loader`
+- OpenACAI Endnight Loader package: `https://github.com/desertofunknown/openacai-loader`
 - BepInEx: `https://github.com/BepInEx/BepInEx`
 - RedLoader/SonsSdk rewrite branch: `https://github.com/ToniMacaroni/RedLoader/tree/rewrite`
 - Original RedManager upstream: `https://github.com/ToniMacaroni/RedManager`

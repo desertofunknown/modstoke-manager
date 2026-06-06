@@ -39,7 +39,7 @@
                 loaderReport = await ensureLatestOpenAcaiLoader();
                 updateLoaderStatus(loaderReport);
             } catch (error) {
-                await dialog.message(`Endnight Loader could not be verified or updated:\n${error}`, {
+                await dialog.message(`OpenACAI Endnight Loader could not be verified or updated:\n${error}`, {
                     title: "Loader update failed",
                     kind: "error"
                 });
@@ -96,7 +96,7 @@
         try {
             loaderReport = await ensureLatestOpenAcaiLoader();
             updateLoaderStatus(loaderReport);
-            await dialog.message("Endnight Loader files are verified and current.", {
+            await dialog.message("OpenACAI Endnight Loader files are verified and current.", {
                 title: "Loader verified",
                 kind: "info"
             });
@@ -147,7 +147,7 @@
         <a class="brand-link" href="https://gitlab.com/Godsring/openacai-loader" target="_blank" rel="noreferrer">
             <img class="brand-mark" src={openAcaiMark} alt="OpenACAI" />
             <span class="brand-copy">
-                <span class="brand-title">Endnight Loader</span>
+                <span class="brand-title">OpenACAI Endnight Loader</span>
                 <span class="brand-subtitle">OpenACAI Mod Manager</span>
             </span>
         </a>
@@ -158,7 +158,7 @@
             <InstallFeature feature={feature} />
         {/each}
         <section class="loader-health">
-            <span class="description-content">Endnight Loader integrity</span>
+            <span class="description-content">OpenACAI Endnight Loader integrity</span>
             <span class="health-status {loaderStatusClass}">{loaderStatus}</span>
             {#if loaderDetail(loaderReport)}
                 <span class="health-detail">{loaderDetail(loaderReport)}</span>

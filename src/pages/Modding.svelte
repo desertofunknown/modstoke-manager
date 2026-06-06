@@ -129,7 +129,7 @@
     {#if templateTemporarilyDisabled}
         <div class="description sdk-disabled">
             <span>
-                OpenACAI SDK project templates are being rebuilt for the new Endnight Loader port.
+                OpenACAI SDK project templates are being rebuilt for the new OpenACAI Endnight Loader port.
             </span>
             <button class="generic-button" disabled>Template under construction</button>
         </div>

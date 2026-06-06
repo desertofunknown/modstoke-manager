@@ -48,10 +48,10 @@ export class ManualZipInstaller extends BaseZipInstaller {
         if (!inspection.is_valid) {
             const details = inspection.errors.length > 0
                 ? inspection.errors.join("\n")
-                : "The selected zip is missing the Endnight Loader manifest or compatibility bridge.";
+                : "The selected zip is missing the OpenACAI Endnight Loader manifest or compatibility bridge.";
 
             await dialog.message(details, {
-                title: "Invalid Endnight Loader package",
+                title: "Invalid OpenACAI Endnight Loader package",
                 kind: "error"
             });
 

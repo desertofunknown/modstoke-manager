@@ -3,7 +3,7 @@ Copyright (C) 2026 Alex Cooper
 
 OpenACAI Mod Manager contains original OpenACAI changes by Alex Cooper.
 It is based on RedManager by Toni Macaroni, originally licensed under Apache-2.0.
-It installs and manages Endnight Loader/OpenACAI Loader packages that are built
+It installs and manages OpenACAI Endnight Loader packages that are built
 on BepInEx's Unity IL2CPP loader and RedLoader/SonsSdk compatibility components.
 
 Upstream projects credited by this manager:

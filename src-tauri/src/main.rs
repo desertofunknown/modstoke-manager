@@ -504,7 +504,7 @@ fn inspect_openacai_loader_zip(source: String) -> Result<LoaderZipInspection, St
 
     if !inspection.has_bridge {
         inspection.errors.push(
-            "Missing BepInEx/plugins/RedLoaderBepInExCompat/RedLoaderBepInExCompat.dll".to_string(),
+            "Missing OpenACAI Endnight Loader core bridge at BepInEx/plugins/RedLoaderBepInExCompat/RedLoaderBepInExCompat.dll".to_string(),
         );
     }
 
