@@ -209,6 +209,7 @@
     let activeNexusEndorseId: number | null = null;
     let activeNexusTrackId: number | null = null;
     let activeConflictEntryKey: string | null = null;
+    let isRefreshingInventory = false;
     let autoEndorseDownloadedMods = false;
     let autoEndorseAttemptedIds: number[] = [];
     let autoEndorseEligibleCount = 0;
@@ -692,6 +693,45 @@
         inventory = await scanInstalledInventory();
         const vortex = await readVortexDeployment(await getDirectoryPath());
         vortexStagingPath = vortex.stagingPath;
+    }
+
+    async function refreshLocalInventoryFromUi() {
+        if (!$isPathValid) {
+            await dialog.message("Choose a valid Sons Of The Forest executable before scanning local mod inventory.", {
+                title: "Local inventory",
+                kind: "info"
+            });
+            return;
+        }
+
+        isRefreshingInventory = true;
+        status = "Refreshing local mod inventory...";
+
+        try {
+            await refreshInventory();
+            await tick();
+            const sourceSummary = [
+                `${inventory.length} installed`,
+                `${vortexCount} Vortex`,
+                `${nativeCount} native`,
+                `${manualCount} manual`
+            ].join(" · ");
+            status = `Local inventory refreshed: ${sourceSummary}.`;
+            window.setTimeout(() => {
+                if (status.startsWith("Local inventory refreshed:")) {
+                    status = "";
+                }
+            }, 6000);
+        } catch (error) {
+            status = "";
+            await dialog.message(`${error}`, {
+                title: "Local inventory",
+                kind: "error"
+            });
+        } finally {
+            isRefreshingInventory = false;
+            await measureNexusLayoutAfterTick();
+        }
     }
 
     async function connectWithNexus() {
@@ -6263,6 +6303,9 @@
                 {#if vortexStagingPath}
                     <button on:click={openVortexStaging}>Open Vortex Staging</button>
                 {/if}
+                <button class="inventory-refresh-btn" disabled={isRefreshingInventory} title="Rescan local and Vortex-managed mod inventory" on:click={refreshLocalInventoryFromUi}>
+                    {isRefreshingInventory ? "Scanning..." : "Refresh Inventory"}
+                </button>
                 <button class="uninstall" on:click={disconnect}>Disconnect</button>
             </div>
         {:else}
@@ -7200,6 +7243,9 @@
                     {#if selectedInstallConflict}
                         <button class="conflict-review-btn" on:click={() => reviewLocalConflict(selectedInstallConflict)}>Review Conflict</button>
                     {/if}
+                    <button class="inventory-refresh-btn" disabled={isRefreshingInventory} title="Rescan local and Vortex-managed mod inventory" on:click={refreshLocalInventoryFromUi}>
+                        {isRefreshingInventory ? "Scanning..." : "Refresh Inventory"}
+                    </button>
                     <button on:click={openSelectedModPage}>Open Page</button>
                 </div>
 
@@ -7292,6 +7338,20 @@
         padding: 0.35em 0.7em;
         text-transform: uppercase;
         text-align: left;
+    }
+
+    .inventory-refresh-btn {
+        background: rgba(120, 217, 244, 0.075);
+        border-color: rgba(120, 217, 244, 0.24);
+        box-shadow: none;
+        color: #bdeefa;
+    }
+
+    .account-actions .inventory-refresh-btn {
+        font-size: 0.8em;
+        min-height: 2.6em;
+        min-width: 9.8em;
+        padding: 0.3em 0.7em;
     }
 
     .auto-endorse-label {
@@ -8459,6 +8519,10 @@
 
     .detail-actions .install {
         min-width: 11em;
+    }
+
+    .detail-actions .inventory-refresh-btn {
+        min-width: 9.2em;
     }
 
     .detail-link-actions {
