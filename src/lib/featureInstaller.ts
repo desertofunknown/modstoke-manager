@@ -32,6 +32,7 @@ export class FeatureInstaller {
     public currentMode: InstallMode = InstallMode.Install;
     public currentModeState: string = "Install";
     public description: string | null = null;
+    public displayName: string | null = null;
 
     public expectedMode: InstallMode | null = null;
     public additionalFoldersToCreate: string[] | null = null;
@@ -95,6 +96,10 @@ export class FeatureInstaller {
     }
 
     public getName(): string {
+        if (this.displayName) {
+            return this.displayName;
+        }
+
         if(this._installer)
         {
             return this._installer.getName();
@@ -258,6 +263,7 @@ openAcaiLoaderUninstaller.overrideCheckFiles = [
 ];
 
 export let openAcaiLoaderFeature = new FeatureInstaller(openAcaiLoaderInstaller, openAcaiLoaderUninstaller, "BepInEx\\plugins\\OpenACAILoader\\openacai-loader.manifest.json");
+openAcaiLoaderFeature.displayName = "OpenACAI Endnight Loader";
 openAcaiLoaderFeature.additionalFoldersToCreate = ["Mods"];
 openAcaiLoaderFeature.description = "Installs or repairs the BepInEx-first OpenACAI Endnight Loader package from the public GitHub release manifest, then verifies installed file hashes.";
 
