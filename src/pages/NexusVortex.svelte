@@ -50,6 +50,14 @@
     type InstalledSortMode = "attention" | "name" | "source" | "location" | "state" | "version";
     type DependencyStatus = "installed" | "missing" | "version-mismatch" | "review";
     type InstallPlanTone = "ready" | "review" | "blocked";
+    type NexusUiPreferences = {
+        catalogMode: CatalogMode;
+        nexusSearchTerm: string;
+        selectedNexusCategory: string;
+        selectedInstallFilter: InstallFilter;
+        selectedNexusSort: NexusSortMode;
+        selectedInstalledSort: InstalledSortMode;
+    };
     type ResolvedDependency = NexusModDependency & {
         match: InstalledInventoryEntry | null;
         status: DependencyStatus;
@@ -128,16 +136,22 @@
     let ssoTimeout: number | null = null;
     let refreshCooldownSeconds = 0;
     let refreshCooldownTimer: number | null = null;
+    let nexusUiPreferencesLoaded = false;
 
     const NEXUS_SSO_URL = "wss://sso.nexusmods.com";
     const NEXUS_SSO_APPLICATION_SLUG = "openacai-mod-manager";
     const NEXUS_SSO_PROTOCOL = 2;
     const NEXUS_SSO_UUID_KEY = "openacai-nexus-sso-request-id";
     const NEXUS_SSO_TOKEN_KEY = "openacai-nexus-sso-connection-token";
+    const NEXUS_UI_PREFERENCES_KEY = "openacai-nexus-ui-preferences";
     const NEXUS_AUTO_ENDORSE_KEY = "openacai-nexus-auto-endorse-downloaded";
     const NEXUS_AUTO_ENDORSE_ATTEMPTED_KEY = "openacai-nexus-auto-endorse-attempted";
     const MAX_AUTO_ENDORSE_PER_REFRESH = 3;
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
+    const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
+    const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "conflicts"];
+    const NEXUS_SORT_MODES: NexusSortMode[] = ["attention", "updated", "downloads", "endorsements", "name", "version"];
+    const INSTALLED_SORT_MODES: InstalledSortMode[] = ["attention", "name", "source", "location", "state", "version"];
     let nextManualRefreshAt = 0;
     $: manualRefreshButtonLabel = refreshCooldownSeconds > 0 ? `Refresh ${refreshCooldownSeconds}s` : "Refresh";
     $: manualRefreshButtonTitle = refreshCooldownSeconds > 0
@@ -250,8 +264,20 @@
         lastSelectedNxmUrl = selectedNxmUrl;
         clearNxmCopyFeedback();
     }
+    $: {
+        catalogMode;
+        nexusSearchTerm;
+        selectedNexusCategory;
+        selectedInstallFilter;
+        selectedNexusSort;
+        selectedInstalledSort;
+        if (nexusUiPreferencesLoaded) {
+            persistNexusUiPreferences();
+        }
+    }
 
     onMount(async () => {
+        loadNexusUiPreferences();
         loadEndorsementPreferences();
         await refreshInventory();
         await refreshSession();
@@ -281,6 +307,40 @@
 
     function isTauriBridgeError(message: string): boolean {
         return message.includes("__TAURI_IPC__") || message.includes("reading 'invoke'");
+    }
+
+    function loadNexusUiPreferences() {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(NEXUS_UI_PREFERENCES_KEY) ?? "null") as Partial<NexusUiPreferences> | null;
+            if (parsed && typeof parsed === "object") {
+                catalogMode = validOption(parsed.catalogMode, CATALOG_MODES, catalogMode);
+                nexusSearchTerm = typeof parsed.nexusSearchTerm === "string" ? parsed.nexusSearchTerm : "";
+                selectedNexusCategory = typeof parsed.selectedNexusCategory === "string" ? parsed.selectedNexusCategory : "all";
+                selectedInstallFilter = validOption(parsed.selectedInstallFilter, INSTALL_FILTERS, selectedInstallFilter);
+                selectedNexusSort = validOption(parsed.selectedNexusSort, NEXUS_SORT_MODES, selectedNexusSort);
+                selectedInstalledSort = validOption(parsed.selectedInstalledSort, INSTALLED_SORT_MODES, selectedInstalledSort);
+            }
+        } catch {
+            localStorage.removeItem(NEXUS_UI_PREFERENCES_KEY);
+        } finally {
+            nexusUiPreferencesLoaded = true;
+        }
+    }
+
+    function persistNexusUiPreferences() {
+        const preferences: NexusUiPreferences = {
+            catalogMode,
+            nexusSearchTerm,
+            selectedNexusCategory,
+            selectedInstallFilter,
+            selectedNexusSort,
+            selectedInstalledSort
+        };
+        localStorage.setItem(NEXUS_UI_PREFERENCES_KEY, JSON.stringify(preferences));
+    }
+
+    function validOption<T extends string>(value: unknown, options: T[], fallback: T): T {
+        return typeof value === "string" && options.includes(value as T) ? value as T : fallback;
     }
 
     async function refreshInventory() {
