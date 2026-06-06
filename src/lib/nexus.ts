@@ -59,6 +59,7 @@ export type NexusCategory = {
 
 export type NexusModFile = {
     file_id: number;
+    nexus_file_id?: string;
     name: string;
     version?: string;
     mod_version?: string;
@@ -75,6 +76,7 @@ export type NexusModDependency = {
     id: string;
     mod_id?: number;
     file_id?: number;
+    nexus_file_id?: string;
     mod_name: string;
     file_name?: string;
     version?: string;
@@ -220,8 +222,8 @@ const detailsCache = new Map<number, { value: NexusMod; cachedAt: number }>();
 const detailsRequests = new Map<number, Promise<NexusMod>>();
 const filesCache = new Map<number, { value: NexusModFilesResponse; cachedAt: number }>();
 const filesRequests = new Map<number, Promise<NexusModFilesResponse>>();
-const dependencyCache = new Map<number, { value: NexusModDependenciesResponse; cachedAt: number }>();
-const dependencyRequests = new Map<number, Promise<NexusModDependenciesResponse>>();
+const dependencyCache = new Map<string, { value: NexusModDependenciesResponse; cachedAt: number }>();
+const dependencyRequests = new Map<string, Promise<NexusModDependenciesResponse>>();
 const changelogCache = new Map<number, { value: NexusModChangelogsResponse; cachedAt: number }>();
 const changelogRequests = new Map<number, Promise<NexusModChangelogsResponse>>();
 let endorsementCache: { value: NexusEndorsementsResponse; cachedAt: number } | null = null;
@@ -449,31 +451,35 @@ export async function fetchNexusModFiles(modId: number, options: { force?: boole
     return await request;
 }
 
-export async function fetchNexusFileDependencies(fileId: number, options: { force?: boolean } = {}): Promise<NexusModDependenciesResponse> {
-    const cached = dependencyCache.get(fileId);
+export async function fetchNexusFileDependencies(fileId: number, options: { force?: boolean; nexusFileId?: string } = {}): Promise<NexusModDependenciesResponse> {
+    const cacheKey = dependencyCacheKey(fileId, options.nexusFileId);
+    const cached = dependencyCache.get(cacheKey);
     if (!options.force && cached && cacheFresh(cached.cachedAt)) {
         return cached.value;
     }
 
-    const existingRequest = dependencyRequests.get(fileId);
+    const existingRequest = dependencyRequests.get(cacheKey);
     if (!options.force && existingRequest) {
         return await existingRequest;
     }
 
-    const request = invoke<RawNexusModDependenciesResponse>("nexus_fetch_file_dependencies", { fileId })
+    const request = invoke<RawNexusModDependenciesResponse>("nexus_fetch_file_dependencies", {
+        fileId,
+        nexusFileId: options.nexusFileId
+    })
         .then((response) => {
             const normalized = {
                 ...response,
                 dependencies: normalizeDependencies(response.dependencies)
             };
-            dependencyCache.set(fileId, { value: normalized, cachedAt: Date.now() });
+            dependencyCache.set(cacheKey, { value: normalized, cachedAt: Date.now() });
             return normalized;
         })
         .finally(() => {
-            dependencyRequests.delete(fileId);
+            dependencyRequests.delete(cacheKey);
         });
 
-    dependencyRequests.set(fileId, request);
+    dependencyRequests.set(cacheKey, request);
     return await request;
 }
 
@@ -847,11 +853,31 @@ function resolveNexusCategory(raw: Record<string, unknown>, categories: NexusCat
 }
 
 function normalizeNexusFile(raw: NexusModFile & Record<string, unknown>): NexusModFile {
-    const fileId = numberField(raw.file_id) ?? numberField(raw.id) ?? numberField(raw.game_scoped_id) ?? 0;
+    const fileId = firstNumberFromFields(raw, [
+        "file_id",
+        "fileId",
+        "game_scoped_id",
+        "gameScopedId",
+        "game_scoped_file_id",
+        "gameScopedFileId",
+        "id"
+    ]) ?? 0;
+    const nexusFileId = firstIdentifierFromFields(raw, [
+        "nexus_file_id",
+        "nexusFileId",
+        "uid",
+        "uuid",
+        "file_uid",
+        "fileUid",
+        "file_uuid",
+        "fileUuid",
+        "id"
+    ]);
 
     return {
         ...raw,
         file_id: fileId,
+        nexus_file_id: nexusFileId,
         name: stringField(raw.name)
             ?? stringField(raw.file_name)
             ?? stringField(raw.logical_filename)
@@ -951,12 +977,23 @@ function isDependencyRecord(record: Record<string, unknown>): boolean {
         "modId",
         "game_scoped_mod_id",
         "gameScopedModId",
+        "game_scoped_id",
+        "gameScopedId",
         "file_id",
         "fileId",
         "game_scoped_file_id",
         "gameScopedFileId",
+        "nexus_file_id",
+        "nexusFileId",
         "mod",
-        "file"
+        "file",
+        "target",
+        "target_file",
+        "targetFile",
+        "min_version_id",
+        "minVersionId",
+        "max_version_id",
+        "maxVersionId"
     ]);
 }
 
@@ -1029,6 +1066,10 @@ function dependencyFromCandidateGroup(dependency: Record<string, unknown>, group
         ?? firstNumberFromFields(version, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "game_scoped_file_id", "gameScopedFileId", "id"])
         ?? firstNumberFromFields(group, ["file_id", "fileId", "game_scoped_file_id", "gameScopedFileId"])
         ?? firstNumberFromFields(dependency, ["file_id", "fileId", "game_scoped_file_id", "gameScopedFileId"]);
+    const nexusFileId = firstIdentifierFromFields(file, ["nexus_file_id", "nexusFileId", "uid", "uuid", "file_uid", "fileUid", "file_uuid", "fileUuid", "id"])
+        ?? firstIdentifierFromFields(version, ["nexus_file_id", "nexusFileId", "uid", "uuid", "file_uid", "fileUid", "file_uuid", "fileUuid", "id"])
+        ?? firstIdentifierFromFields(group, ["nexus_file_id", "nexusFileId"])
+        ?? firstIdentifierFromFields(dependency, ["nexus_file_id", "nexusFileId"]);
     const modName = firstStringFromFields(mod, ["name", "mod_name", "modName", "title"])
         ?? firstStringFromFields(group, ["mod_name", "modName", "name", "title"])
         ?? firstStringFromFields(dependency, ["mod_name", "modName", "name", "title"]);
@@ -1041,6 +1082,7 @@ function dependencyFromCandidateGroup(dependency: Record<string, unknown>, group
         id: stringField(dependency.id) ?? stringField(group.id) ?? `${modId ?? "mod"}:${fileId ?? "file"}`,
         mod_id: modId,
         file_id: fileId,
+        nexus_file_id: nexusFileId,
         mod_name: modName ?? "Unknown dependency",
         file_name: firstStringFromFields(file, ["name", "file_name", "fileName", "logical_filename", "logicalFilename"])
             ?? firstStringFromFields(version, ["name", "file_name", "fileName", "logical_filename", "logicalFilename"]),
@@ -1068,6 +1110,9 @@ function dependencyFromRange(dependency: Record<string, unknown>, range: Record<
     const modId = firstNumberFromFields(mod, ["game_scoped_id", "gameScopedId", "mod_id", "modId", "game_scoped_mod_id", "gameScopedModId", "id"])
         ?? firstNumberFromFields(targetGroup, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId"]);
     const fileId = firstNumberFromFields(representativeFile, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "game_scoped_file_id", "gameScopedFileId", "id"]);
+    const nexusFileId = firstIdentifierFromFields(representativeFile, ["nexus_file_id", "nexusFileId", "uid", "uuid", "file_uid", "fileUid", "file_uuid", "fileUuid", "id"])
+        ?? firstIdentifierFromFields(range, ["nexus_file_id", "nexusFileId"])
+        ?? firstIdentifierFromFields(dependency, ["nexus_file_id", "nexusFileId"]);
     const modName = firstStringFromFields(mod, ["name", "mod_name", "modName", "title"])
         ?? firstStringFromFields(targetGroup, ["name", "group_name", "groupName", "label"]);
     const minLabel = dependencyVersionLabel(minVersion, minFile);
@@ -1084,6 +1129,7 @@ function dependencyFromRange(dependency: Record<string, unknown>, range: Record<
         id: stringField(range.id) ?? stringField(dependency.id) ?? `${modId ?? "mod"}:${fileId ?? "file"}`,
         mod_id: modId,
         file_id: fileId,
+        nexus_file_id: nexusFileId,
         mod_name: modName ?? "Unknown dependency",
         file_name: firstStringFromFields(representativeFile, ["name", "file_name", "fileName", "logical_filename", "logicalFilename"]),
         version: exactVersion,
@@ -1094,7 +1140,7 @@ function dependencyFromRange(dependency: Record<string, unknown>, range: Record<
 
 function dependencyFromFlatRecord(dependency: Record<string, unknown>): NexusModDependency | null {
     const mod = firstObjectFromFields(dependency, ["mod", "target_mod", "targetMod"]);
-    const file = firstObjectFromFields(dependency, ["file", "mod_file", "modFile"]);
+    const file = firstObjectFromFields(dependency, ["file", "mod_file", "modFile", "target_file", "targetFile", "target"]);
     const group = firstObjectFromFields(dependency, ["group", "target_group", "targetGroup", "update_group", "updateGroup"]);
     const groupMod = firstObjectFromFields(group, ["mod", "target_mod", "targetMod"]);
     const modId = firstNumberFromFields(dependency, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId"])
@@ -1102,6 +1148,8 @@ function dependencyFromFlatRecord(dependency: Record<string, unknown>): NexusMod
         ?? firstNumberFromFields(groupMod, ["game_scoped_id", "gameScopedId", "mod_id", "modId", "id"]);
     const fileId = firstNumberFromFields(dependency, ["file_id", "fileId", "game_scoped_file_id", "gameScopedFileId"])
         ?? firstNumberFromFields(file, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "id"]);
+    const nexusFileId = firstIdentifierFromFields(file, ["nexus_file_id", "nexusFileId", "uid", "uuid", "file_uid", "fileUid", "file_uuid", "fileUuid", "id"])
+        ?? firstIdentifierFromFields(dependency, ["nexus_file_id", "nexusFileId"]);
     const modName = firstStringFromFields(dependency, ["mod_name", "modName", "name", "title"])
         ?? firstStringFromFields(mod, ["name", "mod_name", "modName", "title"])
         ?? firstStringFromFields(groupMod, ["name", "mod_name", "modName", "title"])
@@ -1115,6 +1163,7 @@ function dependencyFromFlatRecord(dependency: Record<string, unknown>): NexusMod
         id: stringField(dependency.id) ?? `${modId ?? "mod"}:${fileId ?? "file"}`,
         mod_id: modId,
         file_id: fileId,
+        nexus_file_id: nexusFileId,
         mod_name: modName ?? "Unknown dependency",
         file_name: firstStringFromFields(dependency, ["file_name", "fileName", "logical_filename", "logicalFilename"])
             ?? firstStringFromFields(file, ["name", "file_name", "fileName", "logical_filename", "logicalFilename"]),
@@ -1152,6 +1201,10 @@ function dependencyRequirementLabel(minVersion?: string, maxVersion?: string): s
 
 function normalizedDependencyVersion(value?: string): string {
     return value?.trim().toLowerCase().replace(/^v\s*/, "") ?? "";
+}
+
+function dependencyCacheKey(fileId: number, nexusFileId?: string): string {
+    return `${fileId}:${nexusFileId?.trim() ?? ""}`;
 }
 
 function normalizeChangelogs(raw: unknown): NexusModChangelog[] {
@@ -1466,6 +1519,25 @@ function firstStringFromFields(source: Record<string, unknown> | undefined, keys
         const value = stringField(source[key]);
         if (value) {
             return value;
+        }
+    }
+
+    return undefined;
+}
+
+function firstIdentifierFromFields(source: Record<string, unknown> | undefined, keys: string[]): string | undefined {
+    if (!source) {
+        return undefined;
+    }
+
+    for (const key of keys) {
+        const value = source[key];
+        if (typeof value === "string" && value.trim().length > 0) {
+            return value.trim();
+        }
+
+        if (typeof value === "number" && Number.isFinite(value)) {
+            return `${value}`;
         }
     }
 

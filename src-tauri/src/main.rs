@@ -331,40 +331,23 @@ async fn nexus_fetch_mod_files(mod_id: u64) -> Result<NexusModFilesResponse, Str
 #[tauri::command]
 async fn nexus_fetch_file_dependencies(
     file_id: u64,
+    nexus_file_id: Option<String>,
 ) -> Result<NexusModDependenciesResponse, String> {
     let key =
         read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
     let client = nexus_client(&key);
-    let dependency_file_id = match nexus_resolve_v3_mod_file_id(&client, file_id).await {
-        Ok(Some(resolved_id)) => resolved_id,
-        _ => file_id.to_string(),
-    };
 
-    let fallback_file_id = file_id.to_string();
-    let dependency_result = nexus_request_materialized_dependencies_with_fallback(
-        &client,
-        &dependency_file_id,
-        &fallback_file_id,
-    )
-    .await;
-    let (value, rate_limit) = match dependency_result {
-        Ok(result) => {
-            if nexus_dependency_payload_has_rows(&result.0) {
-                result
-            } else {
-                nexus_request_dependency_ranges_with_fallback(
-                    &client,
-                    &dependency_file_id,
-                    &fallback_file_id,
-                )
-                .await
-                .ok()
-                .filter(|range_result| nexus_dependency_payload_has_rows(&range_result.0))
-                .unwrap_or(result)
-            }
-        }
-        Err(error) => return Err(error),
-    };
+    let mut dependency_file_ids = Vec::new();
+    if let Some(id) = nexus_file_id {
+        push_dependency_file_id(&mut dependency_file_ids, &id);
+    }
+    if let Ok(Some(resolved_id)) = nexus_resolve_v3_mod_file_id(&client, file_id).await {
+        push_dependency_file_id(&mut dependency_file_ids, &resolved_id);
+    }
+    push_dependency_file_id(&mut dependency_file_ids, &file_id.to_string());
+
+    let (value, rate_limit) =
+        nexus_request_dependencies_for_candidate_files(&client, &dependency_file_ids).await?;
     let dependencies = value.get("dependencies").cloned().unwrap_or(value);
     Ok(NexusModDependenciesResponse {
         dependencies,
@@ -372,40 +355,47 @@ async fn nexus_fetch_file_dependencies(
     })
 }
 
-async fn nexus_request_materialized_dependencies_with_fallback(
-    client: &reqwest::Client,
-    primary_file_id: &str,
-    fallback_file_id: &str,
-) -> Result<(serde_json::Value, NexusRateLimit), String> {
-    match nexus_request_materialized_dependencies(client, primary_file_id).await {
-        Ok(result) => Ok(result),
-        Err(error) if primary_file_id != fallback_file_id => {
-            nexus_request_materialized_dependencies(client, fallback_file_id)
-                .await
-                .map_err(|fallback_error| {
-                    format!("{error}; fallback dependency request failed: {fallback_error}")
-                })
-        }
-        Err(error) => Err(error),
+fn push_dependency_file_id(ids: &mut Vec<String>, id: &str) {
+    let trimmed = id.trim();
+    if trimmed.is_empty() || ids.iter().any(|existing| existing == trimmed) {
+        return;
     }
+
+    ids.push(trimmed.to_string());
 }
 
-async fn nexus_request_dependency_ranges_with_fallback(
+async fn nexus_request_dependencies_for_candidate_files(
     client: &reqwest::Client,
-    primary_file_id: &str,
-    fallback_file_id: &str,
+    candidate_file_ids: &[String],
 ) -> Result<(serde_json::Value, NexusRateLimit), String> {
-    match nexus_request_dependency_ranges(client, primary_file_id).await {
-        Ok(result) => Ok(result),
-        Err(error) if primary_file_id != fallback_file_id => {
-            nexus_request_dependency_ranges(client, fallback_file_id)
-                .await
-                .map_err(|fallback_error| {
-                    format!("{error}; fallback dependency request failed: {fallback_error}")
-                })
+    let mut first_empty_result: Option<(serde_json::Value, NexusRateLimit)> = None;
+    let mut last_error: Option<String> = None;
+
+    for file_id in candidate_file_ids {
+        match nexus_request_materialized_dependencies(client, file_id).await {
+            Ok(result) if nexus_dependency_payload_has_rows(&result.0) => return Ok(result),
+            Ok(result) => {
+                first_empty_result.get_or_insert(result);
+            }
+            Err(error) => {
+                last_error = Some(error);
+            }
         }
-        Err(error) => Err(error),
+
+        match nexus_request_dependency_ranges(client, file_id).await {
+            Ok(result) if nexus_dependency_payload_has_rows(&result.0) => return Ok(result),
+            Ok(result) => {
+                first_empty_result.get_or_insert(result);
+            }
+            Err(error) => {
+                last_error = Some(error);
+            }
+        }
     }
+
+    first_empty_result.ok_or_else(|| {
+        last_error.unwrap_or_else(|| "Nexus dependency request did not return a usable response.".to_string())
+    })
 }
 
 fn nexus_dependency_payload_has_rows(value: &serde_json::Value) -> bool {

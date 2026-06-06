@@ -88,6 +88,7 @@
     type NestedDependencySource = {
         key: string;
         parentFileId: number;
+        parentNexusFileId?: string;
         parentName: string;
         depth: number;
         dependency: NexusModDependency;
@@ -1795,8 +1796,11 @@
         selectedDependencies = [];
         selectedDependencyMessage = "Checking Nexus dependency metadata...";
         clearNestedDependencyCheck();
+        const selectedFile = selectedModFiles.find(file => file.file_id === fileId);
         try {
-            const response = await fetchNexusFileDependencies(fileId);
+            const response = await fetchNexusFileDependencies(fileId, {
+                nexusFileId: selectedFile?.nexus_file_id
+            });
             if (selectedFileId !== fileId) {
                 return;
             }
@@ -1841,6 +1845,7 @@
             .filter(dependency => typeof dependency.file_id === "number")
             .map(dependency => ({
                 fileId: dependency.file_id as number,
+                nexusFileId: dependency.nexus_file_id,
                 parentName: dependency.mod_name,
                 depth: 1
             }));
@@ -1855,7 +1860,7 @@
         const requestId = ++nestedDependencyRequestId;
         nestedDependencySummary = `Checking up to ${MAX_NESTED_DEPENDENCY_FILES} dependency files...`;
         const queue = [...initialQueue];
-        const visitedFileIds = new Set<number>();
+        const visitedFileKeys = new Set<string>();
         const rowKeys = new Set<string>();
         const collected: NestedDependencySource[] = [];
         let checkedFiles = 0;
@@ -1863,13 +1868,16 @@
         try {
             while (queue.length > 0 && checkedFiles < MAX_NESTED_DEPENDENCY_FILES) {
                 const current = queue.shift();
-                if (!current || visitedFileIds.has(current.fileId)) {
+                const currentKey = current ? dependencyFileLookupKey(current.fileId, current.nexusFileId) : "";
+                if (!current || visitedFileKeys.has(currentKey)) {
                     continue;
                 }
 
-                visitedFileIds.add(current.fileId);
+                visitedFileKeys.add(currentKey);
                 checkedFiles += 1;
-                const response = await fetchNexusFileDependencies(current.fileId);
+                const response = await fetchNexusFileDependencies(current.fileId, {
+                    nexusFileId: current.nexusFileId
+                });
                 if (requestId !== nestedDependencyRequestId) {
                     return;
                 }
@@ -1885,6 +1893,7 @@
                     collected.push({
                         key: rowKey,
                         parentFileId: current.fileId,
+                        parentNexusFileId: current.nexusFileId,
                         parentName: current.parentName,
                         depth: current.depth,
                         dependency
@@ -1893,10 +1902,11 @@
                     if (
                         typeof dependency.file_id === "number"
                         && current.depth < MAX_NESTED_DEPENDENCY_DEPTH
-                        && !visitedFileIds.has(dependency.file_id)
+                        && !visitedFileKeys.has(dependencyFileLookupKey(dependency.file_id, dependency.nexus_file_id))
                     ) {
                         queue.push({
                             fileId: dependency.file_id,
+                            nexusFileId: dependency.nexus_file_id,
                             parentName: dependency.mod_name,
                             depth: current.depth + 1
                         });
@@ -1920,6 +1930,10 @@
                 isResolvingNestedDependencies = false;
             }
         }
+    }
+
+    function dependencyFileLookupKey(fileId: number, nexusFileId?: string): string {
+        return `${fileId}:${nexusFileId?.trim() ?? ""}`;
     }
 
     async function installSelectedFileWithVortex() {

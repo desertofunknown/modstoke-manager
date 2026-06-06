@@ -11,7 +11,7 @@ Version `0.2.0` moves loader updates to GitHub Release assets, adds live SHA256 
 
 The current BBCode renderer also preserves additional author-layout cues for Nexus descriptions, selected-file notes, and changelogs, including box/panel/collapsible sections, captions, BBCode and HTML definition-list fallbacks, naked BBCode list-item runs, authored unordered marker styles, inferred plain bullet/number/letter lists, dense line-layout blocks for path/version/table-like author notes, row/cell table aliases, loose or partially closed table-row recovery, styled HTML spans/divs, safe monospace/serif/sans font hints, single-newline structural breaks, image alignment aliases plus alt/title hints, semantic abbreviation/citation/inline-quote hints, clear markers, light whitespace cues, rgb color hints, relative size hints, inline media links, and standalone media blocks for supported video/embed/audio/object markup while still escaping unsupported markup.
 
-Dependency normalization also accepts alternate wrapped, camelCase, nodes, and edges payload shapes from supported Nexus dependency responses before falling back from materialized candidates to range definitions.
+Dependency normalization also accepts alternate wrapped, camelCase, nodes, and edges payload shapes from supported Nexus dependency responses, preserves Nexus v3/global file IDs when the API exposes them, and falls back from materialized candidates to range definitions or original game-scoped file IDs when needed.
 
 The Nexus detail drawer now allocates more height to Files, selected-file notes, Dependencies, and Changelog, stacks earlier on medium-width windows, and wraps Nexus page-section links below the primary deployment controls so the install action stays readable.
 
