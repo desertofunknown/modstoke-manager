@@ -26,6 +26,8 @@
         display: flex;
         flex-direction: row;
         align-items: center;
+        gap: 0.35em;
+        width: 100%;
     }
 
     .horizontal > * {
@@ -35,6 +37,7 @@
 
     .button-wrapper {
         width: 100%;
-        flex: 1;
+        flex: 0 0 auto;
+        margin-bottom: 0;
     }
 </style>

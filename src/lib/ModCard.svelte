@@ -6,7 +6,6 @@
     import * as dialog from "@tauri-apps/plugin-dialog"
 
     export let mod: Mod;
-    export let isGrid: boolean = false;
 
     let isLibrary = false;
     let isImageLoaded = false;
@@ -187,19 +186,8 @@
     }
 </script>
 
-<div class="feature-container description {isGrid?'grid-thing':''}">
-  <span class="mod-title">{mod.name} (<a href={ModDatabase.getModPageUrl(mod)} target="_blank" rel="noreferrer" class="site-link">view on site</a>)</span>
-  <div class="meta-row">
-    <span class="source-pill source-{mod.installedMod?.installSource ?? 'online'}">{sourceLabel()}</span>
-    <span class="source-pill">{loaderLabel()}</span>
-    <span class="source-pill">{multiplayerLabel()}</span>
-    {#if mod.installedMod?.vortexPackage}
-      <span class="source-pill source-detail">{mod.installedMod.vortexPackage}</span>
-    {/if}
-  </div>
-  <span class="description-content header-desc">{mod.shortDescription?mod.shortDescription:""}</span>
-  <div class="mod-card-horizontal">
-    <!-- <img class="cover-img" src="{mod.imageUrl?mod.imageUrl:"https://placehold.co/600x400/252525/FFF?text=No+Image"}" /> -->
+<div class="feature-container description">
+  <div class="mod-card-row">
     <div class="image-container">
       <img
         class="cover-img main-image"
@@ -216,8 +204,31 @@
         on:load={onImageLoad}
       />
     </div>
-    <div class="vertical">
-      {#if mod.isInstalled && !isLibrary && !isGrid}
+
+    <div class="mod-info">
+      <div class="title-line">
+        <span class="mod-title">{mod.name}</span>
+        <a href={ModDatabase.getModPageUrl(mod)} target="_blank" rel="noreferrer" class="site-link">view on site</a>
+      </div>
+      <div class="meta-row">
+        <span class="source-pill source-{mod.installedMod?.installSource ?? 'online'}">{sourceLabel()}</span>
+        <span class="source-pill">{loaderLabel()}</span>
+        <span class="source-pill">{multiplayerLabel()}</span>
+        {#if mod.installedMod?.vortexPackage}
+          <span class="source-pill source-detail">{mod.installedMod.vortexPackage}</span>
+        {/if}
+      </div>
+      <span class="description-content header-desc">{mod.shortDescription?mod.shortDescription:""}</span>
+      <div class="fact-row">
+        <span>Author <b class="update">{mod.user.name}</b></span>
+        <span>Version <b class="update">{mod.latestVersion}</b></span>
+        <span>Updated <b class="update">{mod.lastReleasedAt?formatDate(mod.lastReleasedAt):"-"}</b></span>
+        <span>Category <b class="update">{mod.category?mod.category.name:"-"}</b></span>
+      </div>
+    </div>
+
+    <div class="mod-actions">
+      {#if mod.isInstalled && !isLibrary}
         <label class="enable-control" class:vortex-disabled={isVortexManaged()}>
           <input
             type="checkbox"
@@ -228,72 +239,55 @@
           <span>{mod.installedMod?.isEnabled ? "Enabled" : "Disabled"}</span>
         </label>
       {/if}
-      <span class="description-content">Author: <b class="update">{mod.user.name}</b></span>
-      <span class="description-content">Version: <b class="update">{mod.latestVersion}</b></span>
-      <span class="description-content">Updated: <b class="update">{mod.lastReleasedAt?formatDate(mod.lastReleasedAt):"-"}</b></span>
-      <span class="description-content">Category: <b class="update">{mod.category?mod.category.name:"-"}</b></span>
+
+      <StatusButton isUpdateAvailable={mod.hasUpdate} isModInstalled={mod.isInstalled} update={update} uninstall={uninstall} install={install} />
     </div>
-  </div>
-
-  {#if mod.isInstalled && !isLibrary && isGrid}
-    <label class="enable-control grid-enable-control" class:vortex-disabled={isVortexManaged()}>
-      <input
-        type="checkbox"
-        checked={!!mod.installedMod?.isEnabled}
-        disabled={isVortexManaged()}
-        on:change={handleEnabledChange}
-      />
-      <span>{mod.installedMod?.isEnabled ? "Enabled" : "Disabled"}</span>
-    </label>
-  {/if}
-
-  <div class="bottom-container">
-    <StatusButton isUpdateAvailable={mod.hasUpdate} isModInstalled={mod.isInstalled} update={update} uninstall={uninstall} install={install} />
   </div>
 </div>
 
 <style>
-  .mod-card-horizontal {
-    align-items: center;
-    display: flex;
-    flex-direction: row;
-    gap: 0.85em;
+  .mod-card-row {
+    align-items: stretch;
+    display: grid;
+    gap: clamp(0.5em, 0.75vw, 0.72em);
+    grid-template-columns: var(--sotf-thumb-width, clamp(136px, 15vw, 210px)) minmax(0, 1fr) minmax(8.4em, 11em);
     min-width: 0;
-  }
-
-  .vertical {
-    align-items: flex-start;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25em;
-    margin-left: 0;
-    min-width: 0;
-  }
-  
-  .mod-card-horizontal > * {
-    /* margin-right: 1em; */
-    flex: 1;
-  }
-
-  .feature-container > * {
     width: 100%;
   }
 
-  .feature-container {
+  .mod-info,
+  .mod-actions {
     display: flex;
     flex-direction: column;
-    gap: 0.45em;
-    justify-content: space-between;
     min-width: 0;
-    position: relative;
   }
 
-  .header-desc {
-    min-height: 0;
+  .mod-info {
+    gap: 0.25em;
+    justify-content: center;
+  }
+
+  .mod-actions {
+    align-self: stretch;
+    gap: 0.38em;
+    justify-content: center;
+  }
+
+  .mod-actions :global(button) {
+    font-size: 0.82em;
+    line-height: 1.1;
+    margin: 0;
+    min-height: 2.35em;
+    padding: 0.42em 0.65em;
+  }
+
+  .mod-actions :global(.horizontal) {
+    gap: 0.28em;
+    width: 100%;
   }
 
   .description {
-    padding: 0.75em;
+    padding: 0.56em;
     /* border-radius: 10px; */
     /* border: 2px solid #414141; */
     /* border-bottom: 2px solid #414141; */
@@ -302,32 +296,35 @@
     border-bottom: 2px solid #333;
     background-color: #121212;
 
-    margin-bottom: 0.75em;
-    margin-right: 0.4em;
+    margin: 0 0 0.42em;
   }
 
   .description-content {
     color: #767676;
     display: block;
     font-size: 0.9em;
-    line-height: 1.35;
-    margin-bottom: 0.35em;
+    line-height: 1.26;
+    margin: 0;
     min-width: 0;
     overflow-wrap: anywhere;
     text-align: left;
   }
 
-  .description-content > b {
-    font-weight: 500;
+  .title-line {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45em;
+    min-width: 0;
   }
 
   .mod-title {
     color: #a2a2a2;
     display: block;
-    font-size: 1.08em;
+    font-size: 1.02em;
     font-weight: bold;
-    line-height: 1.2;
-    margin-top: 0.1em;
+    line-height: 1.12;
+    margin-top: 0;
     min-width: 0;
     overflow-wrap: anywhere;
     text-align: left;
@@ -336,8 +333,8 @@
   .meta-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.4em;
-    margin: 0.4em 0 0.8em;
+    gap: 0.32em;
+    margin: 0;
   }
 
   .source-pill {
@@ -351,7 +348,7 @@
     line-height: 1.2;
     max-width: 100%;
     overflow: hidden;
-    padding: 0.35em 0.55em;
+    padding: 0.26em 0.48em;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -373,27 +370,28 @@
     text-align: left;
   }
 
+  .fact-row {
+    display: grid;
+    gap: 0.18em 0.6em;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    min-width: 0;
+  }
+
+  .fact-row span {
+    color: #7d7d7d;
+    font-size: 0.8em;
+    line-height: 1.25;
+    min-width: 0;
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .site-link {
     font-weight: 700;
     font-size: 0.65em;
     text-transform: lowercase;
-  }
-
-  .grid-toggle-button {
-    position: absolute;
-    bottom: 1.4em;
-    left: 1em;
-    bottom: 7em;
-  }
-
-  .toggle-button {
-    padding: 0;
-    height: 2em;
-    width: 7em;
-    font-size: 0.9em;
-    font-weight: 400;
-    background-color: rgb(25, 25, 25);
-    align-self: flex-start;
   }
 
   .enable-control {
@@ -405,8 +403,9 @@
     font-size: 0.85em;
     font-weight: 800;
     gap: 0.55em;
-    margin: 0 0 0.7em;
-    padding: 0.42em 0.62em;
+    justify-content: center;
+    margin: 0;
+    padding: 0.34em 0.54em;
     text-transform: uppercase;
   }
 
@@ -446,20 +445,9 @@
     opacity: 0.72;
   }
 
-  .grid-enable-control {
-    align-self: flex-start;
-    position: static;
-  }
-
-  .grid-thing {
-    min-height: 0;
-  }
-
   .image-container {
-    aspect-ratio: 16 / 9;
-    flex: 0 0 auto;
-    height: clamp(112px, 13vh, 168px);
-    margin-bottom: 0.6em;
+    align-self: center;
+    height: var(--sotf-thumb-height, clamp(74px, 9vh, 112px));
     min-width: 0;
     position: relative;
     width: 100%;
@@ -484,11 +472,7 @@
     opacity: 1;
   }
 
-  .feature-container:not(.grid-thing) {
-    min-height: 0;
-  }
-
-  .feature-container:not(.grid-thing) .header-desc {
+  .header-desc {
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     display: -webkit-box;
@@ -497,58 +481,22 @@
     overflow: hidden;
   }
 
-  .feature-container:not(.grid-thing) .image-container {
-    flex: 0 0 clamp(180px, 24%, 285px);
-    height: clamp(106px, 13vh, 158px);
-    margin-bottom: 0;
-    width: clamp(180px, 24%, 285px);
-  }
-
-  .feature-container:not(.grid-thing) .vertical {
-    flex: 1 1 16em;
-    justify-content: center;
-  }
-
-  .feature-container:not(.grid-thing) .bottom-container {
-    margin-top: 0.2em;
-  }
-
-  .grid-thing .mod-card-horizontal {
-    display: block;
-  }
-
-  .grid-thing .image-container {
-    display: block;
-    height: clamp(108px, 12vh, 152px);
-    width: 100%;
-  }
-
-  .grid-thing .vertical {
-    margin-top: 0.35em;
-  }
-
-  .grid-thing .header-desc {
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    display: -webkit-box;
-    line-clamp: 2;
-    max-height: 2.7em;
-    overflow: hidden;
-  }
-
-  .grid-thing .description-content {
-    margin-bottom: 0.3em;
-  }
-
-  @media (max-width: 760px) {
-    .feature-container:not(.grid-thing) .mod-card-horizontal {
-      align-items: stretch;
-      flex-direction: column;
+  @media (max-width: 920px) {
+    .mod-card-row {
+      grid-template-columns: minmax(118px, var(--sotf-thumb-width, 168px)) minmax(0, 1fr);
     }
 
-    .feature-container:not(.grid-thing) .image-container {
-      flex-basis: auto;
-      width: 100%;
+    .mod-actions {
+      align-items: stretch;
+      grid-column: 1 / -1;
+      justify-content: flex-start;
+    }
+  }
+
+  @media (max-width: 680px) {
+    .mod-card-row,
+    .fact-row {
+      grid-template-columns: 1fr;
     }
   }
 </style>

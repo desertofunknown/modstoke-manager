@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onDestroy, onMount, tick } from "svelte";
     import { isPathValid } from "../lib/store";
     import ModCard from "../lib/ModCard.svelte";
     import type { Mod, ModCategory } from "../lib/mods";
@@ -29,6 +29,10 @@
     let hasLoadedOnce = false;
     let catalogError: string = "";
     let installedInventoryWarning = "";
+    let modsPageElement: HTMLDivElement | null = null;
+    let modsLayoutObserver: ResizeObserver | null = null;
+    let modsLayoutFrame: number | null = null;
+    let modsWindowResizeHandler: (() => void) | null = null;
 
     $: {
         filterTerm;
@@ -41,6 +45,18 @@
         || selectedCategory !== "all"
         || selectedType !== "all"
         || selectedCompatibility !== "all";
+    $: {
+        visibleMods.length;
+        filtered.length;
+        isLoading;
+        hasLoadedOnce;
+        catalogError;
+        installedInventoryWarning;
+        onlineSelected;
+        installedSelected;
+        categories.length;
+        void measureModsLayoutAfterTick();
+    }
 
     async function fetchData() {
         //processing.set(true);
@@ -70,6 +86,7 @@
     // ];
 
     onMount(async () => {
+        setupModsLayoutObserver();
         //processing.set(true);
         //processProgress.set(0);
         //processName.set("Loading mods...");
@@ -90,9 +107,101 @@
             installedInventoryWarning = `Installed mod scan failed: ${error}`;
             console.log(installedInventoryWarning);
         }
-        
+
+        await measureModsLayoutAfterTick();
 
     });
+
+    onDestroy(() => {
+        cleanupModsLayoutObserver();
+    });
+
+    function setupModsLayoutObserver() {
+        modsWindowResizeHandler = () => scheduleModsLayoutMeasure();
+        window.addEventListener("resize", modsWindowResizeHandler);
+
+        if ("ResizeObserver" in window) {
+            modsLayoutObserver = new ResizeObserver(() => scheduleModsLayoutMeasure());
+            if (modsPageElement) {
+                modsLayoutObserver.observe(modsPageElement);
+            }
+        }
+
+        scheduleModsLayoutMeasure();
+    }
+
+    function cleanupModsLayoutObserver() {
+        if (modsWindowResizeHandler) {
+            window.removeEventListener("resize", modsWindowResizeHandler);
+            modsWindowResizeHandler = null;
+        }
+
+        modsLayoutObserver?.disconnect();
+        modsLayoutObserver = null;
+
+        if (modsLayoutFrame !== null) {
+            window.cancelAnimationFrame(modsLayoutFrame);
+            modsLayoutFrame = null;
+        }
+    }
+
+    async function measureModsLayoutAfterTick() {
+        await tick();
+        if (modsLayoutObserver && modsPageElement) {
+            modsLayoutObserver.disconnect();
+            modsLayoutObserver.observe(modsPageElement);
+        }
+        scheduleModsLayoutMeasure();
+    }
+
+    function scheduleModsLayoutMeasure() {
+        if (modsLayoutFrame !== null) {
+            return;
+        }
+
+        modsLayoutFrame = window.requestAnimationFrame(() => {
+            modsLayoutFrame = null;
+            measureModsLayout();
+        });
+    }
+
+    function measureModsLayout() {
+        const page = modsPageElement;
+        if (!page) {
+            return;
+        }
+
+        const scroller = page.querySelector<HTMLElement>(".scroller");
+        if (!scroller) {
+            return;
+        }
+
+        const pageRect = page.getBoundingClientRect();
+        const pageStyle = getComputedStyle(page);
+        const pageGap = cssPixels(pageStyle.rowGap || pageStyle.gap);
+        const chrome = Array.from(page.children)
+            .filter((child): child is HTMLElement => child instanceof HTMLElement && child !== scroller && getComputedStyle(child).display !== "none");
+        const chromeHeight = chrome.reduce((sum, child) => sum + child.getBoundingClientRect().height, 0)
+            + Math.max(0, chrome.length - 1) * pageGap;
+        const availableHeight = Math.max(120, pageRect.height);
+        const minimumScrollerHeight = clampNumber(availableHeight * 0.42, 180, 300);
+        const targetScrollerHeight = clampNumber(availableHeight - chromeHeight - pageGap, minimumScrollerHeight, availableHeight);
+        const targetThumbWidth = clampNumber(pageRect.width * 0.15, 136, 210);
+        const targetThumbHeight = clampNumber(targetScrollerHeight / (targetScrollerHeight >= 620 ? 5.6 : 4.9), 74, 112);
+
+        page.style.setProperty("--sotf-scroller-target-height", `${Math.round(targetScrollerHeight)}px`);
+        page.style.setProperty("--sotf-thumb-width", `${Math.round(targetThumbWidth)}px`);
+        page.style.setProperty("--sotf-thumb-height", `${Math.round(targetThumbHeight)}px`);
+    }
+
+    function cssPixels(value: string): number {
+        const parsed = Number.parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function clampNumber(value: number, min: number, max: number): number {
+        return Math.min(max, Math.max(min, value));
+    }
 
     // async function filter() {
     //     let modBucket: Mod[] = [];
@@ -254,7 +363,7 @@
 
 </script>
 
-<div class="column mods-page">
+<div class="column mods-page" bind:this={modsPageElement}>
     {#if $isPathValid}
         <div class="row-center mods-toolbar">
             <input class="generic-input search-input" placeholder="Search" type="text" value={filterTerm} on:input={(event) => handleSearchInput((event.currentTarget as HTMLInputElement).value)} />
@@ -323,7 +432,7 @@
 
         <div class="scroller" class:grid={isGrid}>
             {#each visibleMods as mod}
-                <ModCard mod={mod} isGrid={isGrid} on:refreshMods={refreshMods}/>
+                <ModCard mod={mod} on:refreshMods={refreshMods}/>
             {/each}
 
             {#if isLoading}
@@ -348,19 +457,26 @@
 
 <style>
     .mods-page {
+        --sotf-scroller-target-height: 320px;
+        --sotf-thumb-height: clamp(74px, 9vh, 112px);
+        --sotf-thumb-width: clamp(136px, 15vw, 210px);
+        gap: clamp(0.34em, 0.64vh, 0.58em);
         height: 100%;
         justify-content: flex-start;
         min-height: 0;
     }
 
     .scroller {
-        flex: 1 1 auto;
-        height: auto;
-        min-height: 0;
+        flex: 1 1 var(--sotf-scroller-target-height);
+        height: var(--sotf-scroller-target-height);
+        max-height: var(--sotf-scroller-target-height);
+        min-height: min(var(--sotf-scroller-target-height), 100%);
         overflow-y: scroll;
         overflow-x: hidden;
-        padding-bottom: 1em;
+        overscroll-behavior: contain;
+        padding-bottom: 0.6em;
         position: relative;
+        scrollbar-gutter: stable;
         width: 100%;
     }
 
@@ -375,7 +491,7 @@
         display: flex;
         flex-wrap: wrap;
         gap: 0.45em;
-        margin-bottom: 0.65em;
+        margin-bottom: 0;
         width: 100%;
     }
 
@@ -394,7 +510,7 @@
         display: grid;
         gap: 0.6em;
         grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(7em, 0.45fr);
-        margin: 0 0 0.8em;
+        margin: 0;
         width: 100%;
     }
 
@@ -411,6 +527,7 @@
         font-size: 0.74em;
         font-weight: 800;
         letter-spacing: 0.12em;
+        line-height: 1.1;
         text-transform: uppercase;
     }
 
@@ -420,8 +537,8 @@
         color: #e8e8e8;
         font-family: inherit;
         font-weight: 700;
-        min-height: 2.6em;
-        padding: 0.45em 0.7em;
+        min-height: 2.35em;
+        padding: 0.36em 0.65em;
         text-transform: uppercase;
         width: 100%;
     }
@@ -429,7 +546,7 @@
     .filter-clear {
         align-self: end;
         color: #a2a2a2;
-        height: 2.6em;
+        height: 2.35em;
         margin: 0;
         padding: 0;
         width: 100%;
@@ -448,8 +565,8 @@
         font-weight: 800;
         gap: 0.7em;
         line-height: 1.2;
-        margin: -0.25em 0 0.65em;
-        padding: 0.48em 0.75em;
+        margin: 0;
+        padding: 0.42em 0.7em;
         text-align: left;
         width: 100%;
     }
@@ -457,7 +574,7 @@
     .cat-btn {
         color: #a2a2a2;
         flex: 0 0 auto;
-        height: 2.7em;
+        height: 2.42em;
         margin: 0;
         padding: 0;
         width: 6em;
@@ -469,7 +586,7 @@
         display: flex;
         flex: 0 0 auto;
         gap: 0.42em;
-        height: 2.7em;
+        height: 2.42em;
         justify-content: center;
         margin: 0;
         min-width: 7em;
@@ -496,10 +613,37 @@
         font-weight: 700;
         gap: 1em;
         justify-content: space-between;
-        margin: 0.5em 0 0.8em;
+        margin: 0;
         padding: 0.8em 1em;
         text-align: left;
         width: 100%;
+    }
+
+    @media (max-height: 820px) {
+        .mods-page {
+            gap: 0.34em;
+        }
+
+        .filter-row {
+            gap: 0.45em;
+        }
+
+        .filter-row span {
+            font-size: 0.68em;
+        }
+
+        .filter-row select,
+        .filter-clear,
+        .cat-btn,
+        .refresh-small {
+            height: 2.2em;
+            min-height: 2.2em;
+        }
+
+        .mods-note {
+            font-size: 0.72em;
+            padding: 0.32em 0.62em;
+        }
     }
 
     .catalog-error button {
