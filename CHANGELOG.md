@@ -11,6 +11,7 @@
   - Broadened Nexus dependency handling so selected-file checks fall back from materialized dependency candidates to range definitions and preserve version-range requirements as review metadata.
   - Added author-linked requirement hints from Nexus description links when structured dependency rows are missing or incomplete, without extra Nexus requests.
   - Added a compact thumbnail rail in Nexus detail drawers when the API provides multiple preview images.
+  - Added selected-file notes in Nexus detail drawers so file-specific descriptions and changelog HTML are shown with the same safe formatting before Vortex handoff.
   - Rebuilt and signed portable/setup EXEs as `0.2.0`.
 
 - 0.1.2

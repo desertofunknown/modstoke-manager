@@ -117,6 +117,9 @@
     let selectedDetailDescription = "";
     let selectedDetailDescriptionHtml = "";
     let selectedDetailDescriptionCanToggle = false;
+    let selectedFileDescriptionHtml = "";
+    let selectedFileChangelogHtml = "";
+    let selectedFileNotesAvailable = false;
     let nexusCategories: NexusCategory[] = [];
     let endorsements: NexusEndorsement[] = [];
     let endorsementsLoaded = false;
@@ -389,6 +392,12 @@
         ? formatTimestamp(selectedNexusFile.uploaded_timestamp, selectedNexusFile.uploaded_time)
         : "-";
     $: selectedFileSizeLabel = selectedNexusFile ? formatSizeKb(selectedNexusFile.size) : "-";
+    $: {
+        selectedNexusFile;
+        selectedFileDescriptionHtml = renderOptionalNexusRichText(selectedNexusFile?.description);
+        selectedFileChangelogHtml = renderOptionalNexusRichText(selectedNexusFile?.changelog_html);
+        selectedFileNotesAvailable = Boolean(selectedFileDescriptionHtml || selectedFileChangelogHtml);
+    }
     $: selectedNxmUrl = selectedMod && selectedNexusFile ? getNexusNxmUrl(selectedMod, selectedNexusFile) : "";
     $: if (selectedNxmUrl !== lastSelectedNxmUrl) {
         lastSelectedNxmUrl = selectedNxmUrl;
@@ -3235,6 +3244,11 @@
         return renderNexusBlocks(normalized, 0);
     }
 
+    function renderOptionalNexusRichText(value?: string): string {
+        const normalized = normalizeNexusMarkup(value);
+        return normalized ? renderNexusBlocks(normalized, 0) : "";
+    }
+
     function normalizeNexusMarkup(value?: string): string {
         let text = (value ?? "")
             .replace(/\r\n?/g, "\n")
@@ -4698,6 +4712,29 @@
                         {/each}
                     </div>
 
+                    {#if selectedFileNotesAvailable}
+                        <div class="selected-file-notes">
+                            <div class="selected-file-notes-head">
+                                <span class="detail-section-title">Selected File Notes</span>
+                                <b>{selectedFileVersionLabel}</b>
+                            </div>
+                            <span class="selected-file-notes-subtitle" title={selectedInstallFileLabel}>{selectedInstallFileLabel}</span>
+                            {#if selectedFileDescriptionHtml}
+                                <div class="nexus-rich-text selected-file-rich-text">
+                                    {@html selectedFileDescriptionHtml}
+                                </div>
+                            {/if}
+                            {#if selectedFileChangelogHtml}
+                                <div class="selected-file-changelog">
+                                    <span>File changelog</span>
+                                    <div class="nexus-rich-text selected-file-rich-text">
+                                        {@html selectedFileChangelogHtml}
+                                    </div>
+                                </div>
+                            {/if}
+                        </div>
+                    {/if}
+
                     <div class="dependency-box">
                         <div class="dependency-box-head">
                             <span class="detail-section-title">Dependencies</span>
@@ -6045,20 +6082,24 @@
         order: 2;
     }
 
-    .dependency-box {
+    .selected-file-notes {
         order: 3;
     }
 
-    .install-plan {
+    .dependency-box {
         order: 4;
     }
 
-    .nxm-link-box {
+    .install-plan {
         order: 5;
     }
 
-    .detail-conflict-box {
+    .nxm-link-box {
         order: 6;
+    }
+
+    .detail-conflict-box {
+        order: 7;
     }
 
     .detail-media-frame {
@@ -6185,6 +6226,7 @@
     .detail-text,
     .changelog-box,
     .file-picker,
+    .selected-file-notes,
     .dependency-box,
     .detail-conflict-box,
     .install-plan,
@@ -6615,6 +6657,73 @@
 
     .install-plan-ready .install-plan-notes span {
         color: #98d9af;
+    }
+
+    .selected-file-notes {
+        display: flex;
+        flex: 0 0 auto;
+        flex-direction: column;
+        gap: 0.45em;
+        max-height: clamp(130px, 20vh, 230px);
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    .selected-file-notes-head {
+        align-items: center;
+        display: flex;
+        gap: 0.65em;
+        justify-content: space-between;
+        min-width: 0;
+    }
+
+    .selected-file-notes-head b {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #b9d7df;
+        flex: 0 0 auto;
+        font-size: 0.72em;
+        font-weight: 900;
+        max-width: 9em;
+        overflow: hidden;
+        padding: 0.2em 0.5em;
+        text-overflow: ellipsis;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .selected-file-notes-subtitle {
+        color: #9aa5af;
+        display: block;
+        font-size: 0.76em;
+        font-weight: 800;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .selected-file-rich-text {
+        color: #b8c0c8;
+        font-size: 0.82em;
+        line-height: 1.38;
+        margin: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .selected-file-changelog {
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        margin-top: 0.15em;
+        padding-top: 0.45em;
+    }
+
+    .selected-file-changelog > span {
+        color: #eefcff;
+        display: block;
+        font-size: 0.72em;
+        font-weight: 900;
+        margin-bottom: 0.35em;
+        text-transform: uppercase;
     }
 
     .nxm-link-box {
@@ -7053,12 +7162,17 @@
         }
 
         .file-picker,
+        .selected-file-notes,
         .dependency-box {
             grid-column: 1 / -1;
         }
 
-        .dependency-box {
+        .selected-file-notes {
             order: 3;
+        }
+
+        .dependency-box {
+            order: 4;
         }
 
         .file-picker {
@@ -7066,18 +7180,19 @@
         }
 
         .install-plan {
-            order: 4;
-        }
-
-        .nxm-link-box {
             order: 5;
         }
 
-        .detail-conflict-box {
+        .nxm-link-box {
             order: 6;
         }
 
+        .detail-conflict-box {
+            order: 7;
+        }
+
         .file-picker,
+        .selected-file-notes,
         .dependency-box,
         .changelog-box {
             max-height: none;
