@@ -3032,6 +3032,10 @@
     type NexusRichNode =
         | { kind: "text"; value: string }
         | { kind: "tag"; name: string; attr?: string; children: NexusRichNode[] };
+    type NexusBlockChunk = {
+        kind: "block" | "list";
+        value: string;
+    };
 
     function plainText(value?: string): string {
         return normalizeNexusMarkup(value)
@@ -3116,15 +3120,47 @@
             return `<p>${renderNexusInline(text)}</p>`;
         }
 
-        return text
-            .split(/\n{2,}/)
-            .map(block => renderNexusBlock(block.trim(), depth))
+        return nexusBlockChunks(text)
+            .map(chunk => renderNexusBlock(chunk, depth))
             .join("");
     }
 
-    function renderNexusBlock(block: string, depth: number): string {
+    function nexusBlockChunks(text: string): NexusBlockChunk[] {
+        const chunks: NexusBlockChunk[] = [];
+        const listPattern = /\[list\]([\s\S]*?)\[\/list\]/gi;
+        let lastIndex = 0;
+        let match: RegExpExecArray | null;
+
+        while ((match = listPattern.exec(text)) !== null) {
+            appendNexusTextChunks(chunks, text.slice(lastIndex, match.index));
+            chunks.push({ kind: "list", value: match[1].trim() });
+            lastIndex = listPattern.lastIndex;
+        }
+
+        appendNexusTextChunks(chunks, text.slice(lastIndex));
+        return chunks;
+    }
+
+    function appendNexusTextChunks(chunks: NexusBlockChunk[], value: string) {
+        for (const block of value.split(/\n{2,}/)) {
+            const trimmed = block.trim();
+            if (trimmed) {
+                chunks.push({ kind: "block", value: trimmed });
+            }
+        }
+    }
+
+    function renderNexusBlock(chunk: NexusBlockChunk, depth: number): string {
+        const block = chunk.value;
         if (!block) {
             return "";
+        }
+
+        if (chunk.kind === "list") {
+            const listItems = nexusListItems(block);
+            return listItems.length > 0
+                ? `<ul>${listItems.map(item => `<li>${renderNexusInline(item)}</li>`).join("")}</ul>`
+                : "";
         }
 
         const heading = block.match(/^\[heading\]([\s\S]*?)\[\/heading\]$/i);
@@ -3140,11 +3176,6 @@
         const quote = block.match(/^\[quote(?:=[^\]]+)?\]([\s\S]*?)\[\/quote\]$/i);
         if (quote) {
             return `<blockquote>${renderNexusBlocks(quote[1], depth + 1)}</blockquote>`;
-        }
-
-        const listItems = nexusListItems(block);
-        if (listItems.length > 0) {
-            return `<ul>${listItems.map(item => `<li>${renderNexusInline(item)}</li>`).join("")}</ul>`;
         }
 
         return `<p>${renderNexusInline(block)}</p>`;
