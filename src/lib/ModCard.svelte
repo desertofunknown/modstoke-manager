@@ -1,6 +1,6 @@
 <script lang="ts">
   import { processProgress, processing } from './store';
-    import { onMount, createEventDispatcher } from 'svelte';
+    import { createEventDispatcher } from 'svelte';
     import { ModDatabase, type Mod } from './mods';
     import StatusButton from './StatusButton.svelte';
     import * as dialog from "@tauri-apps/plugin-dialog"
@@ -13,14 +13,18 @@
 
     const dispatch = createEventDispatcher();
 
-    onMount(async () => {
-      isLibrary = mod.type == "Library";
-    });
+    $: isLibrary = mod.type === "Library" || mod.installedMod?.loaderType === "redloader-library";
 
     async function update() {
       if (!mod.installedMod) {
         return;
       }
+
+      if (isVortexManaged()) {
+        await showVortexManagedMessage("update");
+        return;
+      }
+
       await uninstall();
       await install();
 
@@ -105,10 +109,6 @@
 
     async function refresh() {
       mod = mod;
-      if(mod)
-      {
-        isLibrary = mod.type == "Library";
-      }
       //installedMod = ModDatabase.getInstalledMod(mod.mod_id);
       //isModInstalled = installedMod !== undefined;
 
