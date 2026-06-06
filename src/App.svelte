@@ -8,8 +8,7 @@
     processing,
   } from "./lib/store";
   import Page1 from "./pages/MainPage.svelte";
-  import Page2 from "./pages/Mods.svelte";
-  import Page3 from "./pages/NexusVortex.svelte";
+  import Page2 from "./pages/ModHub.svelte";
   import Page4 from "./pages/Modding.svelte";
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
@@ -22,7 +21,7 @@
     showOverlay = value;
   });
 
-  type TabId = "main" | "mods" | "vortex" | "modding";
+  type TabId = "main" | "mods" | "modding";
 
   type Tab = {
     id: TabId;
@@ -32,7 +31,6 @@
   let tabs: Tab[] = [
     { id: "main", label: "Main" },
     { id: "mods", label: "Mods" },
-    { id: "vortex", label: "Vortex" },
     { id: "modding", label: "Mod Creation" },
   ];
 
@@ -223,8 +221,6 @@
       <Page1 />
     {:else if activeTab === "mods"}
       <Page2 />
-    {:else if activeTab === "vortex"}
-      <Page3 />
     {:else}
       <Page4 />
     {/if}

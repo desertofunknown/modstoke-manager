@@ -30,9 +30,9 @@ The goal is simple: give Sons Of The Forest players one focused tool that unders
 - Verifies loader-owned files with SHA256 checks before launch.
 - Detects installed loader version and compares it against the latest known release manifest.
 - Detects RedLoader-style mods, RedLoader libraries, BepInEx plugins, native SOTF store installs, manual installs, and Vortex/Nexus-managed packages.
-- Browses the SOTF Mods storefront with search, categories, type filters, compatibility labels, and installed/online views.
+- Browses the SOTF Mods storefront from a unified Mods page with search, categories, type filters, compatibility labels, and installed/online views.
 - Enables or disables native/manual installed mods from the manager while preserving Vortex-managed deployments as read-only.
-- Connects to Nexus Mods/Vortex flows where available, with local credential storage and cache/rate-limit behavior designed to respect the Nexus API acceptable use policy.
+- Switches the same Mods page to Nexus Mods/Vortex flows where available, with local credential storage and cache/rate-limit behavior designed to respect the Nexus API acceptable use policy.
 - Shows Nexus account/profile status when the API exposes it.
 - Opens Nexus mod detail views inside the manager for author notes, file choices, dependency metadata, changelogs, tracking, and endorsement actions where supported by the public API.
 - Keeps Nexus catalog previews visible in compact layouts and cycles through multiple API-provided preview images in catalog rows and detail drawers when they are available.
@@ -76,7 +76,7 @@ Use the manager's **Verify / Repair** flow whenever a loader update is available
 
 ## Nexus And Vortex Notes
 
-OpenACAI Mod Manager is being built as a focused one-game Nexus/Vortex companion for Sons Of The Forest. It is intended to support mod browsing, install-state detection, file selection, dependency awareness, tracking, endorsement, and Vortex handoff without excessive API calls.
+OpenACAI Mod Manager is being built as a focused one-game Nexus/Vortex companion for Sons Of The Forest. The top-level Mods page now switches between the SOTF Mods storefront and the Nexus/Vortex source so players can browse either storefront from one workspace. It is intended to support mod browsing, install-state detection, file selection, dependency awareness, tracking, endorsement, and Vortex handoff without excessive API calls.
 
 Dependency checks resolve selected game-scoped Nexus file IDs to v3 mod-file IDs before requesting materialized dependency metadata, with a fallback to the original selected file ID if the v3 resolver endpoint is unavailable.
 

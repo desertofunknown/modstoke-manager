@@ -4,6 +4,7 @@
   - Changed update behavior so repair/update is offered only when loader-owned files are missing or hash-mismatched.
   - Updated runtime checks and user messaging for the `.NET 11` loader preview track.
   - Refreshed the manager UI toward a darker Sons-style options shell with flatter controls and chromatic hover states.
+  - Merged the SOTF Mods and Nexus/Vortex storefronts into one top-level Mods workspace with a local source switch.
   - Rebuilt and signed portable/setup EXEs as `0.2.0`.
 
 - 0.1.2
