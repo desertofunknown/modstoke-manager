@@ -15,15 +15,16 @@
   - Extended Nexus rich-text recovery with thumbnail/image BBCode aliases, relative Nexus links, spaced labeled list markers, anchor-reference hints, and simple pipe-table author notes so descriptions keep more of the author's intended layout without allowing unsupported markup through.
   - Broadened Nexus dependency handling so selected-file checks fall back from materialized dependency candidates to range definitions, accept wrapped/camelCase/edges/nodes dependency payload shapes, and preserve version-range requirements as review metadata.
   - Preserved Nexus v3/global file IDs alongside game-scoped Vortex file IDs so selected-file and nested dependency checks can query the correct dependency metadata before falling back to resolver/original-ID paths.
-  - Added a compact Nexus dependency readiness strip that summarizes API dependencies, author-linked requirement hints, and nested dependency checks before Vortex handoff.
+  - Added a compact Nexus dependency readiness strip that summarizes API dependencies, author requirement hints, and nested dependency checks before Vortex handoff.
   - Added compact Nexus file-choice summary chips that show total files, selected file readiness, and archived/old-file review state before Vortex handoff.
   - Added a compact in-drawer Nexus detail section rail for jumping to Description, Files, Dependencies, Install Plan, Changelog, and Deployment without hunting through split scroll panes.
   - Made Nexus catalog previews more resilient by accepting protocol-relative and common nested media URL fields, replacing the remote placeholder with a bundled local fallback image, and using clearer compact preview count/cycle controls.
-  - Added author-linked requirement hints from Nexus description, selected-file notes, and changelog links when structured dependency rows are missing or incomplete, without extra Nexus requests.
+  - Added author requirement hints from Nexus description, selected-file notes, and changelog links when structured dependency rows are missing or incomplete, without extra Nexus requests.
   - Added a compact thumbnail rail in Nexus detail drawers when the API provides multiple preview images.
   - Enriched Nexus detail preview rails with safe image URLs found in API-provided descriptions, selected-file notes, and changelogs, so author-supplied screenshots can appear in the drawer without extra Nexus requests.
   - Added selected-file notes in Nexus detail drawers so file-specific descriptions and changelog HTML are shown with the same safe formatting before Vortex handoff.
-  - Improved Nexus install plans so dependency lookup progress, lookup failures, no-API-row responses, author-linked requirement counts, and nested dependency check readiness are visible before handing a file to Vortex.
+  - Improved Nexus install plans so dependency lookup progress, lookup failures, no-API-row responses, author requirement counts, and nested dependency check readiness are visible before handing a file to Vortex.
+  - Added local author runtime/library hint detection for BepInEx, RedLoader, SonsSdk, Harmony, .NET, and OpenACAI loader mentions so requirement prose can show detected/review state even when Nexus returns no dependency rows.
   - Improved Nexus description formatting fidelity with monospaced column-style line blocks, codebox/plain/fixed preformatted BBCode aliases, hidden/spoilerblock aliases, legacy horizontal-rule tags, and relative/point size hints.
   - Improved Nexus BBCode layout recovery for indented plain lists, standalone image aliases, and cell-only table layouts so author instructions keep more of their original reading order.
   - Rebuilt and signed portable/setup EXEs as `0.2.0`.

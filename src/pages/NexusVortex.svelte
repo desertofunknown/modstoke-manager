@@ -108,11 +108,17 @@
         tone: InstallPlanTone;
         notes: string[];
     };
+    type AuthorRequirementKind = "link" | "runtime";
+    type AuthorRequirementStatus = "detected" | "review";
     type AuthorRequirementLink = {
         key: string;
         label: string;
-        url: string;
+        url?: string;
         source: string;
+        kind: AuthorRequirementKind;
+        status: AuthorRequirementStatus;
+        detail?: string;
+        match?: InstalledInventoryEntry | null;
         mod_id?: number;
     };
 
@@ -168,6 +174,8 @@
     let selectedDependencies: NexusModDependency[] = [];
     let selectedDependencyMessage = "";
     let selectedAuthorRequirements: AuthorRequirementLink[] = [];
+    let authorRequirementReviewCount = 0;
+    let authorRequirementDetectedCount = 0;
     let nestedDependencySources: NestedDependencySource[] = [];
     let resolvedNestedDependencies: ResolvedNestedDependency[] = [];
     let isResolvingNestedDependencies = false;
@@ -228,6 +236,7 @@
     const MAX_NESTED_DEPENDENCY_FILES = 8;
     const MAX_NESTED_DEPENDENCY_DEPTH = 2;
     const MAX_AUTHOR_REQUIREMENT_LINKS = 6;
+    const MAX_AUTHOR_REQUIREMENT_HINTS = 8;
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
     const NEXUS_PLACEHOLDER_IMAGE = nexusFallbackImage;
     const NEXUS_DETAIL_PLACEHOLDER_IMAGE = nexusFallbackImage;
@@ -279,9 +288,10 @@
         selectedDetailDescription = selectedDetailDescriptionText();
         selectedDetailDescriptionHtml = selectedDetailDescriptionMarkup();
         selectedDetailDescriptionCanToggle = shouldOfferDetailDescriptionToggle(selectedDetailDescription, selectedDetailDescriptionSource());
-        selectedAuthorRequirements = extractAuthorRequirementLinks(
+        selectedAuthorRequirements = extractAuthorRequirements(
             selectedAuthorRequirementSource(),
-            selectedModDetails?.mod_id ?? selectedMod?.mod_id
+            selectedModDetails?.mod_id ?? selectedMod?.mod_id,
+            inventory
         );
         if (!selectedDetailDescriptionCanToggle && detailDescriptionExpanded) {
             detailDescriptionExpanded = false;
@@ -388,8 +398,10 @@
     $: nestedDependencyInstalledCount = resolvedNestedDependencies.filter(source => source.dependency.status === "installed").length;
     $: nestedDependencyMissingCount = resolvedNestedDependencies.filter(source => source.dependency.status === "missing").length;
     $: nestedDependencyMismatchCount = resolvedNestedDependencies.filter(source => source.dependency.status === "version-mismatch").length;
+    $: authorRequirementReviewCount = selectedAuthorRequirements.filter(requirement => requirement.status === "review").length;
+    $: authorRequirementDetectedCount = selectedAuthorRequirements.filter(requirement => requirement.status === "detected").length;
     $: totalDependencyIssueCount = dependencyIssueCount + nestedDependencyIssueCount;
-    $: totalDependencyReviewCount = dependencyReviewCount + nestedDependencyReviewCount;
+    $: totalDependencyReviewCount = dependencyReviewCount + nestedDependencyReviewCount + authorRequirementReviewCount;
     $: detailDependencyNavText = describeDetailDependencyNav(
         totalDependencyIssueCount,
         totalDependencyReviewCount,
@@ -1484,7 +1496,7 @@
         return description.length > 900 || description.split("\n").length > 12 || structuralWeight >= 8;
     }
 
-    function extractAuthorRequirementLinks(source?: string, currentModId?: number): AuthorRequirementLink[] {
+    function extractAuthorRequirements(source: string | undefined, currentModId: number | undefined, entries: InstalledInventoryEntry[]): AuthorRequirementLink[] {
         const normalized = normalizeNexusMarkup(source);
         if (!normalized) {
             return [];
@@ -1492,10 +1504,11 @@
 
         const candidates: AuthorRequirementLink[] = [];
         const seen = new Set<string>();
+        let linkedCount = 0;
 
         const addLink = (urlValue: string, labelValue?: string) => {
             const url = safeNexusUrl(urlValue);
-            if (!url || seen.has(url)) {
+            if (!url || seen.has(url) || linkedCount >= MAX_AUTHOR_REQUIREMENT_LINKS) {
                 return;
             }
 
@@ -1511,11 +1524,15 @@
             }
 
             seen.add(url);
+            linkedCount += 1;
             candidates.push({
                 key: `${nexusModId ?? "link"}:${url}`,
                 label,
                 url,
                 source: nexusModId ? "Nexus mod link" : "Author link",
+                kind: "link",
+                status: "review",
+                detail: "Linked by the mod author. Open and confirm whether it is required for this file.",
                 mod_id: nexusModId ?? undefined
             });
         };
@@ -1533,7 +1550,122 @@
             addLink(raw);
         }
 
-        return candidates.slice(0, MAX_AUTHOR_REQUIREMENT_LINKS);
+        for (const hint of inferAuthorRuntimeRequirements(normalized, entries)) {
+            if (candidates.length >= MAX_AUTHOR_REQUIREMENT_HINTS) {
+                break;
+            }
+
+            if (seen.has(hint.key)) {
+                continue;
+            }
+
+            seen.add(hint.key);
+            candidates.push(hint);
+        }
+
+        return candidates.slice(0, MAX_AUTHOR_REQUIREMENT_HINTS);
+    }
+
+    function inferAuthorRuntimeRequirements(source: string, entries: InstalledInventoryEntry[]): AuthorRequirementLink[] {
+        const text = plainText(source);
+        if (!text) {
+            return [];
+        }
+
+        const hints: AuthorRequirementLink[] = [];
+        const seen = new Set<string>();
+        const addRuntimeHint = (
+            key: string,
+            label: string,
+            sourceLabel: string,
+            pattern: RegExp,
+            matchPredicate: (entry: InstalledInventoryEntry) => boolean,
+            reviewDetail: string
+        ) => {
+            if (!pattern.test(text) || seen.has(key)) {
+                return;
+            }
+
+            seen.add(key);
+            const match = entries.find(matchPredicate) ?? null;
+            hints.push({
+                key: `runtime:${key}`,
+                label,
+                source: sourceLabel,
+                kind: "runtime",
+                status: match ? "detected" : "review",
+                match,
+                detail: match
+                    ? `Detected locally as ${describeInstallSource(match)} in ${match.expectedLocation}.`
+                    : reviewDetail
+            });
+        };
+
+        addRuntimeHint(
+            "bepinex",
+            "BepInEx / IL2CPP runtime",
+            "Author runtime hint",
+            /\b(?:bepinex|bepex|il2cpp|unity\.?il2cpp|bepinex\s*6|bepinex6)\b/i,
+            entry => entry.loaderType === "bepinex-plugin" || /bepinex|il2cpp|openacai\s*loader|redloaderbepinexcompat/i.test(authorRequirementEntryText(entry)),
+            "Author text mentions BepInEx or IL2CPP. Confirm the BepInEx runtime is installed before Vortex deployment."
+        );
+        addRuntimeHint(
+            "redloader",
+            "RedLoader",
+            "Author runtime hint",
+            /\b(?:red\s*loader|redloader)\b/i,
+            entry => entry.loaderType === "redloader-mod" || entry.loaderType === "redloader-library" || /red\s*loader|redloader/i.test(authorRequirementEntryText(entry)),
+            "Author text mentions RedLoader. Confirm RedLoader-compatible loader support is installed before Vortex deployment."
+        );
+        addRuntimeHint(
+            "sonssdk",
+            "SonsSdk",
+            "Author library hint",
+            /\b(?:sons\s*sdk|sonssdk|sons\s+sdk)\b/i,
+            entry => /sons\s*sdk|sonssdk/i.test(authorRequirementEntryText(entry)),
+            "Author text mentions SonsSdk. Confirm the required library or bundled loader support is present."
+        );
+        addRuntimeHint(
+            "harmony",
+            "Harmony",
+            "Author library hint",
+            /\b(?:harmony|0harmony)\b/i,
+            entry => /harmony|0harmony/i.test(authorRequirementEntryText(entry)),
+            "Author text mentions Harmony. Confirm it is bundled by the selected file or already present locally."
+        );
+        addRuntimeHint(
+            "dotnet",
+            ".NET runtime",
+            "Author runtime hint",
+            /\b(?:\.net|dotnet|net\s*(?:6|7|8|9|10|11)|netstandard)\b/i,
+            entry => /\.net|dotnet|net\s*(?:6|7|8|9|10|11)|openacai\s*loader/i.test(authorRequirementEntryText(entry)),
+            "Author text mentions a .NET runtime requirement. Confirm the loader/runtime track matches this game install."
+        );
+        addRuntimeHint(
+            "openacai-loader",
+            "OpenACAI Endnight Loader",
+            "Author loader hint",
+            /\b(?:openacai(?:\s+endnight)?\s+loader|openacailoader)\b/i,
+            entry => /openacai\s*(?:endnight)?\s*loader|openacailoader/i.test(authorRequirementEntryText(entry)),
+            "Author text mentions OpenACAI loader support. Confirm the public loader is installed and healthy on the Main tab."
+        );
+
+        return hints;
+    }
+
+    function authorRequirementEntryText(entry: InstalledInventoryEntry): string {
+        return [
+            entry.id,
+            entry.name,
+            entry.author,
+            entry.manifestType,
+            entry.expectedLocation,
+            entry.store,
+            entry.vortexPackage,
+            entry.packagePath,
+            entry.assemblyPath,
+            ...entry.matchKeys
+        ].filter(Boolean).join(" ");
     }
 
     function looksLikeRequirementContext(value: string): boolean {
@@ -2173,7 +2305,7 @@
     function dependencySummaryLabel(): string {
         if (resolvedDependencies.length === 0 && resolvedNestedDependencies.length === 0) {
             if (selectedAuthorRequirements.length > 0) {
-                return `${selectedAuthorRequirements.length} author link${selectedAuthorRequirements.length === 1 ? "" : "s"}`;
+                return authorRequirementSummaryLabel();
             }
 
             return "None listed";
@@ -2215,10 +2347,23 @@
 
     function authorRequirementReadinessLabel(): string {
         if (selectedAuthorRequirements.length === 0) {
-            return "No author-linked hints";
+            return "No author hints";
         }
 
-        return `${selectedAuthorRequirements.length} requirement ${selectedAuthorRequirements.length === 1 ? "link" : "links"} to review`;
+        return authorRequirementSummaryLabel();
+    }
+
+    function authorRequirementSummaryLabel(): string {
+        const parts: string[] = [];
+        if (authorRequirementReviewCount > 0) {
+            parts.push(`${authorRequirementReviewCount} review`);
+        }
+
+        if (authorRequirementDetectedCount > 0) {
+            parts.push(`${authorRequirementDetectedCount} detected`);
+        }
+
+        return parts.length > 0 ? parts.join(" · ") : "No author hints";
     }
 
     function nestedDependencyReadinessLabel(): string {
@@ -2383,8 +2528,14 @@
             infoNotes.push(`${nestedDependencies.length} nested dependency ${nestedDependencies.length === 1 ? "row looks" : "rows look"} clear locally.`);
         }
 
-        if (authorRequirements.length > 0) {
-            reviewNotes.push(`${authorRequirements.length} author-linked requirement ${authorRequirements.length === 1 ? "needs" : "need"} manual review.`);
+        const authorReviewCount = authorRequirements.filter(requirement => requirement.status === "review").length;
+        const authorDetectedCount = authorRequirements.filter(requirement => requirement.status === "detected").length;
+        if (authorReviewCount > 0) {
+            reviewNotes.push(`${authorReviewCount} author requirement ${authorReviewCount === 1 ? "needs" : "need"} manual review.`);
+        }
+
+        if (authorDetectedCount > 0) {
+            infoNotes.push(`${authorDetectedCount} author runtime/library ${authorDetectedCount === 1 ? "hint was" : "hints were"} detected locally.`);
         }
 
         if (conflict) {
@@ -2648,7 +2799,14 @@
             return;
         }
 
-        await openExternalTarget(requirement.url);
+        if (requirement.match) {
+            await openInventoryLocation(requirement.match);
+            return;
+        }
+
+        if (requirement.url) {
+            await openExternalTarget(requirement.url);
+        }
     }
 
     async function openDependencyLocation(dependency: ResolvedDependency) {
@@ -6448,7 +6606,7 @@
                         <span>Updated <b>{formatTimestamp(selectedModDetails?.updated_timestamp, selectedModDetails?.updated_time)}</b></span>
                         <span>Downloads <b>{formatNumber(selectedModDetails?.mod_downloads)}</b></span>
                         <span>Installed <b>{describeInstallSource(installedMatch(selectedMod))}</b></span>
-                        <span>Dependencies <b class:update-state-update={totalDependencyIssueCount > 0} class:update-state-tracked={totalDependencyReviewCount > 0 && totalDependencyIssueCount === 0} class:update-state-current={(resolvedDependencies.length > 0 || resolvedNestedDependencies.length > 0) && totalDependencyIssueCount === 0 && totalDependencyReviewCount === 0}>{dependencySummaryLabel()}</b></span>
+                        <span>Dependencies <b class:update-state-update={totalDependencyIssueCount > 0} class:update-state-tracked={totalDependencyReviewCount > 0 && totalDependencyIssueCount === 0} class:update-state-current={(resolvedDependencies.length > 0 || resolvedNestedDependencies.length > 0 || authorRequirementDetectedCount > 0) && totalDependencyIssueCount === 0 && totalDependencyReviewCount === 0}>{dependencySummaryLabel()}</b></span>
                     </div>
 
                     <div
@@ -6645,7 +6803,8 @@
                             </span>
                             <span
                                 class="dependency-readiness-chip"
-                                class:dependency-readiness-review={selectedAuthorRequirements.length > 0}
+                                class:dependency-readiness-ok={selectedAuthorRequirements.length > 0 && authorRequirementReviewCount === 0}
+                                class:dependency-readiness-review={authorRequirementReviewCount > 0}
                                 title={authorRequirementReadinessLabel()}
                             >
                                 <small>Author</small>
@@ -6701,15 +6860,25 @@
                         {/if}
                         {#if selectedAuthorRequirements.length > 0}
                             <div class="author-requirement-section">
-                                <span class="dependency-subtitle">Author-linked requirements</span>
-                                <span class="dependency-empty">These links came from Nexus author text, selected file notes, or changelog text and are not API dependency rows.</span>
+                                <span class="dependency-subtitle">Author requirement hints</span>
+                                <span class="dependency-empty">These came from Nexus author text, selected file notes, or changelog text and are not API dependency rows.</span>
                                 {#each selectedAuthorRequirements as requirement (requirement.key)}
-                                    <div class="author-requirement-row">
+                                    <div
+                                        class="author-requirement-row"
+                                        class:author-requirement-detected={requirement.status === "detected"}
+                                    >
                                         <div class="author-requirement-main">
                                             <span>{requirement.label}</span>
-                                            <small>{requirement.source}{requirement.mod_id ? ` · Mod ${requirement.mod_id}` : ""}</small>
+                                            <small>{requirement.source}{requirement.mod_id ? ` · Mod ${requirement.mod_id}` : ""} · {requirement.status === "detected" ? "Detected locally" : "Review manually"}</small>
+                                            {#if requirement.detail}
+                                                <small>{requirement.detail}</small>
+                                            {/if}
                                         </div>
-                                        <button on:click={() => openAuthorRequirement(requirement)}>{requirement.mod_id ? "Details" : "Open"}</button>
+                                        {#if requirement.mod_id || requirement.url || requirement.match}
+                                            <button on:click={() => openAuthorRequirement(requirement)}>
+                                                {requirement.mod_id ? "Details" : requirement.match ? "Folder" : "Open"}
+                                            </button>
+                                        {/if}
                                     </div>
                                 {/each}
                             </div>
@@ -9408,6 +9577,11 @@
         padding: 0.45em 0.55em;
     }
 
+    .author-requirement-detected {
+        background: rgba(98, 240, 155, 0.055);
+        border-color: rgba(98, 240, 155, 0.2);
+    }
+
     .author-requirement-main {
         display: flex;
         flex: 1 1 auto;
@@ -9429,6 +9603,11 @@
         color: #9aa5af;
         font-size: 0.74em;
         font-weight: 700;
+    }
+
+    .author-requirement-detected .author-requirement-main span,
+    .author-requirement-detected .author-requirement-main small {
+        color: #9edeb9;
     }
 
     .author-requirement-row button {
