@@ -232,7 +232,7 @@
     const NEXUS_PLACEHOLDER_IMAGE = nexusFallbackImage;
     const NEXUS_DETAIL_PLACEHOLDER_IMAGE = nexusFallbackImage;
     const NEXUS_DESCRIPTION_FALLBACK = "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing.";
-    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "del", "sub", "sup", "small", "big", "mark", "abbr", "acronym", "cite", "q", "url", "img", "color", "background", "bgcolor", "highlight", "size", "center", "left", "right", "justify", "align", "indent", "code", "pre", "tt", "kbd", "samp", "var", "quote", "spoiler", "collapse", "details", "accordion", "accordionitem", "font", "heading", "h", "header", "title", "subtitle", "caption", "h1", "h2", "h3", "h4", "h5", "h6", "float", "clear", "youtube", "video", "media", "embed", "columns", "cols", "column", "col", "nextcol", "tabs", "tab", "note", "info", "warning", "important", "tip", "box", "panel", "fieldset", "notice", "success", "danger", "error"]);
+    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "del", "sub", "sup", "small", "big", "mark", "abbr", "acronym", "cite", "q", "url", "img", "image", "thumb", "thumbnail", "color", "background", "bgcolor", "highlight", "size", "center", "left", "right", "justify", "align", "indent", "code", "pre", "tt", "kbd", "samp", "var", "quote", "spoiler", "collapse", "details", "accordion", "accordionitem", "font", "heading", "h", "header", "title", "subtitle", "caption", "h1", "h2", "h3", "h4", "h5", "h6", "float", "clear", "anchor", "goto", "jump", "youtube", "video", "media", "embed", "columns", "cols", "column", "col", "nextcol", "tabs", "tab", "note", "info", "warning", "important", "tip", "box", "panel", "fieldset", "notice", "success", "danger", "error"]);
     const NEXUS_SAFE_COLOR_NAMES = new Set(["black", "white", "gray", "grey", "silver", "red", "maroon", "orange", "yellow", "olive", "lime", "green", "aqua", "cyan", "teal", "blue", "navy", "fuchsia", "magenta", "purple", "pink"]);
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
     const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
@@ -3487,7 +3487,7 @@
             .replace(/\[img[^\]]*\][\s\S]*?\[\/img\]/gi, " ")
             .replace(/\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi, "$2 ($1)")
             .replace(/\[url\]([\s\S]*?)\[\/url\]/gi, "$1")
-            .replace(/\[\*=([^\]]+)\]/g, (_match, label: string) => `\n- ${safeNexusListItemLabel(label)} `)
+            .replace(/\[\*\s*=([^\]]+)\]/g, (_match, label: string) => `\n- ${safeNexusListItemLabel(label)} `)
             .replace(/\[\*\]/g, "\n- ")
             .replace(/\[\s*li(?:\s[^\]]*|=[^\]]*)?\]/gi, "\n- ")
             .replace(/\[\/\s*li\]/gi, "\n")
@@ -3642,6 +3642,8 @@
             .replace(/\[\/(?:imgright|imageright)\]/gi, "[/img]")
             .replace(/\[(?:imgcenter|imagecenter)([^\]]*)\]/gi, (_match, attrs: string) => nexusImageAliasOpeningTag("center", attrs))
             .replace(/\[\/(?:imgcenter|imagecenter)\]/gi, "[/img]")
+            .replace(/\[(?:thumb|thumbnail|image)([^\]]*)\]/gi, (_match, attrs: string) => normalizedNexusImageOpeningTag(attrs))
+            .replace(/\[\/(?:thumb|thumbnail|image)\]/gi, "[/img]")
             .replace(/\[\s*li(?=[\s=\]/])([^\]]*)\]/gi, (_match, attrs: string) => {
                 const label = safeNexusListItemLabel(nexusBbTagAttribute("li", attrs));
                 return label ? `\n[*][b]${label}[/b] ` : "\n[*]";
@@ -3675,7 +3677,7 @@
                 return `\n[olist${type ? `=${type}` : ""}]\n`;
             })
             .replace(/\[\/(?:ul|ol|list|olist)\]/gi, "\n[/list]\n")
-            .replace(/\[\*=([^\]]+)\]/g, (_match, label: string) => {
+            .replace(/\[\*\s*=([^\]]+)\]/g, (_match, label: string) => {
                 const cleanLabel = safeNexusListItemLabel(label);
                 return cleanLabel ? `\n[*][b]${cleanLabel}[/b] ` : "\n[*]";
             })
@@ -3805,6 +3807,11 @@
                     continue;
                 }
 
+                if (looksLikeNexusPipeTable(trimmed)) {
+                    chunks.push({ kind: "table", value: nexusPipeTableToBbcode(trimmed) });
+                    continue;
+                }
+
                 const mixedChunks = nexusMixedPlainListChunks(trimmed);
                 if (mixedChunks) {
                     chunks.push(...mixedChunks);
@@ -3834,7 +3841,7 @@
         }
 
         const bulletItems = lines.map(line => line.match(/^(?:[-*]|\u2022)\s+(.+)$/)?.[1]?.trim() ?? "");
-        const bbcodeItems = lines.map(line => line.match(/^\[\*(?:=[^\]]+)?\]\s*(.+)$/i)?.[1]?.trim() ?? "");
+        const bbcodeItems = lines.map(line => line.match(/^\[\*(?:\s*=[^\]]+)?\]\s*(.+)$/i)?.[1]?.trim() ?? "");
         if (bbcodeItems.every(Boolean)) {
             return {
                 kind: "list",
@@ -3881,7 +3888,7 @@
         }
 
         const lines = value.split("\n");
-        if (lines.length < 2 && !/\[\*(?:=[^\]]+)?\]/i.test(value)) {
+        if (lines.length < 2 && !/\[\*(?:\s*=[^\]]+)?\]/i.test(value)) {
             return null;
         }
 
@@ -3960,7 +3967,7 @@
             return null;
         }
 
-        const explicit = trimmed.match(/^\[\*(?:=[^\]]+)?\]\s*(.+)$/i);
+        const explicit = trimmed.match(/^\[\*(?:\s*=[^\]]+)?\]\s*(.+)$/i);
         if (explicit?.[1]?.trim()) {
             return {
                 explicit: true,
@@ -4265,6 +4272,47 @@
             && /\[(?:td|th)(?:[^\]]*)\][\s\S]*?(?:\[\/(?:td|th)\]|\[(?:td|th)(?:[^\]]*)\]|\[\/tr\]|$)/i.test(value);
     }
 
+    function looksLikeNexusPipeTable(value: string): boolean {
+        if (hasNexusBlockStructure(value)) {
+            return false;
+        }
+
+        const lines = value.split("\n").map(line => line.trim()).filter(Boolean);
+        if (lines.length < 2 || lines.length > 16) {
+            return false;
+        }
+
+        const tableRows = lines.filter(line => splitNexusPipeTableLine(line).length >= 2);
+        const separatorRows = lines.filter(isNexusPipeTableSeparator).length;
+        return tableRows.length >= 2 && tableRows.length + separatorRows === lines.length;
+    }
+
+    function nexusPipeTableToBbcode(value: string): string {
+        const lines = value.split("\n").map(line => line.trim()).filter(Boolean);
+        const hasHeader = lines.length > 1 && isNexusPipeTableSeparator(lines[1]);
+        const rows = lines
+            .filter(line => !isNexusPipeTableSeparator(line))
+            .map((line, index) => {
+                const cellTag = hasHeader && index === 0 ? "th" : "td";
+                return `[tr]${splitNexusPipeTableLine(line).map(cell => `[${cellTag}]${cell}[/${cellTag}]`).join("")}[/tr]`;
+            });
+        return rows.join("\n");
+    }
+
+    function splitNexusPipeTableLine(line: string): string[] {
+        return line
+            .replace(/^\|/, "")
+            .replace(/\|$/, "")
+            .split("|")
+            .map(cell => cell.trim())
+            .filter(Boolean);
+    }
+
+    function isNexusPipeTableSeparator(line: string): boolean {
+        const cells = splitNexusPipeTableLine(line);
+        return cells.length >= 2 && cells.every(cell => /^:?-{3,}:?$/.test(cell));
+    }
+
     function nexusStandaloneSectionHeading(block: string): string | null {
         const trimmed = block.trim();
         if (!trimmed || trimmed.includes("\n") || trimmed.length > 160) {
@@ -4377,7 +4425,7 @@
 
     function splitNexusMarkedListItems(value: string): string[] {
         const items: string[] = [];
-        const tokenPattern = /\[\*(?:=[^\]]+)?\]|\[\/?(?:list|olist|table)(?:=[^\]]+)?\]/gi;
+        const tokenPattern = /\[\*(?:\s*=[^\]]+)?\]|\[\/?(?:list|olist|table)(?:=[^\]]+)?\]/gi;
         let listDepth = 0;
         let tableDepth = 0;
         let currentStart: number | null = null;
@@ -4517,7 +4565,10 @@
                 const url = safeNexusUrl(node.attr ?? collectNexusNodeText(node.children));
                 return url ? `<a href="${escapeAttribute(url)}" target="_blank" rel="noreferrer noopener">${inner || escapeHtml(url)}</a>` : inner;
             }
-            case "img": {
+            case "img":
+            case "image":
+            case "thumb":
+            case "thumbnail": {
                 const text = collectNexusNodeText(node.children);
                 const attrUrl = safeNexusUrl(nexusImageUrlAttribute(node.rawAttrs, node.attr));
                 const textUrl = safeNexusUrl(text);
@@ -4600,6 +4651,11 @@
                 return `<span class="nexus-rich-heading nexus-rich-heading-4">${inner}</span>`;
             case "caption":
                 return `<span class="nexus-rich-caption">${inner}</span>`;
+            case "anchor":
+                return `<span class="nexus-rich-anchor">${inner}</span>`;
+            case "goto":
+            case "jump":
+                return `<span class="nexus-rich-anchor-ref">${inner}</span>`;
             case "h1":
             case "h2":
             case "h3":
@@ -5189,12 +5245,23 @@
     }
 
     function safeNexusUrl(value?: string): string | null {
-        const trimmed = decodeHtmlEntities(value ?? "").trim();
-        const candidate = trimmed.startsWith("//")
-            ? `https:${trimmed}`
-            : /^www\./i.test(trimmed)
-                ? `https://${trimmed}`
-                : trimmed;
+        const trimmed = decodeHtmlEntities(value ?? "")
+            .trim()
+            .replace(/^['"]|['"]$/g, "");
+        if (!trimmed || /[\r\n<>]/.test(trimmed)) {
+            return null;
+        }
+
+        let candidate = trimmed;
+        if (trimmed.startsWith("//")) {
+            candidate = `https:${trimmed}`;
+        } else if (/^www\./i.test(trimmed)) {
+            candidate = `https://${trimmed}`;
+        } else if (trimmed.startsWith("/")) {
+            candidate = `https://www.nexusmods.com${trimmed}`;
+        } else if (/^(?:sonsoftheforest|games|users|mods)\//i.test(trimmed)) {
+            candidate = `https://www.nexusmods.com/${trimmed}`;
+        }
         try {
             const url = new URL(candidate);
             return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
@@ -8288,6 +8355,11 @@
         font-style: italic;
         margin-top: 0.35em;
         text-align: center;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-anchor-ref) {
+        color: #9fb1bf;
+        font-weight: 800;
     }
 
     .nexus-rich-text :global(.nexus-rich-spoiler) {
