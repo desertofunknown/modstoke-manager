@@ -144,7 +144,7 @@
 
 <div class="column main-page">
     <section class="brand-panel">
-        <a class="brand-link" href="https://gitlab.com/Godsring/openacai-loader" target="_blank" rel="noreferrer">
+        <a class="brand-link" href="https://github.com/desertofunknown/openacai-loader" target="_blank" rel="noreferrer">
             <img class="brand-mark" src={openAcaiMark} alt="OpenACAI" />
             <span class="brand-copy">
                 <span class="brand-title">OpenACAI Endnight Loader</span>
