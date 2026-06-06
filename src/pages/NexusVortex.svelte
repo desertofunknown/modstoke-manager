@@ -214,7 +214,7 @@
     const NEXUS_PLACEHOLDER_IMAGE = "https://placehold.co/320x180/252525/FFF?text=Nexus";
     const NEXUS_DETAIL_PLACEHOLDER_IMAGE = "https://placehold.co/640x360/252525/FFF?text=Nexus";
     const NEXUS_DESCRIPTION_FALLBACK = "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing.";
-    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "sub", "sup", "url", "img", "color", "size", "center", "left", "right", "justify", "align", "indent", "code", "pre", "quote", "spoiler", "font", "heading", "h1", "h2", "h3", "h4", "h5", "h6", "youtube", "video"]);
+    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "sub", "sup", "url", "img", "color", "background", "bgcolor", "highlight", "size", "center", "left", "right", "justify", "align", "indent", "code", "pre", "quote", "spoiler", "font", "heading", "h1", "h2", "h3", "h4", "h5", "h6", "float", "youtube", "video"]);
     const NEXUS_SAFE_COLOR_NAMES = new Set(["black", "white", "gray", "grey", "silver", "red", "maroon", "orange", "yellow", "olive", "lime", "green", "aqua", "cyan", "teal", "blue", "navy", "fuchsia", "magenta", "purple", "pink"]);
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
     const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
@@ -398,6 +398,13 @@
         ? formatTimestamp(selectedNexusFile.uploaded_timestamp, selectedNexusFile.uploaded_time)
         : "-";
     $: selectedFileSizeLabel = selectedNexusFile ? formatSizeKb(selectedNexusFile.size) : "-";
+    $: selectedFileReviewCount = selectedModFiles.filter(isReviewNexusFile).length;
+    $: selectedFileRecommendedCount = selectedModFiles.filter(file =>
+        file.file_id === recommendedNexusFileId || file.is_primary || normalizedNexusFileCategory(file) === "main"
+    ).length;
+    $: fileChoiceReadinessText = describeFileChoiceReadiness(selectedModFiles.length, selectedFileRecommendedCount, selectedFileReviewCount, isDetailLoading);
+    $: selectedFileReadinessText = describeSelectedFileReadiness(selectedNexusFile, recommendedNexusFileId, selectedModFiles.length);
+    $: fileReviewReadinessText = describeFileReviewReadiness(selectedModFiles.length, selectedFileReviewCount);
     $: {
         selectedNexusFile;
         selectedFileDescriptionHtml = renderOptionalNexusRichText(selectedNexusFile?.description);
@@ -2328,6 +2335,51 @@
         return "";
     }
 
+    function describeFileChoiceReadiness(fileCount: number, recommendedCount: number, reviewCount: number, loading: boolean): string {
+        if (fileCount === 0) {
+            return loading ? "Loading files" : "No files returned";
+        }
+
+        const parts = [`${fileCount} total`];
+        if (recommendedCount > 0) {
+            parts.push(`${recommendedCount} main`);
+        }
+
+        if (reviewCount > 0) {
+            parts.push(`${reviewCount} review`);
+        }
+
+        return parts.join(" · ");
+    }
+
+    function describeSelectedFileReadiness(file: NexusModFile | null, recommendedFileId: number | null, fileCount: number): string {
+        if (!file) {
+            return fileCount > 0 ? "Choose a file" : "No file selected";
+        }
+
+        const badge = fileChoiceBadge(file, recommendedFileId);
+        const review = isReviewNexusFile(file) ? "Review" : "Ready";
+        return [
+            badge,
+            fileChoiceCategoryLabel(file),
+            `v${fileVersionLabel(file)}`,
+            formatSizeKb(file.size),
+            review
+        ].filter(Boolean).join(" · ");
+    }
+
+    function describeFileReviewReadiness(fileCount: number, reviewCount: number): string {
+        if (fileCount === 0) {
+            return "No review files";
+        }
+
+        if (reviewCount === 0) {
+            return "No archived/old files";
+        }
+
+        return `${reviewCount} archived/old`;
+    }
+
     function installPlanToneLabel(tone: InstallPlanTone): string {
         switch (tone) {
             case "ready":
@@ -3276,7 +3328,7 @@
 
     type NexusRichNode =
         | { kind: "text"; value: string }
-        | { kind: "tag"; name: string; attr?: string; children: NexusRichNode[] };
+        | { kind: "tag"; name: string; attr?: string; rawAttrs?: string; children: NexusRichNode[] };
     type NexusBlockChunk =
         | { kind: "block"; value: string }
         | { kind: "list"; value: string; ordered: boolean; style?: string }
@@ -3305,7 +3357,7 @@
             .replace(/\[youtube[^\]]*\]([\s\S]*?)\[\/youtube\]/gi, "YouTube: $1")
             .replace(/\[video[^\]]*\]([\s\S]*?)\[\/video\]/gi, "Video: $1")
             .replace(/\[\/?\s*(?:list|ul|ol|olist)[^\]]*\]/gi, "")
-            .replace(/\[\/?(?:b|i|u|s|sub|sup|size|color|font|center|left|right|justify|align|indent|quote|spoiler|code|heading|h[1-6]|div|p|span)[^\]]*\]/gi, "")
+            .replace(/\[\/?(?:b|i|u|s|strike|sub|sup|size|color|background|bgcolor|highlight|font|center|left|right|justify|align|indent|quote|spoiler|code|heading|h[1-6]|float|div|p|span)[^\]]*\]/gi, "")
             .replace(/\[\/?[a-z0-9_-]+[^\]]*\]/gi, "")
             .replace(/[ \t]+/g, " ")
             .replace(/\n\s+/g, "\n")
@@ -3347,11 +3399,25 @@
             })
             .replace(/<font\b([^>]*)>([\s\S]*?)<\/font>/gi, (_match, attrs: string, body: string) => {
                 const color = htmlColorAttribute(attrs);
-                return color ? `[color=${color}]${body}[/color]` : body;
+                const background = htmlBackgroundColorAttribute(attrs);
+                return [
+                    color ? `[color=${color}]` : "",
+                    background ? `[background=${background}]` : "",
+                    body,
+                    background ? "[/background]" : "",
+                    color ? "[/color]" : ""
+                ].join("");
             })
             .replace(/<span\b([^>]*)>([\s\S]*?)<\/span>/gi, (_match, attrs: string, body: string) => {
                 const color = htmlColorAttribute(attrs);
-                return color ? `[color=${color}]${body}[/color]` : body;
+                const background = htmlBackgroundColorAttribute(attrs);
+                return [
+                    color ? `[color=${color}]` : "",
+                    background ? `[background=${background}]` : "",
+                    body,
+                    background ? "[/background]" : "",
+                    color ? "[/color]" : ""
+                ].join("");
             })
             .replace(/<strong\b[^>]*>|<b\b[^>]*>/gi, "[b]")
             .replace(/<\/strong>|<\/b>/gi, "[/b]")
@@ -3361,6 +3427,8 @@
             .replace(/<\/u>/gi, "[/u]")
             .replace(/<s\b[^>]*>|<strike\b[^>]*>/gi, "[s]")
             .replace(/<\/s>|<\/strike>/gi, "[/s]")
+            .replace(/<del\b[^>]*>/gi, "[s]")
+            .replace(/<\/del>/gi, "[/s]")
             .replace(/<table\b[^>]*>/gi, "\n\n[table]\n")
             .replace(/<\/table>/gi, "\n[/table]\n\n")
             .replace(/<\/?(?:tbody|thead|tfoot)\b[^>]*>/gi, "")
@@ -3389,7 +3457,7 @@
             })
             .replace(/<img\b([^>]*)>/gi, (_match, attrs: string) => {
                 const src = htmlAttribute(attrs, "src");
-                return src ? `[img]${src}[/img]` : "";
+                return src ? `[img${nexusHtmlImageAttributes(attrs)}]${src}[/img]` : "";
             })
             .replace(/<[^>]*>/g, " ");
 
@@ -3402,7 +3470,7 @@
             .replace(/\[\/\s*li\]/gi, "\n")
             .replace(/\[h([1-6])\]/gi, "[heading=$1]")
             .replace(/\[\/h[1-6]\]/gi, "[/heading]")
-            .replace(/\[(url|img|color|size|align|indent|quote|spoiler|heading|youtube|video|list|olist|ol|ul)([ \t][^\]]+)\]/gi, (_match, tag: string, attrs: string) => normalizeNexusBbOpeningTag(tag, attrs))
+            .replace(/\[(url|img|color|background|bgcolor|highlight|size|align|indent|quote|spoiler|heading|float|youtube|video|list|olist|ol|ul)([ \t][^\]]+)\]/gi, (_match, tag: string, attrs: string) => normalizeNexusBbOpeningTag(tag, attrs))
             .replace(/\[(?:ul|list)(?:=([^\]]+))?\]/gi, (_match, attr: string | undefined) => {
                 if (isOrderedNexusListAttr(attr)) {
                     const type = nexusOrderedListType(attr);
@@ -3604,7 +3672,7 @@
     }
 
     function hasNexusBlockStructure(value: string): boolean {
-        return /\[(?:table|list|olist|quote|spoiler|indent|center|left|right|align|justify|code|heading)(?:=[^\]]+)?\]/i.test(value);
+        return /\[(?:table|list|olist|quote|spoiler|indent|center|left|right|align|justify|code|heading|float)(?:=[^\]]+)?\]/i.test(value);
     }
 
     function renderNexusTable(block: string, depth: number): string {
@@ -3757,7 +3825,7 @@
                     stack[stack.length - 1].children.push({ kind: "text", value: full });
                 }
             } else {
-                const node: NexusRichNode = { kind: "tag", name, attr: nexusBbTagAttribute(name, rawAttrs), children: [] };
+                const node: NexusRichNode = { kind: "tag", name, attr: nexusBbTagAttribute(name, rawAttrs), rawAttrs, children: [] };
                 stack[stack.length - 1].children.push(node);
                 if (!isSelfClosing) {
                     stack.push(node);
@@ -3792,6 +3860,7 @@
             case "u":
                 return `<u>${inner}</u>`;
             case "s":
+            case "strike":
                 return `<s>${inner}</s>`;
             case "sub":
                 return `<sub>${inner}</sub>`;
@@ -3803,14 +3872,23 @@
             }
             case "img": {
                 const text = collectNexusNodeText(node.children);
-                const attrUrl = safeNexusUrl(node.attr);
+                const attrUrl = safeNexusUrl(nexusImageUrlAttribute(node.rawAttrs, node.attr));
                 const textUrl = safeNexusUrl(text);
                 const url = attrUrl ?? textUrl;
-                return url ? `<img class="nexus-rich-image" src="${escapeAttribute(url)}" alt="" />${attrUrl && inner ? inner : ""}` : inner;
+                const alignment = nexusImageAlignment(node.rawAttrs, node.attr);
+                const style = nexusImageStyleAttribute(node.rawAttrs);
+                const imageClass = ["nexus-rich-image", alignment ? `nexus-rich-image-${alignment}` : ""].filter(Boolean).join(" ");
+                return url ? `<img class="${imageClass}" src="${escapeAttribute(url)}" alt=""${style} />${attrUrl && inner ? inner : ""}` : inner;
             }
             case "color": {
                 const color = safeNexusColor(node.attr);
                 return color ? `<span style="color: ${escapeAttribute(color)}">${inner}</span>` : inner;
+            }
+            case "background":
+            case "bgcolor":
+            case "highlight": {
+                const color = safeNexusColor(node.attr) ?? (node.name === "highlight" ? "yellow" : null);
+                return color ? `<span class="nexus-rich-highlight" style="background-color: ${escapeAttribute(color)}">${inner}</span>` : inner;
             }
             case "size":
                 return `<span class="${nexusSizeClass(node.attr)}">${inner}</span>`;
@@ -3826,6 +3904,8 @@
                 const level = safeNexusIndentLevel(node.attr);
                 return `<span class="nexus-rich-indent-inline nexus-rich-indent-${level}">${inner}</span>`;
             }
+            case "float":
+                return `<span class="nexus-rich-float nexus-rich-float-${safeNexusFloat(node.attr)}">${inner}</span>`;
             case "code":
             case "pre":
                 return `<code>${escapeHtml(collectNexusNodeText(node.children))}</code>`;
@@ -3847,8 +3927,19 @@
                 const mediaUrl = safeNexusMediaUrl(node.name, node.attr, collectNexusNodeText(node.children));
                 return mediaUrl ? `<a class="nexus-rich-media-link" href="${escapeAttribute(mediaUrl)}" target="_blank" rel="noreferrer noopener">${node.name === "youtube" ? "Open YouTube video" : "Open video"}</a>` : inner;
             }
-            case "font":
-                return inner;
+            case "font": {
+                const color = safeNexusColor(nexusBbAttribute(node.rawAttrs, "color"));
+                const background = safeNexusColor(
+                    nexusBbAttribute(node.rawAttrs, "background")
+                    ?? nexusBbAttribute(node.rawAttrs, "background-color")
+                    ?? nexusBbAttribute(node.rawAttrs, "bgcolor")
+                );
+                const style = [
+                    color ? `color: ${color}` : "",
+                    background ? `background-color: ${background}` : ""
+                ].filter(Boolean).join("; ");
+                return style ? `<span class="nexus-rich-font" style="${escapeAttribute(style)}">${inner}</span>` : inner;
+            }
             default:
                 return inner;
         }
@@ -3856,6 +3947,10 @@
 
     function normalizeNexusBbOpeningTag(tag: string, rawAttrs: string): string {
         const name = tag.toLowerCase();
+        if (name === "img") {
+            return normalizedNexusImageOpeningTag(rawAttrs);
+        }
+
         const attr = nexusBbTagAttribute(name, rawAttrs);
         if (name === "ol" || name === "olist") {
             const type = nexusOrderedListType(attr);
@@ -3876,6 +3971,29 @@
         }
 
         return attr ? `[${name}=${attr}]` : `[${name}]`;
+    }
+
+    function normalizedNexusImageOpeningTag(rawAttrs: string): string {
+        const direct = nexusBbDirectAttribute(rawAttrs);
+        const source = safeNexusUrl(nexusBbAttribute(rawAttrs, "src"))
+            ?? safeNexusUrl(nexusBbAttribute(rawAttrs, "url"))
+            ?? safeNexusUrl(direct)
+            ?? undefined;
+        const alignment = nexusImageAlignment(rawAttrs, direct);
+        const width = safeNexusCssLength(nexusBbAttribute(rawAttrs, "width") ?? nexusBbAttribute(rawAttrs, "w"));
+        const height = safeNexusCssLength(nexusBbAttribute(rawAttrs, "height") ?? nexusBbAttribute(rawAttrs, "h"));
+        const attrs = [
+            source ? `src="${source}"` : "",
+            alignment ? `align="${alignment}"` : "",
+            width ? `width="${width}"` : "",
+            height ? `height="${height}"` : ""
+        ].filter(Boolean);
+
+        if (attrs.length > 0) {
+            return `[img ${attrs.join(" ")}]`;
+        }
+
+        return direct ? `[img=${direct}]` : "[img]";
     }
 
     function nexusBbTagAttribute(tag: string, rawAttrs?: string): string | undefined {
@@ -3904,8 +4022,12 @@
                     ?? direct
                     ?? nexusBbFirstAttributeValue(rawAttrs);
             case "align":
+            case "background":
+            case "bgcolor":
+            case "float":
             case "color":
             case "heading":
+            case "highlight":
             case "indent":
             case "list":
             case "ol":
@@ -3915,6 +4037,11 @@
             case "video":
                 return nexusBbAttribute(rawAttrs, "type")
                     ?? nexusBbAttribute(rawAttrs, "style")
+                    ?? nexusBbAttribute(rawAttrs, "color")
+                    ?? nexusBbAttribute(rawAttrs, "background")
+                    ?? nexusBbAttribute(rawAttrs, "background-color")
+                    ?? nexusBbAttribute(rawAttrs, "align")
+                    ?? nexusBbAttribute(rawAttrs, "float")
                     ?? nexusBbAttribute(rawAttrs, tag)
                     ?? direct
                     ?? nexusBbFirstAttributeValue(rawAttrs);
@@ -3991,6 +4118,13 @@
         return safeNexusColor(direct ?? styled ?? "");
     }
 
+    function htmlBackgroundColorAttribute(attrs: string): string | null {
+        const direct = htmlAttribute(attrs, "bgcolor");
+        const style = htmlAttribute(attrs, "style");
+        const styled = style?.match(/(?:^|;)\s*background(?:-color)?\s*:\s*([^;]+)/i)?.[1];
+        return safeNexusColor(direct ?? styled ?? "");
+    }
+
     function nexusHtmlTableCellAttributes(attrs: string): string {
         const colspan = safeNexusTableSpan(htmlAttribute(attrs, "colspan") ?? htmlAttribute(attrs, "col") ?? undefined);
         const rowspan = safeNexusTableSpan(htmlAttribute(attrs, "rowspan") ?? htmlAttribute(attrs, "row") ?? undefined);
@@ -3998,6 +4132,78 @@
             colspan ? `colspan="${colspan}"` : "",
             rowspan ? `rowspan="${rowspan}"` : ""
         ].filter(Boolean).map(attribute => ` ${attribute}`).join("");
+    }
+
+    function nexusHtmlImageAttributes(attrs: string): string {
+        const alignment = htmlImageAlignment(attrs);
+        const width = safeNexusCssLength(htmlAttribute(attrs, "width"));
+        const height = safeNexusCssLength(htmlAttribute(attrs, "height"));
+        return [
+            alignment ? ` align="${alignment}"` : "",
+            width ? ` width="${width}"` : "",
+            height ? ` height="${height}"` : ""
+        ].join("");
+    }
+
+    function htmlImageAlignment(attrs: string): "left" | "center" | "right" | null {
+        const direct = htmlAttribute(attrs, "align");
+        const style = htmlAttribute(attrs, "style");
+        const floated = style?.match(/(?:^|;)\s*float\s*:\s*([a-z-]+)/i)?.[1];
+        const textAlign = style?.match(/(?:^|;)\s*text-align\s*:\s*([a-z-]+)/i)?.[1];
+        const marginAuto = style && /margin(?:-left)?\s*:\s*auto/i.test(style) && /margin(?:-right)?\s*:\s*auto/i.test(style);
+        const raw = decodeHtmlEntities(direct ?? floated ?? textAlign ?? (marginAuto ? "center" : "")).trim().toLowerCase();
+        return raw === "left" || raw === "center" || raw === "right" ? raw : null;
+    }
+
+    function nexusImageUrlAttribute(rawAttrs?: string, attr?: string): string | undefined {
+        return nexusBbAttribute(rawAttrs, "src")
+            ?? nexusBbAttribute(rawAttrs, "url")
+            ?? (safeNexusUrl(attr) ? attr : undefined);
+    }
+
+    function nexusImageAlignment(rawAttrs?: string, attr?: string): "left" | "center" | "right" | null {
+        const candidate = nexusBbAttribute(rawAttrs, "align")
+            ?? nexusBbAttribute(rawAttrs, "float")
+            ?? nexusBbAttribute(rawAttrs, "position")
+            ?? (attr && !safeNexusUrl(attr) ? attr : undefined);
+        const normalized = decodeHtmlEntities(candidate ?? "").trim().toLowerCase().replace(/^['"]|['"]$/g, "");
+        return normalized === "left" || normalized === "center" || normalized === "right" ? normalized : null;
+    }
+
+    function nexusImageStyleAttribute(rawAttrs?: string): string {
+        const width = safeNexusCssLength(nexusBbAttribute(rawAttrs, "width") ?? nexusBbAttribute(rawAttrs, "w"));
+        const height = safeNexusCssLength(nexusBbAttribute(rawAttrs, "height") ?? nexusBbAttribute(rawAttrs, "h"));
+        const style = [
+            width ? `width: ${width}` : "",
+            height ? `height: ${height}` : ""
+        ].filter(Boolean).join("; ");
+        return style ? ` style="${escapeAttribute(style)}"` : "";
+    }
+
+    function safeNexusFloat(value?: string): "left" | "right" | "center" {
+        const normalized = decodeHtmlEntities(value ?? "").trim().toLowerCase().replace(/^['"]|['"]$/g, "");
+        if (normalized === "right" || normalized === "center") {
+            return normalized;
+        }
+
+        return "left";
+    }
+
+    function safeNexusCssLength(value?: string | null): string | null {
+        const raw = decodeHtmlEntities(value ?? "").trim().toLowerCase().replace(/^['"]|['"]$/g, "");
+        const percent = raw.match(/^(\d+(?:\.\d+)?)%$/);
+        if (percent) {
+            const numeric = Number.parseFloat(percent[1]);
+            return Number.isFinite(numeric) ? `${Math.max(10, Math.min(100, numeric))}%` : null;
+        }
+
+        const pixels = raw.match(/^(\d+(?:\.\d+)?)(?:px)?$/);
+        if (pixels) {
+            const numeric = Number.parseFloat(pixels[1]);
+            return Number.isFinite(numeric) ? `${Math.max(24, Math.min(900, numeric))}px` : null;
+        }
+
+        return null;
     }
 
     function safeNexusUrl(value?: string): string | null {
@@ -4824,6 +5030,39 @@
 
                     <div class="file-picker">
                         <span class="detail-section-title">Files</span>
+                        <div class="file-readiness-grid" aria-label="File choice summary">
+                            <span
+                                class="file-readiness-chip"
+                                class:file-readiness-ok={selectedModFiles.length > 0 && selectedFileReviewCount === 0}
+                                class:file-readiness-review={selectedFileReviewCount > 0}
+                                title={fileChoiceReadinessText}
+                            >
+                                <small>Files</small>
+                                <b>{selectedModFiles.length}</b>
+                                <span>{fileChoiceReadinessText}</span>
+                            </span>
+                            <span
+                                class="file-readiness-chip"
+                                class:file-readiness-ok={!!selectedNexusFile && !isReviewNexusFile(selectedNexusFile)}
+                                class:file-readiness-review={!!selectedNexusFile && isReviewNexusFile(selectedNexusFile)}
+                                class:file-readiness-warn={!selectedNexusFile && selectedModFiles.length > 0}
+                                title={selectedFileReadinessText}
+                            >
+                                <small>Selected</small>
+                                <b>{selectedNexusFile ? "1" : "0"}</b>
+                                <span>{selectedFileReadinessText}</span>
+                            </span>
+                            <span
+                                class="file-readiness-chip"
+                                class:file-readiness-ok={selectedModFiles.length > 0 && selectedFileReviewCount === 0}
+                                class:file-readiness-review={selectedFileReviewCount > 0}
+                                title={fileReviewReadinessText}
+                            >
+                                <small>Review</small>
+                                <b>{selectedFileReviewCount}</b>
+                                <span>{fileReviewReadinessText}</span>
+                            </span>
+                        </div>
                         {#if selectedModFiles.length === 0 && !isDetailLoading}
                             <div class="notice empty-nexus">No downloadable files were returned by Nexus.</div>
                         {/if}
@@ -6430,6 +6669,12 @@
         overflow-wrap: anywhere;
     }
 
+    .nexus-rich-text::after {
+        clear: both;
+        content: "";
+        display: block;
+    }
+
     .nexus-rich-text :global(p) {
         margin: 0.55em 0 0;
     }
@@ -6551,6 +6796,23 @@
         object-fit: contain;
     }
 
+    .nexus-rich-text :global(.nexus-rich-image-left) {
+        float: left;
+        margin: 0.35em 0.9em 0.45em 0;
+        max-width: min(46%, 18em);
+    }
+
+    .nexus-rich-text :global(.nexus-rich-image-right) {
+        float: right;
+        margin: 0.35em 0 0.45em 0.9em;
+        max-width: min(46%, 18em);
+    }
+
+    .nexus-rich-text :global(.nexus-rich-image-center) {
+        margin-left: auto;
+        margin-right: auto;
+    }
+
     .nexus-rich-text :global(.nexus-rich-align-center),
     .nexus-rich-text :global(.nexus-rich-align-left),
     .nexus-rich-text :global(.nexus-rich-align-right),
@@ -6597,6 +6859,35 @@
 
     .nexus-rich-text :global(.nexus-rich-indent-4) {
         margin-left: 2em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-highlight),
+    .nexus-rich-text :global(.nexus-rich-font[style*="background-color"]) {
+        border-radius: 2px;
+        box-decoration-break: clone;
+        color: #101820;
+        padding: 0.04em 0.2em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-float) {
+        box-sizing: border-box;
+        display: block;
+        max-width: min(48%, 20em);
+    }
+
+    .nexus-rich-text :global(.nexus-rich-float-left) {
+        float: left;
+        margin: 0.25em 0.9em 0.55em 0;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-float-right) {
+        float: right;
+        margin: 0.25em 0 0.55em 0.9em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-float-center) {
+        margin: 0.65em auto 0;
+        max-width: 100%;
     }
 
     .nexus-rich-text :global(.nexus-rich-size-small) {
@@ -7038,13 +7329,15 @@
         opacity: 0.52;
     }
 
-    .dependency-readiness-grid {
+    .dependency-readiness-grid,
+    .file-readiness-grid {
         display: grid;
         gap: 0.45em;
         grid-template-columns: repeat(auto-fit, minmax(8.4em, 1fr));
     }
 
-    .dependency-readiness-chip {
+    .dependency-readiness-chip,
+    .file-readiness-chip {
         background: rgba(255, 255, 255, 0.045);
         border: 1px solid rgba(255, 255, 255, 0.11);
         box-sizing: border-box;
@@ -7055,7 +7348,8 @@
         padding: 0.45em 0.5em;
     }
 
-    .dependency-readiness-chip small {
+    .dependency-readiness-chip small,
+    .file-readiness-chip small {
         color: #88939e;
         font-size: 0.68em;
         font-weight: 900;
@@ -7064,13 +7358,15 @@
         text-transform: uppercase;
     }
 
-    .dependency-readiness-chip b {
+    .dependency-readiness-chip b,
+    .file-readiness-chip b {
         color: #dce4ea;
         font-size: 1.05em;
         line-height: 1.05;
     }
 
-    .dependency-readiness-chip span {
+    .dependency-readiness-chip span,
+    .file-readiness-chip span {
         align-self: center;
         color: #a8b2bc;
         font-size: 0.72em;
@@ -7081,30 +7377,39 @@
         white-space: nowrap;
     }
 
-    .dependency-readiness-ok {
+    .dependency-readiness-ok,
+    .file-readiness-ok {
         border-color: rgba(98, 240, 155, 0.34);
     }
 
     .dependency-readiness-ok b,
-    .dependency-readiness-ok small {
+    .dependency-readiness-ok small,
+    .file-readiness-ok b,
+    .file-readiness-ok small {
         color: #62f09b;
     }
 
-    .dependency-readiness-warn {
+    .dependency-readiness-warn,
+    .file-readiness-warn {
         border-color: rgba(253, 198, 109, 0.42);
     }
 
     .dependency-readiness-warn b,
-    .dependency-readiness-warn small {
+    .dependency-readiness-warn small,
+    .file-readiness-warn b,
+    .file-readiness-warn small {
         color: #fdc66d;
     }
 
-    .dependency-readiness-review {
+    .dependency-readiness-review,
+    .file-readiness-review {
         border-color: rgba(120, 217, 244, 0.34);
     }
 
     .dependency-readiness-review b,
-    .dependency-readiness-review small {
+    .dependency-readiness-review small,
+    .file-readiness-review b,
+    .file-readiness-review small {
         color: #78d9f4;
     }
 
@@ -7690,6 +7995,15 @@
 
         .nexus-img {
             height: clamp(130px, 22vh, 190px);
+        }
+
+        .nexus-rich-text :global(.nexus-rich-image-left),
+        .nexus-rich-text :global(.nexus-rich-image-right),
+        .nexus-rich-text :global(.nexus-rich-float-left),
+        .nexus-rich-text :global(.nexus-rich-float-right) {
+            float: none;
+            margin: 0.75em 0 0;
+            max-width: 100%;
         }
 
         .source-pill {
