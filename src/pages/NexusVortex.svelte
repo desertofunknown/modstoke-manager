@@ -85,6 +85,10 @@
     let nexusCategoryOptions: string[] = [];
     let visibleNexusMods: NexusMod[] = [];
     let visibleInstalledEntries: InstalledInventoryEntry[] = [];
+    let updateCount = 0;
+    let onlineAttentionCount = 0;
+    let installedAttentionCount = 0;
+    let resolvedDependencies: ResolvedDependency[] = [];
     let isLoading = false;
     let isDetailLoading = false;
     let status = "";
@@ -110,6 +114,10 @@
     let activeConflictEntryKey: string | null = null;
     let autoEndorseDownloadedMods = false;
     let autoEndorseAttemptedIds: number[] = [];
+    let autoEndorseEligibleCount = 0;
+    let autoEndorsePendingCount = 0;
+    let autoEndorseAttemptedInstalledCount = 0;
+    let autoEndorseQueueLabel = "Loading endorsement state";
     let ssoSocket: WebSocket | null = null;
     let ssoTimeout: number | null = null;
 
@@ -132,10 +140,7 @@
     $: vortexCount = inventory.filter(entry => entry.installSource === "vortex").length;
     $: nativeCount = inventory.filter(entry => entry.installSource === "native").length;
     $: manualCount = inventory.filter(entry => entry.installSource === "manual").length;
-    $: updateCount = inventory.filter(hasInventoryUpdate).length;
     $: disabledCount = inventory.filter(entry => !entry.enabled).length;
-    $: onlineAttentionCount = mods.filter(nexusNeedsAttention).length;
-    $: installedAttentionCount = inventory.filter(inventoryNeedsAttention).length;
     $: trackedCount = trackedMods.length;
     $: selectedNexusFile = selectedModFiles.find(file => file.file_id === selectedFileId) ?? null;
     $: recommendedNexusFileId = pickRecommendedNexusFile(selectedModFiles)?.file_id ?? null;
@@ -143,6 +148,21 @@
     $: localConflicts = findLocalConflicts(inventory);
     $: localConflictEntryKeys = new Set(localConflicts.flatMap(conflict => conflict.entries.map(inventoryEntryKey)));
     $: conflictCount = localConflictEntryKeys.size;
+    $: {
+        mods;
+        updateCount = inventory.filter(hasInventoryUpdate).length;
+    }
+    $: {
+        inventory;
+        trackedMods;
+        localConflictEntryKeys;
+        onlineAttentionCount = mods.filter(nexusNeedsAttention).length;
+    }
+    $: {
+        mods;
+        localConflictEntryKeys;
+        installedAttentionCount = inventory.filter(inventoryNeedsAttention).length;
+    }
     $: {
         nexusSearchTerm;
         selectedNexusCategory;
@@ -161,7 +181,25 @@
         localConflictEntryKeys;
         visibleInstalledEntries = sortInstalledEntries(inventory.filter(matchesInstalledFilters));
     }
-    $: resolvedDependencies = selectedDependencies.map(resolveDependencyStatus);
+    $: {
+        inventory;
+        resolvedDependencies = selectedDependencies.map(resolveDependencyStatus);
+    }
+    $: {
+        endorsements;
+        endorsementsLoaded;
+        autoEndorseAttemptedIds;
+        const autoEndorseCandidates = inventory
+            .map(entry => ({ entry, modId: numericNexusId(entry.nexusModId) }))
+            .filter((candidate): candidate is { entry: InstalledInventoryEntry; modId: number } =>
+                candidate.entry.installSource === "vortex" && !!candidate.modId
+            );
+        const unendorsedCandidates = autoEndorseCandidates.filter(candidate => !isNexusModEndorsed(candidate.modId));
+        autoEndorseEligibleCount = autoEndorseCandidates.length;
+        autoEndorsePendingCount = unendorsedCandidates.filter(candidate => !autoEndorseAttemptedIds.includes(candidate.modId)).length;
+        autoEndorseAttemptedInstalledCount = unendorsedCandidates.filter(candidate => autoEndorseAttemptedIds.includes(candidate.modId)).length;
+        autoEndorseQueueLabel = autoEndorseQueueSummary();
+    }
     $: dependencyIssueCount = resolvedDependencies.filter(dependency =>
         dependency.status === "missing" || dependency.status === "version-mismatch"
     ).length;
@@ -172,7 +210,10 @@
             selectedMod.uploaded_by ?? ""
         ])
         : null;
-    $: selectedInstallConflict = conflictForEntry(selectedInstallMatch);
+    $: {
+        localConflicts;
+        selectedInstallConflict = conflictForEntry(selectedInstallMatch);
+    }
     $: selectedInstallPlan = buildInstallPlan(
         selectedModDetails ?? selectedMod,
         selectedNexusFile,
@@ -657,6 +698,22 @@
             autoEndorseAttemptedIds = [...autoEndorseAttemptedIds, modId].slice(-500);
             saveAutoEndorseAttemptedIds();
         }
+    }
+
+    function autoEndorseQueueSummary(): string {
+        if (!endorsementsLoaded) {
+            return "Loading endorsement state";
+        }
+
+        if (autoEndorseEligibleCount === 0) {
+            return "No Vortex Nexus installs";
+        }
+
+        if (autoEndorsePendingCount === 0 && autoEndorseAttemptedInstalledCount === 0) {
+            return "No pending endorsements";
+        }
+
+        return `${autoEndorsePendingCount} pending · ${autoEndorseAttemptedInstalledCount} attempted`;
     }
 
     function markNexusModEndorsed(modId: number) {
@@ -1798,7 +1855,10 @@
             <div class="account-actions">
                 <label class="auto-endorse-control">
                     <input type="checkbox" checked={autoEndorseDownloadedMods} on:change={toggleAutoEndorse} />
-                    <span>Auto-endorse Vortex downloads</span>
+                    <span class="auto-endorse-label">
+                        <span>Auto-endorse Vortex downloads</span>
+                        <small>{autoEndorseQueueLabel}</small>
+                    </span>
                 </label>
                 <button on:click={openNexusGame}>Open Nexus</button>
                 {#if vortexStagingPath}
@@ -2427,9 +2487,24 @@
         font-weight: 900;
         gap: 0.5em;
         min-height: 2.5em;
-        padding: 0 0.7em;
+        padding: 0.35em 0.7em;
         text-transform: uppercase;
-        white-space: nowrap;
+        text-align: left;
+    }
+
+    .auto-endorse-label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.1em;
+        line-height: 1.12;
+        min-width: 0;
+    }
+
+    .auto-endorse-label small {
+        color: #8d99a5;
+        font-size: 0.82em;
+        font-weight: 800;
+        text-transform: none;
     }
 
     .auto-endorse-control input[type="checkbox"] {
