@@ -415,7 +415,8 @@
         totalDependencyReviewCount,
         resolvedDependencies.length,
         resolvedNestedDependencies.length,
-        selectedAuthorRequirements.length
+        selectedAuthorRequirements.length,
+        authorRequirementWarningCount
     );
     $: selectedInstallMatch = selectedMod
         ? findMatchingInstall(inventory, selectedMod.name, selectedMod.mod_id, [
@@ -1935,9 +1936,16 @@
         element?.scrollIntoView({ block: "start", behavior: "smooth" });
     }
 
-    function describeDetailDependencyNav(issueCount: number, reviewCount: number, apiCount: number, nestedCount: number, authorCount: number): string {
+    function describeDetailDependencyNav(issueCount: number, reviewCount: number, apiCount: number, nestedCount: number, authorCount: number, authorWarningCount: number): string {
         if (issueCount > 0) {
             return `${issueCount} issue${issueCount === 1 ? "" : "s"}`;
+        }
+
+        if (authorWarningCount > 0) {
+            const remainingReviewCount = Math.max(0, reviewCount - authorWarningCount);
+            return remainingReviewCount > 0
+                ? `${authorWarningCount} warning · ${remainingReviewCount} review`
+                : `${authorWarningCount} warning`;
         }
 
         if (reviewCount > 0) {
@@ -6698,7 +6706,7 @@
                             <span>Uploaded <b>{selectedFileUploadedLabel}</b></span>
                             <span>Size <b>{selectedFileSizeLabel}</b></span>
                             <span>API deps <b title={apiDependencyReadinessLabel()}>{resolvedDependencies.length}</b></span>
-                            <span>Author hints <b title={authorRequirementReadinessLabel()}>{selectedAuthorRequirements.length}</b></span>
+                            <span>Author hints <b title={authorRequirementReadinessLabel()}>{authorRequirementReadinessLabel()}</b></span>
                             <span class="install-plan-file-fact">Nested <b title={nestedDependencyReadinessLabel()}>{nestedDependencyReadinessLabel()}</b></span>
                         </div>
                         <div class="install-plan-notes">

@@ -27,6 +27,7 @@
   - Added local author runtime/library hint detection for BepInEx, RedLoader, SonsSdk, Harmony, .NET, and OpenACAI loader mentions so requirement prose can show detected/review state even when Nexus returns no dependency rows.
   - Added source labels and matched-text snippets to inferred Nexus author requirement hints so users can audit why a runtime/library review hint appeared.
   - Classified author runtime/library mentions with incompatibility, removal, or conflict wording as compatibility warnings instead of satisfied dependencies.
+  - Improved Nexus dependency section rails and install-plan facts so author warning/review/detected summaries stay visible before scrolling into individual rows.
   - Improved Nexus description formatting fidelity with monospaced column-style line blocks, codebox/plain/fixed preformatted BBCode aliases, hidden/spoilerblock aliases, legacy horizontal-rule tags, and relative/point size hints.
   - Improved Nexus BBCode layout recovery for indented plain lists, standalone image aliases, and cell-only table layouts so author instructions keep more of their original reading order.
   - Rebuilt and signed portable/setup EXEs as `0.2.0`.
