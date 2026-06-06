@@ -90,6 +90,7 @@
     let selectedInstallFilter: InstallFilter = "all";
     let selectedNexusSort: NexusSortMode = "attention";
     let selectedInstalledSort: InstalledSortMode = "attention";
+    let nexusCatalogLoadedAt: number | null = null;
     let nexusCategoryOptions: string[] = [];
     let visibleNexusMods: NexusMod[] = [];
     let visibleInstalledEntries: InstalledInventoryEntry[] = [];
@@ -553,6 +554,7 @@
         session = { is_connected: false };
         mods = [];
         nexusCategories = [];
+        nexusCatalogLoadedAt = null;
         endorsements = [];
         endorsementsLoaded = false;
         trackedMods = [];
@@ -586,6 +588,7 @@
             const response = await fetchNexusSotfMods(selectedView, { force: forceRefresh });
             mods = response.mods;
             nexusCategories = response.categories;
+            nexusCatalogLoadedAt = Date.now();
             session = {
                 ...session,
                 rate_limit: response.rate_limit
@@ -2102,6 +2105,14 @@
         return fallback ? new Date(fallback).toLocaleDateString() : "-";
     }
 
+    function formatCatalogLoadedAt(value: number | null): string {
+        if (!value) {
+            return "Not loaded";
+        }
+
+        return `Loaded ${new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    }
+
     function formatNumber(value?: number): string {
         return typeof value === "number" ? value.toLocaleString() : "-";
     }
@@ -2297,7 +2308,7 @@
             </div>
 
             <div class="notice api-note">
-                <span>Nexus requests are cached locally for {NEXUS_CACHE_TTL_MINUTES} minutes.</span>
+                <span>Nexus requests are cached locally for {NEXUS_CACHE_TTL_MINUTES} minutes. {formatCatalogLoadedAt(nexusCatalogLoadedAt)}.</span>
                 {#if catalogMode === "online"}
                     <span>{visibleNexusMods.length} shown from {mods.length} loaded. {onlineAttentionCount > 0 ? `${onlineAttentionCount} need attention.` : ""} {trackedModsLoaded ? `${trackedCount} tracked.` : ""} {conflictCount > 0 ? `${conflictCount} in conflicts.` : ""}</span>
                 {:else}
