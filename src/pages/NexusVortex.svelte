@@ -136,6 +136,8 @@
     $: installedAttentionCount = inventory.filter(inventoryNeedsAttention).length;
     $: trackedCount = trackedMods.length;
     $: selectedNexusFile = selectedModFiles.find(file => file.file_id === selectedFileId) ?? null;
+    $: recommendedNexusFileId = pickRecommendedNexusFile(selectedModFiles)?.file_id ?? null;
+    $: displayedSelectedModFiles = sortNexusFilesForDisplay(selectedModFiles, recommendedNexusFileId);
     $: localConflicts = findLocalConflicts(inventory);
     $: localConflictEntryKeys = new Set(localConflicts.flatMap(conflict => conflict.entries.map(inventoryEntryKey)));
     $: conflictCount = localConflictEntryKeys.size;
@@ -164,6 +166,9 @@
         : selectedInstallPlan.tone === "review"
             ? `${selectedInstallPlan.action} Anyway`
             : selectedInstallPlan.action;
+    $: selectedInstallFileLabel = selectedNexusFile
+        ? `${fileChoiceCategoryLabel(selectedNexusFile)} - ${selectedNexusFile.name}`
+        : "No file selected";
 
     onMount(async () => {
         loadEndorsementPreferences();
@@ -981,8 +986,8 @@
             notes.push("Vortex deployment metadata was not detected in this game folder yet.");
         }
 
-        if (/^(archived|old_version|removed)$/i.test(file.category_name ?? "")) {
-            notes.push(`The selected file is marked ${file.category_name}.`);
+        if (isReviewNexusFile(file)) {
+            notes.push(`The selected file is marked ${fileChoiceCategoryLabel(file)} and should be reviewed before Vortex handoff.`);
         }
 
         if (missingCount > 0) {
@@ -1044,6 +1049,64 @@
         }
 
         return "Mods";
+    }
+
+    function sortNexusFilesForDisplay(files: NexusModFile[], recommendedFileId: number | null): NexusModFile[] {
+        return [...files].sort((a, b) =>
+            nexusFileDisplayRank(a, recommendedFileId) - nexusFileDisplayRank(b, recommendedFileId)
+            || (b.uploaded_timestamp ?? 0) - (a.uploaded_timestamp ?? 0)
+            || a.name.localeCompare(b.name)
+        );
+    }
+
+    function nexusFileDisplayRank(file: NexusModFile, recommendedFileId: number | null): number {
+        if (recommendedFileId !== null && file.file_id === recommendedFileId) {
+            return 0;
+        }
+
+        const category = normalizedNexusFileCategory(file);
+        if (file.is_primary || category === "main") {
+            return 1;
+        }
+
+        if (category === "optional" || category === "miscellaneous") {
+            return 2;
+        }
+
+        return isReviewNexusFile(file) ? 4 : 3;
+    }
+
+    function normalizedNexusFileCategory(file: NexusModFile): string {
+        return (file.category_name ?? "unknown").trim().toLowerCase();
+    }
+
+    function isReviewNexusFile(file: NexusModFile): boolean {
+        return /^(archived|old_version|removed)$/i.test(normalizedNexusFileCategory(file));
+    }
+
+    function fileChoiceCategoryLabel(file: NexusModFile): string {
+        return (file.category_name ?? "file").replace(/_/g, " ");
+    }
+
+    function fileChoiceBadge(file: NexusModFile, recommendedFileId: number | null): string {
+        if (recommendedFileId !== null && file.file_id === recommendedFileId) {
+            return "Recommended";
+        }
+
+        if (isReviewNexusFile(file)) {
+            return "Review";
+        }
+
+        const category = normalizedNexusFileCategory(file);
+        if (file.is_primary) {
+            return "Primary";
+        }
+
+        if (category === "main") {
+            return "Main";
+        }
+
+        return "";
     }
 
     function installPlanToneLabel(tone: InstallPlanTone): string {
@@ -2048,7 +2111,7 @@
                         <div class="install-plan-facts">
                             <span>Action <b>{selectedInstallPlan.action}</b></span>
                             <span>Target <b>{selectedInstallPlan.target}</b></span>
-                            <span>File <b>{selectedNexusFile?.name ?? "No file selected"}</b></span>
+                            <span class="install-plan-file-fact">File <b>{selectedInstallFileLabel}</b></span>
                         </div>
                         <div class="install-plan-notes">
                             {#each selectedInstallPlan.notes as note}
@@ -2063,10 +2126,21 @@
                             <div class="notice empty-nexus">No downloadable files were returned by Nexus.</div>
                         {/if}
 
-                        {#each selectedModFiles as file}
-                            <button class="file-row" class:file-row-selected={selectedFileId === file.file_id} on:click={() => selectNexusFile(file.file_id)}>
-                                <span class="file-name">{file.name}</span>
-                                <span class="file-meta">{file.category_name ?? "file"} · v{file.version ?? file.mod_version ?? "-"} · {formatSizeKb(file.size)}</span>
+                        {#each displayedSelectedModFiles as file}
+                            <button
+                                class="file-row"
+                                class:file-row-selected={selectedFileId === file.file_id}
+                                class:file-row-recommended={recommendedNexusFileId === file.file_id}
+                                class:file-row-review={isReviewNexusFile(file)}
+                                on:click={() => selectNexusFile(file.file_id)}
+                            >
+                                <span class="file-row-head">
+                                    <span class="file-name">{file.name}</span>
+                                    {#if fileChoiceBadge(file, recommendedNexusFileId)}
+                                        <b>{fileChoiceBadge(file, recommendedNexusFileId)}</b>
+                                    {/if}
+                                </span>
+                                <span class="file-meta">{fileChoiceCategoryLabel(file)} · v{file.version ?? file.mod_version ?? "-"} · {formatSizeKb(file.size)}</span>
                             </button>
                         {/each}
                     </div>
@@ -2972,7 +3046,7 @@
         display: grid;
         font-size: 0.76em;
         gap: 0.35em 0.75em;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         margin-top: 0.55em;
     }
 
@@ -2989,6 +3063,15 @@
         color: #d6dde5;
         display: block;
         font-weight: 800;
+    }
+
+    .install-plan-file-fact {
+        grid-column: 1 / -1;
+    }
+
+    .install-plan-file-fact b {
+        overflow-wrap: anywhere;
+        white-space: normal;
     }
 
     .install-plan-notes {
@@ -3061,8 +3144,47 @@
         color: #62f09b;
     }
 
+    .file-row-recommended:not(.file-row-selected) {
+        border-color: rgba(98, 240, 155, 0.35);
+    }
+
+    .file-row-review:not(.file-row-selected) {
+        border-color: rgba(253, 198, 109, 0.35);
+    }
+
+    .file-row-head {
+        align-items: center;
+        display: flex;
+        gap: 0.6em;
+        justify-content: space-between;
+        min-width: 0;
+    }
+
+    .file-row-head b {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #aab8c5;
+        flex: 0 0 auto;
+        font-size: 0.68em;
+        font-weight: 900;
+        padding: 0.2em 0.45em;
+        text-transform: uppercase;
+    }
+
+    .file-row-recommended .file-row-head b {
+        color: #62f09b;
+    }
+
+    .file-row-review .file-row-head b {
+        color: #fdc66d;
+    }
+
     .file-name {
         color: #eefcff;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         font-weight: 900;
     }
 
