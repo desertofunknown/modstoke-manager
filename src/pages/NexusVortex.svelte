@@ -75,6 +75,16 @@
         match: InstalledInventoryEntry | null;
         status: DependencyStatus;
     };
+    type NestedDependencySource = {
+        key: string;
+        parentFileId: number;
+        parentName: string;
+        depth: number;
+        dependency: NexusModDependency;
+    };
+    type ResolvedNestedDependency = Omit<NestedDependencySource, "dependency"> & {
+        dependency: ResolvedDependency;
+    };
     type LocalConflict = {
         key: string;
         label: string;
@@ -126,6 +136,11 @@
     let selectedModFiles: NexusModFile[] = [];
     let selectedFileId: number | null = null;
     let selectedDependencies: NexusModDependency[] = [];
+    let nestedDependencySources: NestedDependencySource[] = [];
+    let resolvedNestedDependencies: ResolvedNestedDependency[] = [];
+    let isResolvingNestedDependencies = false;
+    let nestedDependencySummary = "";
+    let nestedDependencyRequestId = 0;
     let selectedChangelogs: NexusModChangelog[] = [];
     let detailBackStack: NexusMod[] = [];
     let selectedInstallMatch: InstalledInventoryEntry | null = null;
@@ -168,6 +183,8 @@
     const NEXUS_AUTO_ENDORSE_KEY = "openacai-nexus-auto-endorse-downloaded";
     const NEXUS_AUTO_ENDORSE_ATTEMPTED_KEY = "openacai-nexus-auto-endorse-attempted";
     const MAX_AUTO_ENDORSE_PER_REFRESH = 3;
+    const MAX_NESTED_DEPENDENCY_FILES = 8;
+    const MAX_NESTED_DEPENDENCY_DEPTH = 2;
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
     const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
@@ -255,6 +272,14 @@
         resolvedDependencies = selectedDependencies.map(resolveDependencyStatus);
     }
     $: {
+        inventory;
+        nestedDependencySources;
+        resolvedNestedDependencies = nestedDependencySources.map(source => ({
+            ...source,
+            dependency: resolveDependencyStatus(source.dependency)
+        }));
+    }
+    $: {
         endorsements;
         endorsementsLoaded;
         autoEndorseAttemptedIds;
@@ -273,6 +298,12 @@
         dependency.status === "missing" || dependency.status === "version-mismatch"
     ).length;
     $: dependencyReviewCount = resolvedDependencies.filter(dependency => dependency.status === "review").length;
+    $: nestedDependencyIssueCount = resolvedNestedDependencies.filter(source =>
+        source.dependency.status === "missing" || source.dependency.status === "version-mismatch"
+    ).length;
+    $: nestedDependencyReviewCount = resolvedNestedDependencies.filter(source => source.dependency.status === "review").length;
+    $: totalDependencyIssueCount = dependencyIssueCount + nestedDependencyIssueCount;
+    $: totalDependencyReviewCount = dependencyReviewCount + nestedDependencyReviewCount;
     $: selectedInstallMatch = selectedMod
         ? findMatchingInstall(inventory, selectedMod.name, selectedMod.mod_id, [
             selectedMod.author ?? "",
@@ -289,6 +320,7 @@
         selectedInstallMatch,
         selectedInstallConflict,
         resolvedDependencies,
+        resolvedNestedDependencies,
         vortexStagingPath,
         selectedInstallPlacement
     );
@@ -1139,6 +1171,7 @@
         selectedFileId = null;
         selectedInstallPlacement = "auto";
         selectedDependencies = [];
+        clearNestedDependencyCheck();
         selectedChangelogs = [];
         isDetailLoading = true;
 
@@ -1208,6 +1241,7 @@
         selectedModFiles = [];
         selectedFileId = null;
         selectedDependencies = [];
+        clearNestedDependencyCheck();
         selectedChangelogs = [];
         detailBackStack = [];
         clearNxmCopyFeedback();
@@ -1225,20 +1259,133 @@
 
     async function selectNexusFile(fileId: number) {
         selectedFileId = fileId;
+        clearNestedDependencyCheck();
         await loadDependenciesForFile(fileId);
     }
 
     async function loadDependenciesForFile(fileId: number) {
         selectedDependencies = [];
+        clearNestedDependencyCheck();
         try {
             const response = await fetchNexusFileDependencies(fileId);
+            if (selectedFileId !== fileId) {
+                return;
+            }
             selectedDependencies = response.dependencies;
             session = {
                 ...session,
                 rate_limit: response.rate_limit
             };
         } catch {
+            if (selectedFileId !== fileId) {
+                return;
+            }
             selectedDependencies = [];
+        }
+    }
+
+    function clearNestedDependencyCheck() {
+        nestedDependencyRequestId += 1;
+        nestedDependencySources = [];
+        nestedDependencySummary = "";
+        isResolvingNestedDependencies = false;
+    }
+
+    function nestedDependencyCheckAvailable(): boolean {
+        return resolvedDependencies.some(dependency => Boolean(dependency.file_id));
+    }
+
+    function nestedDependencyStatusLabel(source: ResolvedNestedDependency): string {
+        return dependencyStatusLabel(source.dependency);
+    }
+
+    async function resolveNestedDependencies() {
+        if (isResolvingNestedDependencies || resolvedDependencies.length === 0) {
+            return;
+        }
+
+        const initialQueue = resolvedDependencies
+            .filter(dependency => typeof dependency.file_id === "number")
+            .map(dependency => ({
+                fileId: dependency.file_id as number,
+                parentName: dependency.mod_name,
+                depth: 1
+            }));
+
+        if (initialQueue.length === 0) {
+            nestedDependencySources = [];
+            nestedDependencySummary = "No dependency file IDs were returned for recursive checks.";
+            return;
+        }
+
+        isResolvingNestedDependencies = true;
+        const requestId = ++nestedDependencyRequestId;
+        nestedDependencySummary = `Checking up to ${MAX_NESTED_DEPENDENCY_FILES} dependency files...`;
+        const queue = [...initialQueue];
+        const visitedFileIds = new Set<number>();
+        const rowKeys = new Set<string>();
+        const collected: NestedDependencySource[] = [];
+        let checkedFiles = 0;
+
+        try {
+            while (queue.length > 0 && checkedFiles < MAX_NESTED_DEPENDENCY_FILES) {
+                const current = queue.shift();
+                if (!current || visitedFileIds.has(current.fileId)) {
+                    continue;
+                }
+
+                visitedFileIds.add(current.fileId);
+                checkedFiles += 1;
+                const response = await fetchNexusFileDependencies(current.fileId);
+                if (requestId !== nestedDependencyRequestId) {
+                    return;
+                }
+                session = { ...session, rate_limit: response.rate_limit };
+
+                for (const dependency of response.dependencies) {
+                    const rowKey = `${current.fileId}:${dependency.id}:${dependency.mod_id ?? "mod"}:${dependency.file_id ?? "file"}`;
+                    if (rowKeys.has(rowKey)) {
+                        continue;
+                    }
+
+                    rowKeys.add(rowKey);
+                    collected.push({
+                        key: rowKey,
+                        parentFileId: current.fileId,
+                        parentName: current.parentName,
+                        depth: current.depth,
+                        dependency
+                    });
+
+                    if (
+                        typeof dependency.file_id === "number"
+                        && current.depth < MAX_NESTED_DEPENDENCY_DEPTH
+                        && !visitedFileIds.has(dependency.file_id)
+                    ) {
+                        queue.push({
+                            fileId: dependency.file_id,
+                            parentName: dependency.mod_name,
+                            depth: current.depth + 1
+                        });
+                    }
+                }
+            }
+
+            if (requestId === nestedDependencyRequestId) {
+                nestedDependencySources = collected;
+                nestedDependencySummary = collected.length > 0
+                    ? `${collected.length} nested dependencies found from ${checkedFiles} checked file${checkedFiles === 1 ? "" : "s"}.`
+                    : `${checkedFiles} dependency file${checkedFiles === 1 ? "" : "s"} checked; no nested dependencies returned.`;
+            }
+        } catch (error) {
+            if (requestId === nestedDependencyRequestId) {
+                nestedDependencySources = collected;
+                nestedDependencySummary = `Nested dependency check stopped: ${error}`;
+            }
+        } finally {
+            if (requestId === nestedDependencyRequestId) {
+                isResolvingNestedDependencies = false;
+            }
         }
     }
 
@@ -1446,16 +1593,16 @@
     }
 
     function dependencySummaryLabel(): string {
-        if (resolvedDependencies.length === 0) {
+        if (resolvedDependencies.length === 0 && resolvedNestedDependencies.length === 0) {
             return "None listed";
         }
 
-        if (dependencyIssueCount > 0) {
-            return `${dependencyIssueCount} need attention`;
+        if (totalDependencyIssueCount > 0) {
+            return `${totalDependencyIssueCount} need attention`;
         }
 
-        if (dependencyReviewCount > 0) {
-            return `${dependencyReviewCount} review`;
+        if (totalDependencyReviewCount > 0) {
+            return `${totalDependencyReviewCount} review`;
         }
 
         return "Ready";
@@ -1480,6 +1627,7 @@
         match: InstalledInventoryEntry | null,
         conflict: LocalConflict | null,
         dependencies: ResolvedDependency[],
+        nestedDependencies: ResolvedNestedDependency[],
         stagingPath: string | null,
         placement: InstallPlacement): InstallPlan {
         if (!mod || !file) {
@@ -1499,6 +1647,9 @@
         const missingCount = dependencies.filter(dependency => dependency.status === "missing").length;
         const mismatchCount = dependencies.filter(dependency => dependency.status === "version-mismatch").length;
         const reviewCount = dependencies.filter(dependency => dependency.status === "review").length;
+        const nestedMissingCount = nestedDependencies.filter(source => source.dependency.status === "missing").length;
+        const nestedMismatchCount = nestedDependencies.filter(source => source.dependency.status === "version-mismatch").length;
+        const nestedReviewCount = nestedDependencies.filter(source => source.dependency.status === "review").length;
 
         if (!stagingPath) {
             notes.push("Vortex deployment metadata was not detected in this game folder yet.");
@@ -1518,6 +1669,18 @@
 
         if (reviewCount > 0) {
             notes.push(`${reviewCount} installed dependency ${reviewCount === 1 ? "needs" : "need"} a version review.`);
+        }
+
+        if (nestedMissingCount > 0) {
+            notes.push(`${nestedMissingCount} nested dependency ${nestedMissingCount === 1 ? "is" : "are"} missing locally.`);
+        }
+
+        if (nestedMismatchCount > 0) {
+            notes.push(`${nestedMismatchCount} nested dependency ${nestedMismatchCount === 1 ? "has" : "have"} a version mismatch.`);
+        }
+
+        if (nestedReviewCount > 0) {
+            notes.push(`${nestedReviewCount} nested installed dependency ${nestedReviewCount === 1 ? "needs" : "need"} a version review.`);
         }
 
         if (conflict) {
@@ -3125,7 +3288,7 @@
                         <span>Updated <b>{formatTimestamp(selectedModDetails?.updated_timestamp, selectedModDetails?.updated_time)}</b></span>
                         <span>Downloads <b>{formatNumber(selectedModDetails?.mod_downloads)}</b></span>
                         <span>Installed <b>{describeInstallSource(installedMatch(selectedMod))}</b></span>
-                        <span>Dependencies <b class:update-state-update={dependencyIssueCount > 0} class:update-state-tracked={dependencyReviewCount > 0 && dependencyIssueCount === 0} class:update-state-current={resolvedDependencies.length > 0 && dependencyIssueCount === 0 && dependencyReviewCount === 0}>{dependencySummaryLabel()}</b></span>
+                        <span>Dependencies <b class:update-state-update={totalDependencyIssueCount > 0} class:update-state-tracked={totalDependencyReviewCount > 0 && totalDependencyIssueCount === 0} class:update-state-current={(resolvedDependencies.length > 0 || resolvedNestedDependencies.length > 0) && totalDependencyIssueCount === 0 && totalDependencyReviewCount === 0}>{dependencySummaryLabel()}</b></span>
                     </div>
 
                     <div
@@ -3235,7 +3398,22 @@
                     </div>
 
                     <div class="dependency-box">
-                        <span class="detail-section-title">Dependencies</span>
+                        <div class="dependency-box-head">
+                            <span class="detail-section-title">Dependencies</span>
+                            <button
+                                type="button"
+                                disabled={!nestedDependencyCheckAvailable() || isResolvingNestedDependencies}
+                                title={nestedDependencyCheckAvailable()
+                                    ? `Check up to ${MAX_NESTED_DEPENDENCY_FILES} dependency files across ${MAX_NESTED_DEPENDENCY_DEPTH} nested levels`
+                                    : "No dependency file IDs were returned for recursive checks"}
+                                on:click={resolveNestedDependencies}
+                            >
+                                {isResolvingNestedDependencies ? "Checking..." : "Check Nested"}
+                            </button>
+                        </div>
+                        {#if nestedDependencySummary}
+                            <span class="dependency-empty">{nestedDependencySummary}</span>
+                        {/if}
                         {#if resolvedDependencies.length === 0}
                             <span class="dependency-empty">No API-listed dependencies for the selected file. Still review the author directions for manual requirements.</span>
                         {:else}
@@ -3264,6 +3442,37 @@
                                     </div>
                                 </div>
                             {/each}
+                        {/if}
+                        {#if resolvedNestedDependencies.length > 0}
+                            <div class="dependency-nested-section">
+                                <span class="dependency-subtitle">Nested dependencies</span>
+                                {#each resolvedNestedDependencies as source (source.key)}
+                                    <div
+                                        class="dependency-row"
+                                        class:dependency-installed={source.dependency.status === "installed"}
+                                        class:dependency-missing={source.dependency.status === "missing"}
+                                        class:dependency-mismatch={source.dependency.status === "version-mismatch"}
+                                        class:dependency-review={source.dependency.status === "review"}
+                                    >
+                                        <div class="dependency-head">
+                                            <span>{source.dependency.mod_name}</span>
+                                            <b>{source.dependency.status === "installed" ? "Installed" : source.dependency.status === "missing" ? "Missing" : source.dependency.status === "version-mismatch" ? "Version" : "Review"}</b>
+                                        </div>
+                                        <small>From {source.parentName} · depth {source.depth}</small>
+                                        <small>{source.dependency.file_name ?? source.dependency.group_name ?? "Candidate file"} {source.dependency.version ? `· v${source.dependency.version}` : ""}</small>
+                                        <small>{nestedDependencyStatusLabel(source)}</small>
+                                        <div class="dependency-actions">
+                                            {#if source.dependency.mod_id}
+                                                <button on:click={() => openDependencyDetails(source.dependency)}>Details</button>
+                                                <button on:click={() => openDependencyPage(source.dependency)}>Nexus</button>
+                                            {/if}
+                                            {#if source.dependency.match}
+                                                <button on:click={() => openDependencyLocation(source.dependency)}>Open Folder</button>
+                                            {/if}
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
                         {/if}
                     </div>
 
@@ -4338,16 +4547,16 @@
     }
 
     .detail-link-actions {
-        display: grid;
+        display: flex;
+        flex-wrap: wrap;
         gap: 0.45em;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
     }
 
     .detail-link-actions button {
+        flex: 1 1 6.25em;
         margin: 0;
         min-width: 0;
         padding: 0 0.45em;
-        width: 100%;
     }
 
     .detail-title {
@@ -4668,9 +4877,34 @@
 
     .file-picker,
     .dependency-box {
+        display: flex;
+        flex-direction: column;
         flex: 1 1 0;
+        gap: 0.45em;
         min-height: 0;
         overflow-y: auto;
+    }
+
+    .dependency-box-head {
+        align-items: center;
+        display: flex;
+        gap: 0.65em;
+        justify-content: space-between;
+        min-width: 0;
+    }
+
+    .dependency-box-head button {
+        flex: 0 0 auto;
+        font-size: 0.72em;
+        margin: 0;
+        min-height: 2.15em;
+        min-width: 8.4em;
+        padding: 0.35em 0.55em;
+    }
+
+    .dependency-box-head button:disabled {
+        cursor: default;
+        opacity: 0.52;
     }
 
     .changelog-box {
@@ -4777,6 +5011,22 @@
         flex-direction: column;
         gap: 0.15em;
         padding: 0.55em 0;
+    }
+
+    .dependency-nested-section {
+        border-top: 1px solid rgba(255, 255, 255, 0.11);
+        display: flex;
+        flex-direction: column;
+        gap: 0.1em;
+        margin-top: 0.25em;
+        padding-top: 0.45em;
+    }
+
+    .dependency-subtitle {
+        color: #d4d9df;
+        font-size: 0.75em;
+        font-weight: 900;
+        text-transform: uppercase;
     }
 
     .dependency-row span {
@@ -4932,10 +5182,6 @@
         .detail-header-actions button {
             flex: 1 1 0;
             min-width: 0;
-        }
-
-        .detail-link-actions {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         .nxm-link-row {
