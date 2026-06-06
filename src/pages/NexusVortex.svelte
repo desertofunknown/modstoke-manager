@@ -7001,6 +7001,8 @@
     }
 
     .detail-panel {
+        --detail-panel-height: calc(100vh - clamp(1.2em, 3vh, 2.2em));
+        --detail-scroll-section-max: clamp(280px, calc((var(--detail-panel-height) - 15em) / 1.65), 560px);
         background:
             linear-gradient(180deg, rgba(18, 18, 18, 0.96), rgba(6, 6, 6, 0.94)),
             rgba(0, 0, 0, 0.92);
@@ -7009,9 +7011,9 @@
         display: flex;
         flex-direction: column;
         gap: 0.8em;
-        max-height: calc(100vh - 1.5em);
-        max-width: min(96vw, 1320px);
-        min-height: min(74vh, 740px);
+        max-height: var(--detail-panel-height);
+        max-width: min(97vw, 1440px);
+        min-height: min(82vh, 820px);
         padding: clamp(1em, 2vh, 1.35em);
         width: 100%;
     }
@@ -7109,9 +7111,8 @@
         display: grid;
         flex: 0 0 auto;
         gap: 0.45em;
-        grid-template-columns: repeat(6, minmax(7.2em, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(6.9em, 1fr));
         min-width: 0;
-        overflow-x: auto;
         padding-bottom: 0.05em;
     }
 
@@ -7166,7 +7167,7 @@
         display: grid;
         flex: 0 0 auto;
         gap: 0.65em;
-        grid-template-columns: minmax(14em, 1fr) minmax(18em, auto) minmax(18em, 0.9fr);
+        grid-template-columns: minmax(12em, 1fr) minmax(18em, auto);
         padding: 0.65em 0.75em;
     }
 
@@ -7213,6 +7214,7 @@
         display: flex;
         flex-wrap: wrap;
         gap: 0.45em;
+        grid-column: 1 / -1;
         justify-content: flex-end;
         min-width: 0;
     }
@@ -7253,7 +7255,7 @@
         display: grid;
         flex: 1 1 auto;
         gap: 1em;
-        grid-template-columns: minmax(0, 1fr) minmax(480px, 0.78fr);
+        grid-template-columns: minmax(0, 1.04fr) minmax(420px, 0.9fr);
         min-height: 0;
         overflow: hidden;
     }
@@ -7302,7 +7304,7 @@
         border: 1px solid rgba(255, 255, 255, 0.12);
         box-sizing: border-box;
         flex: 0 0 auto;
-        min-height: clamp(170px, 28vh, 300px);
+        min-height: clamp(156px, 24vh, 288px);
         overflow: hidden;
         position: relative;
         width: 100%;
@@ -7311,7 +7313,7 @@
     .detail-img {
         background: #151515;
         display: block;
-        height: clamp(170px, 28vh, 300px);
+        height: clamp(156px, 24vh, 288px);
         object-fit: cover;
         width: 100%;
     }
@@ -7434,8 +7436,8 @@
     }
 
     .detail-text {
-        flex: 1 1 12em;
-        max-height: clamp(190px, 30vh, 360px);
+        flex: 1 1 14em;
+        max-height: clamp(240px, 38vh, 520px);
         min-height: 0;
         overflow-y: auto;
     }
@@ -8052,7 +8054,7 @@
         flex: 0 0 auto;
         flex-direction: column;
         gap: 0.45em;
-        max-height: clamp(130px, 20vh, 230px);
+        max-height: clamp(170px, 26vh, 320px);
         min-height: 0;
         overflow-y: auto;
     }
@@ -8231,8 +8233,8 @@
         flex-direction: column;
         flex: 1 1 15em;
         gap: 0.45em;
-        max-height: clamp(240px, 32vh, 380px);
-        min-height: 13em;
+        max-height: var(--detail-scroll-section-max);
+        min-height: clamp(15em, 28vh, 22em);
         overflow-y: auto;
     }
 
@@ -8344,7 +8346,7 @@
 
     .changelog-box {
         flex: 1 1 10em;
-        max-height: clamp(150px, 24vh, 280px);
+        max-height: clamp(180px, 28vh, 340px);
         min-height: 8.5em;
         overflow-y: auto;
     }
@@ -8578,7 +8580,7 @@
         padding: 0.35em 0.55em;
     }
 
-    @media (max-width: 1120px) {
+    @media (max-width: 1240px) {
         .nexus-filter-row {
             grid-template-columns: minmax(13em, 1fr) repeat(2, minmax(8.5em, 0.55fr));
         }
@@ -8599,6 +8601,7 @@
         }
 
         .detail-panel {
+            --detail-scroll-section-max: none;
             max-height: calc(100vh - 1.5em);
             min-height: 0;
         }
@@ -8723,6 +8726,10 @@
             grid-template-columns: 1fr;
         }
 
+        .detail-link-actions {
+            grid-column: auto;
+        }
+
         .detail-actions,
         .detail-link-actions {
             justify-content: stretch;
@@ -8737,6 +8744,33 @@
     @media (max-height: 900px) {
         .nexus-page {
             gap: 0.45em;
+        }
+
+        .detail-panel {
+            --detail-scroll-section-max: clamp(230px, 34vh, 430px);
+            gap: 0.55em;
+            padding: 0.85em;
+        }
+
+        .detail-section-nav button {
+            min-height: 2.35em;
+            padding: 0.28em 0.45em;
+        }
+
+        .detail-media-frame {
+            min-height: clamp(128px, 19vh, 220px);
+        }
+
+        .detail-img {
+            height: clamp(128px, 19vh, 220px);
+        }
+
+        .detail-text {
+            max-height: clamp(190px, 30vh, 360px);
+        }
+
+        .selected-file-notes {
+            max-height: clamp(140px, 22vh, 260px);
         }
 
         .account-panel {

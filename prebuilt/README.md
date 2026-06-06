@@ -13,6 +13,8 @@ The current BBCode renderer also preserves additional author-layout cues for Nex
 
 Dependency normalization also accepts alternate wrapped, camelCase, nodes, and edges payload shapes from supported Nexus dependency responses before falling back from materialized candidates to range definitions.
 
+The Nexus detail drawer now allocates more height to Files, selected-file notes, Dependencies, and Changelog, stacks earlier on medium-width windows, and wraps Nexus page-section links below the primary deployment controls so the install action stays readable.
+
 MSI builds are intentionally not published while the current MSI launch issue is investigated.
 
 These builds are signed with the OpenACAI Inc Azure Trusted Signing certificate. Windows SmartScreen and some browsers may still warn until publisher reputation builds, so keep checksums published and verify signatures before release.
