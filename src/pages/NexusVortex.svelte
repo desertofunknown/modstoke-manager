@@ -211,7 +211,7 @@
     const NEXUS_PLACEHOLDER_IMAGE = "https://placehold.co/320x180/252525/FFF?text=Nexus";
     const NEXUS_DETAIL_PLACEHOLDER_IMAGE = "https://placehold.co/640x360/252525/FFF?text=Nexus";
     const NEXUS_DESCRIPTION_FALLBACK = "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing.";
-    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "sub", "sup", "url", "img", "color", "size", "center", "left", "right", "justify", "align", "indent", "code", "quote", "spoiler", "font", "heading", "h1", "h2", "h3", "h4", "h5", "h6", "youtube", "video"]);
+    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "sub", "sup", "url", "img", "color", "size", "center", "left", "right", "justify", "align", "indent", "code", "pre", "quote", "spoiler", "font", "heading", "h1", "h2", "h3", "h4", "h5", "h6", "youtube", "video"]);
     const NEXUS_SAFE_COLOR_NAMES = new Set(["black", "white", "gray", "grey", "silver", "red", "maroon", "orange", "yellow", "olive", "lime", "green", "aqua", "cyan", "teal", "blue", "navy", "fuchsia", "magenta", "purple", "pink"]);
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
     const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
@@ -1486,6 +1486,14 @@
 
         const current = selectedDetailPreviewIndexValue(urls);
         selectedDetailPreviewIndex = (current + step + urls.length) % urls.length;
+    }
+
+    function selectSelectedDetailPreview(index: number) {
+        if (index < 0 || index >= currentDetailPreviewUrls.length) {
+            return;
+        }
+
+        selectedDetailPreviewIndex = index;
     }
 
     function handleNexusImageError(event: Event, fallback = NEXUS_PLACEHOLDER_IMAGE) {
@@ -3188,6 +3196,12 @@
         | { kind: "block"; value: string }
         | { kind: "list"; value: string; ordered: boolean; style?: string }
         | { kind: "table"; value: string };
+    type NexusTableCell = {
+        value: string;
+        header: boolean;
+        colspan?: number;
+        rowspan?: number;
+    };
 
     function plainText(value?: string): string {
         return normalizeNexusMarkup(value)
@@ -3275,8 +3289,12 @@
 
         return decodeHtmlEntities(text)
             .replace(/\[\/\*\]/g, "")
+            .replace(/\[(?:br|break)\s*\/?\]/gi, "\n")
+            .replace(/\[(?:pre|raw|noparse)\]/gi, "[code]")
+            .replace(/\[\/(?:pre|raw|noparse)\]/gi, "[/code]")
             .replace(/\[h([1-6])\]/gi, "[heading=$1]")
             .replace(/\[\/h[1-6]\]/gi, "[/heading]")
+            .replace(/\[(url|img|color|size|align|indent|quote|spoiler|heading|youtube|video|list|olist|ol|ul)([ \t][^\]]+)\]/gi, (_match, tag: string, attrs: string) => normalizeNexusBbOpeningTag(tag, attrs))
             .replace(/\[(?:ul|list)(?:=([^\]]+))?\]/gi, (_match, attr: string | undefined) => {
                 if (isOrderedNexusListAttr(attr)) {
                     const type = nexusOrderedListType(attr);
@@ -3296,7 +3314,7 @@
             .replace(/\[\/?(?:tbody|thead|tfoot)[^\]]*\]/gi, "")
             .replace(/\[tr[^\]]*\]/gi, "[tr]")
             .replace(/\[\/tr\]/gi, "[/tr]\n")
-            .replace(/\[(td|th)[^\]]*\]/gi, (_match, cell: string) => `[${cell.toLowerCase()}]`)
+            .replace(/\[(td|th)([^\]]*)\]/gi, (_match, cell: string, attrs: string) => `[${cell.toLowerCase()}${attrs ?? ""}]`)
             .replace(/\[\/(td|th)\]/gi, (_match, cell: string) => `[/${cell.toLowerCase()}]`)
             .replace(/\[hr\s*\/?\]/gi, "\n\n[hr]\n\n")
             .replace(/\[line\s*\/?\]/gi, "\n\n[hr]\n\n")
@@ -3325,28 +3343,36 @@
 
     function nexusBlockChunks(text: string): NexusBlockChunk[] {
         const chunks: NexusBlockChunk[] = [];
-        const structuralPattern = /\[table(?:=[^\]]+)?\]([\s\S]*?)\[\/table\]|\[(list|olist)(?:=([^\]]+))?\]([\s\S]*?)\[\/(?:list|olist)\]/gi;
-        let lastIndex = 0;
+        const structuralPattern = /\[(table|list|olist)(?:=([^\]]+))?\]/gi;
+        let cursor = 0;
         let match: RegExpExecArray | null;
 
         while ((match = structuralPattern.exec(text)) !== null) {
-            appendNexusTextChunks(chunks, text.slice(lastIndex, match.index));
-            if (typeof match[1] === "string") {
-                chunks.push({ kind: "table", value: match[1].trim() });
+            const tag = match[1].toLowerCase();
+            const attr = match[2];
+            const close = findNexusStructureClose(text, structuralPattern.lastIndex, tag === "table" ? "table" : "list");
+            if (!close) {
+                continue;
+            }
+
+            appendNexusTextChunks(chunks, text.slice(cursor, match.index));
+            const value = text.slice(structuralPattern.lastIndex, close.start).trim();
+            if (tag === "table") {
+                chunks.push({ kind: "table", value });
             } else {
-                const tag = (match[2] ?? "list").toLowerCase();
-                const attr = match[3];
                 chunks.push({
                     kind: "list",
-                    value: (match[4] ?? "").trim(),
+                    value,
                     ordered: tag === "olist" || isOrderedNexusListAttr(attr),
                     style: nexusOrderedListType(attr) ?? undefined
                 });
             }
-            lastIndex = structuralPattern.lastIndex;
+
+            cursor = close.end;
+            structuralPattern.lastIndex = close.end;
         }
 
-        appendNexusTextChunks(chunks, text.slice(lastIndex));
+        appendNexusTextChunks(chunks, text.slice(cursor));
         return chunks;
     }
 
@@ -3357,6 +3383,28 @@
                 chunks.push({ kind: "block", value: trimmed });
             }
         }
+    }
+
+    function findNexusStructureClose(text: string, startIndex: number, kind: "list" | "table"): { start: number; end: number } | null {
+        const pattern = kind === "table"
+            ? /\[\/?table(?:=[^\]]+)?\]/gi
+            : /\[\/?(?:list|olist)(?:=[^\]]+)?\]/gi;
+        pattern.lastIndex = startIndex;
+        let depth = 1;
+        let match: RegExpExecArray | null;
+
+        while ((match = pattern.exec(text)) !== null) {
+            if (match[0].startsWith("[/")) {
+                depth -= 1;
+                if (depth === 0) {
+                    return { start: match.index, end: pattern.lastIndex };
+                }
+            } else {
+                depth += 1;
+            }
+        }
+
+        return null;
     }
 
     function renderNexusBlock(chunk: NexusBlockChunk, depth: number): string {
@@ -3373,7 +3421,7 @@
 
             const tag = chunk.ordered ? "ol" : "ul";
             const typeAttribute = chunk.ordered && chunk.style ? ` type="${escapeAttribute(chunk.style)}"` : "";
-            return `<${tag}${typeAttribute}>${listItems.map(item => `<li>${renderNexusInline(item)}</li>`).join("")}</${tag}>`;
+            return `<${tag}${typeAttribute}>${listItems.map(item => `<li>${renderNexusListItem(item, depth)}</li>`).join("")}</${tag}>`;
         }
 
         if (chunk.kind === "table") {
@@ -3427,12 +3475,22 @@
         return `<p>${renderNexusInline(block)}</p>`;
     }
 
+    function renderNexusListItem(item: string, depth: number): string {
+        return hasNexusBlockStructure(item)
+            ? renderNexusBlocks(item, depth + 1)
+            : renderNexusInline(item);
+    }
+
+    function hasNexusBlockStructure(value: string): boolean {
+        return /\[(?:table|list|olist|quote|spoiler|indent|center|left|right|align|justify|code|heading)(?:=[^\]]+)?\]/i.test(value);
+    }
+
     function renderNexusTable(block: string, depth: number): string {
         const rows = nexusTableRows(block);
         if (rows.length === 0) {
             const fallback = block
                 .replace(/\[\/?tr\]/gi, "\n")
-                .replace(/\[(?:td|th)\]/gi, "")
+                .replace(/\[(?:td|th)[^\]]*\]/gi, "")
                 .replace(/\[\/(?:td|th)\]/gi, " | ")
                 .trim();
             return fallback ? `<p>${renderNexusInline(fallback)}</p>` : "";
@@ -3441,26 +3499,33 @@
         return `<div class="nexus-rich-table-wrap"><table class="nexus-rich-table"><tbody>${rows.map(row => {
             const cells = row.cells.map(cell => {
                 const tag = cell.header ? "th" : "td";
-                return `<${tag}>${renderNexusBlocks(cell.value, depth + 1)}</${tag}>`;
+                const spanAttributes = [
+                    cell.colspan ? ` colspan="${cell.colspan}"` : "",
+                    cell.rowspan ? ` rowspan="${cell.rowspan}"` : ""
+                ].join("");
+                return `<${tag}${spanAttributes}>${renderNexusBlocks(cell.value, depth + 1)}</${tag}>`;
             }).join("");
             return `<tr>${cells}</tr>`;
         }).join("")}</tbody></table></div>`;
     }
 
-    function nexusTableRows(block: string): Array<{ cells: Array<{ value: string; header: boolean }> }> {
-        const rows: Array<{ cells: Array<{ value: string; header: boolean }> }> = [];
+    function nexusTableRows(block: string): Array<{ cells: NexusTableCell[] }> {
+        const rows: Array<{ cells: NexusTableCell[] }> = [];
         const rowPattern = /\[tr\]([\s\S]*?)\[\/tr\]/gi;
         let rowMatch: RegExpExecArray | null;
 
         while ((rowMatch = rowPattern.exec(block)) !== null) {
-            const cells: Array<{ value: string; header: boolean }> = [];
-            const cellPattern = /\[(td|th)\]([\s\S]*?)\[\/\1\]/gi;
+            const cells: NexusTableCell[] = [];
+            const cellPattern = /\[(td|th)([^\]]*)\]([\s\S]*?)\[\/\1\]/gi;
             let cellMatch: RegExpExecArray | null;
 
             while ((cellMatch = cellPattern.exec(rowMatch[1])) !== null) {
+                const attrs = cellMatch[2] ?? "";
                 cells.push({
-                    value: cellMatch[2].trim(),
-                    header: cellMatch[1].toLowerCase() === "th"
+                    value: cellMatch[3].trim(),
+                    header: cellMatch[1].toLowerCase() === "th",
+                    colspan: safeNexusTableSpan(nexusBbAttribute(attrs, "colspan") ?? nexusBbAttribute(attrs, "col") ?? nexusBbFirstAttributeValue(attrs)),
+                    rowspan: safeNexusTableSpan(nexusBbAttribute(attrs, "rowspan") ?? nexusBbAttribute(attrs, "row"))
                 });
             }
 
@@ -3478,20 +3543,62 @@
             .replace(/\s*\[\/list\]$/i, "")
             .replace(/\s*\[\/olist\]$/i, "")
             .trim();
-        const lines = cleaned.split("\n").map(line => line.trim()).filter(Boolean);
+        const markedItems = splitNexusMarkedListItems(cleaned);
+        if (markedItems.length > 0) {
+            return markedItems;
+        }
 
+        const lines = cleaned.split("\n").map(line => line.trim()).filter(Boolean);
         if (lines.length > 0 && lines.every(line => /^(?:\[\*\]|[-*]\s+|\d+[.)]\s+)/.test(line))) {
             return lines.map(line => line.replace(/^(?:\[\*\]|[-*]\s+|\d+[.)]\s+)/, "").trim()).filter(Boolean);
         }
 
-        if (!cleaned.startsWith("[*]")) {
-            return [];
+        return lines.length > 1 ? lines : cleaned ? [cleaned] : [];
+    }
+
+    function splitNexusMarkedListItems(value: string): string[] {
+        const items: string[] = [];
+        const tokenPattern = /\[\*\]|\[\/?(?:list|olist|table)(?:=[^\]]+)?\]/gi;
+        let listDepth = 0;
+        let tableDepth = 0;
+        let currentStart: number | null = null;
+        let match: RegExpExecArray | null;
+
+        while ((match = tokenPattern.exec(value)) !== null) {
+            const token = match[0].toLowerCase();
+            if (token === "[*]") {
+                if (listDepth === 0 && tableDepth === 0) {
+                    if (currentStart !== null) {
+                        const item = value.slice(currentStart, match.index).trim();
+                        if (item) {
+                            items.push(item);
+                        }
+                    }
+
+                    currentStart = tokenPattern.lastIndex;
+                }
+                continue;
+            }
+
+            if (token.startsWith("[/table")) {
+                tableDepth = Math.max(0, tableDepth - 1);
+            } else if (token.startsWith("[table")) {
+                tableDepth += 1;
+            } else if (token.startsWith("[/list") || token.startsWith("[/olist")) {
+                listDepth = Math.max(0, listDepth - 1);
+            } else {
+                listDepth += 1;
+            }
         }
 
-        return cleaned
-            .split(/(?=\[\*\])/)
-            .map(item => item.replace(/^\[\*\]/, "").trim())
-            .filter(Boolean);
+        if (currentStart !== null) {
+            const item = value.slice(currentStart).trim();
+            if (item) {
+                items.push(item);
+            }
+        }
+
+        return items;
     }
 
     function renderNexusInline(value: string): string {
@@ -3504,7 +3611,7 @@
     function parseNexusRichNodes(value: string): NexusRichNode[] {
         const root: { children: NexusRichNode[] } = { children: [] };
         const stack: Array<{ name: string; children: NexusRichNode[] }> = [{ name: "root", children: root.children }];
-        const tagPattern = /\[(\/?)([a-z][a-z0-9_-]*)(?:=([^\]]+))?\]/gi;
+        const tagPattern = /\[(\/?)([a-z][a-z0-9_-]*)([^\]]*)\]/gi;
         let lastIndex = 0;
         let match: RegExpExecArray | null;
 
@@ -3516,6 +3623,8 @@
             const full = match[0];
             const name = match[2].toLowerCase();
             const isClosing = match[1] === "/";
+            const rawAttrs = match[3] ?? "";
+            const isSelfClosing = /\/\s*$/.test(rawAttrs);
 
             if (!NEXUS_RICH_BB_TAGS.has(name)) {
                 stack[stack.length - 1].children.push({ kind: "text", value: full });
@@ -3526,9 +3635,11 @@
                     stack[stack.length - 1].children.push({ kind: "text", value: full });
                 }
             } else {
-                const node: NexusRichNode = { kind: "tag", name, attr: match[3], children: [] };
+                const node: NexusRichNode = { kind: "tag", name, attr: nexusBbTagAttribute(name, rawAttrs), children: [] };
                 stack[stack.length - 1].children.push(node);
-                stack.push(node);
+                if (!isSelfClosing) {
+                    stack.push(node);
+                }
             }
 
             lastIndex = tagPattern.lastIndex;
@@ -3569,8 +3680,8 @@
                 return url ? `<a href="${escapeAttribute(url)}" target="_blank" rel="noreferrer noopener">${inner || escapeHtml(url)}</a>` : inner;
             }
             case "img": {
-                const url = safeNexusUrl(collectNexusNodeText(node.children));
-                return url ? `<img class="nexus-rich-image" src="${escapeAttribute(url)}" alt="" />` : "";
+                const url = safeNexusUrl(node.attr ?? collectNexusNodeText(node.children));
+                return url ? `<img class="nexus-rich-image" src="${escapeAttribute(url)}" alt="" />${node.attr ? inner : ""}` : inner;
             }
             case "color": {
                 const color = safeNexusColor(node.attr);
@@ -3591,6 +3702,7 @@
                 return `<span class="nexus-rich-indent-inline nexus-rich-indent-${level}">${inner}</span>`;
             }
             case "code":
+            case "pre":
                 return `<code>${escapeHtml(collectNexusNodeText(node.children))}</code>`;
             case "quote":
                 return `<blockquote>${inner}</blockquote>`;
@@ -3615,6 +3727,118 @@
             default:
                 return inner;
         }
+    }
+
+    function normalizeNexusBbOpeningTag(tag: string, rawAttrs: string): string {
+        const name = tag.toLowerCase();
+        const attr = nexusBbTagAttribute(name, rawAttrs);
+        if (name === "ol" || name === "olist") {
+            const type = nexusOrderedListType(attr);
+            return `\n[olist${type ? `=${type}` : ""}]\n`;
+        }
+
+        if (name === "ul") {
+            return "\n[list]\n";
+        }
+
+        if (name === "list") {
+            if (isOrderedNexusListAttr(attr)) {
+                const type = nexusOrderedListType(attr);
+                return `\n[olist${type ? `=${type}` : ""}]\n`;
+            }
+
+            return "\n[list]\n";
+        }
+
+        return attr ? `[${name}=${attr}]` : `[${name}]`;
+    }
+
+    function nexusBbTagAttribute(tag: string, rawAttrs?: string): string | undefined {
+        const direct = nexusBbDirectAttribute(rawAttrs);
+        switch (tag) {
+            case "url":
+                return nexusBbAttribute(rawAttrs, "href")
+                    ?? nexusBbAttribute(rawAttrs, "url")
+                    ?? direct
+                    ?? nexusBbFirstAttributeValue(rawAttrs);
+            case "img":
+                return nexusBbAttribute(rawAttrs, "src")
+                    ?? nexusBbAttribute(rawAttrs, "url")
+                    ?? direct
+                    ?? nexusBbFirstAttributeValue(rawAttrs);
+            case "quote":
+                return nexusBbAttribute(rawAttrs, "name")
+                    ?? nexusBbAttribute(rawAttrs, "author")
+                    ?? nexusBbAttribute(rawAttrs, "cite")
+                    ?? direct
+                    ?? nexusBbFirstAttributeValue(rawAttrs);
+            case "spoiler":
+                return nexusBbAttribute(rawAttrs, "title")
+                    ?? nexusBbAttribute(rawAttrs, "label")
+                    ?? nexusBbAttribute(rawAttrs, "name")
+                    ?? direct
+                    ?? nexusBbFirstAttributeValue(rawAttrs);
+            case "align":
+            case "color":
+            case "heading":
+            case "indent":
+            case "list":
+            case "ol":
+            case "olist":
+            case "size":
+            case "youtube":
+            case "video":
+                return nexusBbAttribute(rawAttrs, "type")
+                    ?? nexusBbAttribute(rawAttrs, "style")
+                    ?? nexusBbAttribute(rawAttrs, tag)
+                    ?? direct
+                    ?? nexusBbFirstAttributeValue(rawAttrs);
+            default:
+                return direct ?? nexusBbFirstAttributeValue(rawAttrs);
+        }
+    }
+
+    function nexusBbDirectAttribute(rawAttrs?: string): string | undefined {
+        const trimmed = (rawAttrs ?? "").trim().replace(/\/\s*$/, "").trim();
+        if (!trimmed.startsWith("=")) {
+            return undefined;
+        }
+
+        return cleanNexusBbAttributeValue(trimmed.slice(1));
+    }
+
+    function nexusBbAttribute(rawAttrs: string | undefined, name: string): string | undefined {
+        const attrs = rawAttrs ?? "";
+        const pattern = new RegExp(`${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s\\]]+))`, "i");
+        const match = attrs.match(pattern);
+        return match ? cleanNexusBbAttributeValue(match[1] ?? match[2] ?? match[3]) : undefined;
+    }
+
+    function nexusBbFirstAttributeValue(rawAttrs?: string): string | undefined {
+        const trimmed = (rawAttrs ?? "")
+            .trim()
+            .replace(/\/\s*$/, "")
+            .trim();
+        if (!trimmed || trimmed.includes("=")) {
+            return undefined;
+        }
+
+        const quoted = trimmed.match(/^"([^"]*)"|^'([^']*)'/);
+        if (quoted) {
+            return cleanNexusBbAttributeValue(quoted[1] ?? quoted[2]);
+        }
+
+        return cleanNexusBbAttributeValue(trimmed.split(/\s+/)[0]);
+    }
+
+    function cleanNexusBbAttributeValue(value?: string): string | undefined {
+        const cleaned = decodeHtmlEntities(value ?? "")
+            .replace(/^[\s"'=]+|[\s"']+$/g, "")
+            .replace(/[\[\]\r\n]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 500);
+        return cleaned || undefined;
     }
 
     function collectNexusNodeText(nodes: NexusRichNode[]): string {
@@ -3708,6 +3932,15 @@
         }
 
         return Math.max(1, Math.min(4, numeric)) as 1 | 2 | 3 | 4;
+    }
+
+    function safeNexusTableSpan(value?: string): number | undefined {
+        const numeric = Number.parseInt(decodeHtmlEntities(value ?? "").trim().replace(/^['"]|['"]$/g, ""), 10);
+        if (!Number.isFinite(numeric) || numeric <= 1) {
+            return undefined;
+        }
+
+        return Math.min(6, numeric);
     }
 
     function safeNexusMediaUrl(kind: string, attr?: string, text?: string): string | null {
@@ -4292,6 +4525,26 @@
                             </div>
                         {/if}
                     </div>
+                    {#if currentDetailPreviewUrls.length > 1}
+                        <div class="detail-media-strip" aria-label={`${selectedMod.name} preview thumbnails`}>
+                            {#each currentDetailPreviewUrls as previewUrl, previewIndex}
+                                <button
+                                    type="button"
+                                    class:detail-media-thumb-active={previewIndex === currentDetailPreviewIndex}
+                                    aria-label={`Show preview image ${previewIndex + 1} of ${currentDetailPreviewUrls.length}`}
+                                    aria-pressed={previewIndex === currentDetailPreviewIndex}
+                                    on:click={() => selectSelectedDetailPreview(previewIndex)}
+                                >
+                                    <img
+                                        src={previewUrl}
+                                        on:error={(event) => handleNexusImageError(event, NEXUS_PLACEHOLDER_IMAGE)}
+                                        alt=""
+                                    />
+                                    <span>{previewIndex + 1}</span>
+                                </button>
+                            {/each}
+                        </div>
+                    {/if}
 
                     <div class="detail-text">
                         <div class="detail-text-head">
@@ -5871,6 +6124,64 @@
         white-space: nowrap;
     }
 
+    .detail-media-strip {
+        display: flex;
+        flex: 0 0 auto;
+        gap: 0.45em;
+        min-height: 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 0 0 0.15em;
+        scrollbar-width: thin;
+    }
+
+    .detail-media-strip button {
+        background: rgba(28, 28, 28, 0.88);
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        box-shadow: none;
+        box-sizing: border-box;
+        display: block;
+        flex: 0 0 clamp(82px, 8vw, 118px);
+        height: clamp(44px, 6vh, 66px);
+        margin: 0;
+        min-height: 0;
+        min-width: 0;
+        overflow: hidden;
+        padding: 0;
+        position: relative;
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+
+    .detail-media-strip button:hover,
+    .detail-media-strip .detail-media-thumb-active {
+        border-color: rgba(98, 240, 155, 0.72);
+    }
+
+    .detail-media-strip img {
+        display: block;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0.78;
+        width: 100%;
+    }
+
+    .detail-media-strip .detail-media-thumb-active img {
+        opacity: 1;
+    }
+
+    .detail-media-strip span {
+        background: rgba(0, 0, 0, 0.62);
+        bottom: 0.25em;
+        color: #eefcff;
+        font-size: 0.68em;
+        font-weight: 900;
+        line-height: 1;
+        padding: 0.18em 0.35em;
+        position: absolute;
+        right: 0.25em;
+    }
+
     .detail-text,
     .changelog-box,
     .file-picker,
@@ -5932,6 +6243,17 @@
 
     .nexus-rich-text :global(li) {
         margin: 0.18em 0;
+    }
+
+    .nexus-rich-text :global(li > p:first-child) {
+        display: inline;
+        margin-top: 0;
+    }
+
+    .nexus-rich-text :global(li > p:first-child + ul),
+    .nexus-rich-text :global(li > p:first-child + ol),
+    .nexus-rich-text :global(li > p:first-child + .nexus-rich-table-wrap) {
+        margin-top: 0.4em;
     }
 
     .nexus-rich-text :global(strong),
