@@ -21,6 +21,7 @@
   - Made Nexus catalog previews more resilient by accepting protocol-relative and common nested media URL fields, replacing the remote placeholder with a bundled local fallback image, and using clearer compact preview count/cycle controls.
   - Added author-linked requirement hints from Nexus description, selected-file notes, and changelog links when structured dependency rows are missing or incomplete, without extra Nexus requests.
   - Added a compact thumbnail rail in Nexus detail drawers when the API provides multiple preview images.
+  - Enriched Nexus detail preview rails with safe image URLs found in API-provided descriptions, selected-file notes, and changelogs, so author-supplied screenshots can appear in the drawer without extra Nexus requests.
   - Added selected-file notes in Nexus detail drawers so file-specific descriptions and changelog HTML are shown with the same safe formatting before Vortex handoff.
   - Rebuilt and signed portable/setup EXEs as `0.2.0`.
 

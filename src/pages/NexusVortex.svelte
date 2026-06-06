@@ -262,6 +262,8 @@
     $: {
         selectedMod;
         selectedModDetails;
+        selectedNexusFile;
+        selectedChangelogs;
         currentDetailPreviewUrls = selectedDetailPreviewUrls();
     }
     $: {
@@ -1407,8 +1409,19 @@
             ...(selectedMod.image_urls ?? []),
             selectedMod.picture_url,
             ...(selectedModDetails?.image_urls ?? []),
-            selectedModDetails?.picture_url
+            selectedModDetails?.picture_url,
+            ...selectedRichTextPreviewUrls()
         ]);
+    }
+
+    function selectedRichTextPreviewUrls(): string[] {
+        const sources = [
+            selectedModDetails?.description,
+            selectedNexusFile?.description,
+            selectedNexusFile?.changelog_html,
+            ...selectedChangelogs.map(changelog => changelog.changes)
+        ];
+        return uniquePreviewUrls(sources.flatMap(source => nexusRichTextImageUrls(source)));
     }
 
     function selectedDetailPreviewIndexValue(urls: string[]): number {
@@ -1601,6 +1614,33 @@
         image.src = fallback;
     }
 
+    function nexusRichTextImageUrls(source?: string): string[] {
+        const normalized = normalizeNexusMarkup(source);
+        if (!normalized) {
+            return [];
+        }
+
+        const urls: string[] = [];
+        const pairedImagePattern = /\[img([^\]]*)\]([\s\S]*?)\[\/img\]/gi;
+        let pairedMatch: RegExpExecArray | null;
+        while ((pairedMatch = pairedImagePattern.exec(normalized)) !== null) {
+            const attrUrl = nexusImageUrlAttribute(pairedMatch[1], nexusBbTagAttribute("img", pairedMatch[1]));
+            const bodyUrl = collectNexusNodeText(parseNexusRichNodes(pairedMatch[2]));
+            urls.push(...[attrUrl, bodyUrl].filter((url): url is string => Boolean(url)));
+        }
+
+        const imageOpeningPattern = /\[img([^\]]*)\]/gi;
+        let openingMatch: RegExpExecArray | null;
+        while ((openingMatch = imageOpeningPattern.exec(normalized)) !== null) {
+            const url = nexusImageUrlAttribute(openingMatch[1], nexusBbTagAttribute("img", openingMatch[1]));
+            if (url) {
+                urls.push(url);
+            }
+        }
+
+        return uniquePreviewUrls(urls);
+    }
+
     function uniquePreviewUrls(values: Array<string | undefined>): string[] {
         const seen = new Set<string>();
         const urls: string[] = [];
@@ -1619,23 +1659,7 @@
     }
 
     function normalizePreviewUrl(value?: string): string | undefined {
-        const trimmed = (value ?? "")
-            .replace(/&amp;/gi, "&")
-            .replace(/&quot;/gi, "\"")
-            .replace(/&#39;/g, "'")
-            .trim();
-        const candidate = trimmed.startsWith("//")
-            ? `https:${trimmed}`
-            : /^www\./i.test(trimmed)
-                ? `https://${trimmed}`
-                : trimmed;
-
-        try {
-            const url = new URL(candidate);
-            return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : undefined;
-        } catch {
-            return undefined;
-        }
+        return safeNexusUrl(value) ?? undefined;
     }
 
     async function openInventoryLocation(entry: InstalledInventoryEntry) {
