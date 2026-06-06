@@ -31,10 +31,12 @@
     let isGrid = false;
 
     let page = 1;
-	let newBatch: Mod[] = [];
+    let newBatch: Mod[] = [];
     let isLoading: boolean = false;
     let hasLoadedOnce = false;
     let catalogError: string = "";
+    let onlineCatalogGeneration = 0;
+    let latestOnlineFetchId = 0;
     let installedInventoryWarning = "";
     let modsPageElement: HTMLDivElement | null = null;
     let modsLayoutObserver: ResizeObserver | null = null;
@@ -69,27 +71,42 @@
         void measureModsLayoutAfterTick();
     }
 
-    async function fetchData() {
+    async function fetchData(requestPage = page, requestGeneration = onlineCatalogGeneration) {
         //processing.set(true);
         //processProgress.set(0);
         //processName.set("Loading mods...");
+        const fetchId = ++latestOnlineFetchId;
         isLoading = true;
         catalogError = "";
         try {
-            let res = await ModDatabase.fetchMods(page, Sorting.newest, true, false, filterTerm, selectedCategory, selectedType);
+            let res = await ModDatabase.fetchMods(requestPage, Sorting.newest, true, false, filterTerm, selectedCategory, selectedType);
+            if (requestGeneration !== onlineCatalogGeneration || !onlineSelected) {
+                return;
+            }
+
             let mods = res.data;
             await ModDatabase.initModList(mods);
-		    newBatch = mods;
-            filtered = [...filtered, ...newBatch];
+            if (requestGeneration !== onlineCatalogGeneration || !onlineSelected) {
+                return;
+            }
+
+            newBatch = mods;
+            filtered = requestPage === 1 ? [...newBatch] : [...filtered, ...newBatch];
             hasLoadedOnce = true;
         } catch (error) {
+            if (requestGeneration !== onlineCatalogGeneration || !onlineSelected) {
+                return;
+            }
+
             newBatch = [];
             catalogError = `Failed to load the mod catalog: ${error}`;
         } finally {
-            isLoading = false;
+            if (fetchId === latestOnlineFetchId && requestGeneration === onlineCatalogGeneration && onlineSelected) {
+                isLoading = false;
+            }
         }
         //processing.set(false);
-	};
+    };
 
     // $: filtered = [
 	// 	...filtered,
@@ -107,7 +124,7 @@
         //processing.set(false);
         
         await loadCategories();
-        await fetchData();
+        await reloadOnline();
 
         try {
             await ModDatabase.initDatabase();
@@ -246,20 +263,26 @@
     }, 600);
 
     function applySharedSearch(value: string) {
-        if (value === filterTerm) {
+        const forceClearReload = value.trim() === "" && onlineSelected && hasLoadedOnce && filtered.length === 0 && !isLoading && !catalogError;
+        if (value === filterTerm && !forceClearReload) {
             return;
         }
 
-        handleSearchInput(value, false);
+        handleSearchInput(value, false, value.trim() === "" || forceClearReload);
     }
 
-    function handleSearchInput(value: string, emit = true) {
+    function handleSearchInput(value: string, emit = true, reloadImmediately = false) {
         filterTerm = value;
         if (emit) {
             dispatch("searchChange", value);
         }
         if (onlineSelected) {
-            debouncedReloadOnline();
+            if (reloadImmediately || value.trim() === "") {
+                debouncedReloadOnline.cancel();
+                void reloadOnline();
+            } else {
+                debouncedReloadOnline();
+            }
         }
     }
 
@@ -274,11 +297,13 @@
     async function reloadOnline() {
         onlineSelected = true;
         installedSelected = false;
+        onlineCatalogGeneration += 1;
+        const generation = onlineCatalogGeneration;
         page = 1;
         filtered = [];
         newBatch = [];
         hasLoadedOnce = false;
-        await fetchData();
+        await fetchData(1, generation);
     }
 
     async function handleFacetChange() {
@@ -310,6 +335,8 @@
     async function toggleInstalled() {
         // installedSelected = !installedSelected;
 
+        debouncedReloadOnline.cancel();
+        onlineCatalogGeneration += 1;
         onlineSelected = false;
         installedSelected = true;
         isLoading = true;
@@ -467,7 +494,7 @@
             <InfiniteScroll
                 hasMore={newBatch.length !== 0 && !installedSelected}
                 threshold={100}
-                on:loadMore={() => {page++; fetchData()}} />
+                on:loadMore={() => {page++; fetchData(page, onlineCatalogGeneration)}} />
         </div>
 
         {#if hasLoadedOnce && !isLoading && !catalogError && visibleMods.length === 0}

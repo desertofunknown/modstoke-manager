@@ -7,6 +7,7 @@
   - Merged the SOTF Mods and Nexus/Vortex storefronts into one top-level Mods workspace with a local source switch.
   - Added an All Stores Mods workspace mode that stacks SOTF Mods and Nexus/Vortex in one shared search surface while keeping each source's download/install actions reachable.
   - Added a shared Mods workspace search box that drives both the SOTF Mods and Nexus/Vortex sources, carries the search term across source switches, and hides the duplicate embedded search fields.
+  - Guarded SOTF Mods online catalog reloads so clearing the shared All Stores search immediately restores the catalog and stale empty search responses cannot overwrite the cleared results.
   - Compacted SOTF Mods list rows with measured scroller sizing so more mods stay visible in the unified Mods workspace, and retired the unstable SOTF grid toggle.
   - Improved compact Nexus detail drawers so the mod name, preview image, and formatted author description stay first, with deployment actions collected in a bottom footer.
   - Improved Nexus detail drawer responsive sizing so Files, selected-file notes, Dependencies, and Changelog get larger readable regions, the drawer stacks earlier on medium-width windows, and deployment/page-link controls wrap without squeezing the install action.
