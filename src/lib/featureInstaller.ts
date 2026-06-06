@@ -242,6 +242,7 @@ export let loaderFeature = new FeatureInstaller(loaderInstaller, loaderUninstall
 loaderFeature.additionalFoldersToCreate = ["Mods"];
 
 let openAcaiLoaderUninstaller = new BaseUninstaller([
+    // Remove the pre-rebrand bridge folder so repaired installs cannot load both runtimes.
     "BepInEx\\plugins\\RedLoaderBepInExCompat",
     "BepInEx\\plugins\\OpenACAILoader",
     "_Redloader",
@@ -253,7 +254,7 @@ let openAcaiLoaderUninstaller = new BaseUninstaller([
 openAcaiLoaderUninstaller.overrideCheckFiles = [
     "BepInEx\\plugins\\OpenACAILoader\\openacai-loader-state.json",
     "BepInEx\\plugins\\OpenACAILoader\\openacai-loader.manifest.json",
-    "BepInEx\\plugins\\RedLoaderBepInExCompat\\RedLoaderBepInExCompat.dll"
+    "BepInEx\\plugins\\OpenACAILoader\\OpenACAI.Endnight.Loader.Core.dll"
 ];
 
 export let openAcaiLoaderFeature = new FeatureInstaller(openAcaiLoaderInstaller, openAcaiLoaderUninstaller, "BepInEx\\plugins\\OpenACAILoader\\openacai-loader.manifest.json");

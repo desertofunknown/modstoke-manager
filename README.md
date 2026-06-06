@@ -17,7 +17,7 @@ It is based on Toni Macaroni's RedManager, but the main loader flow has been cha
 - Browse the live SOTF Mods storefront with category, type, compatibility, search, and installed/online filters that mirror the real store taxonomy.
 - Enable or disable installed native/manual mods from the manager with source-aware checkboxes; Vortex-managed packages are detected but left read-only so Vortex deployment metadata is not corrupted.
 - Connect a Nexus Mods account through the Nexus browser SSO flow where available, with a manual API token fallback for testing stored locally in the OS credential vault, and browse Nexus/Vortex-side Sons Of The Forest mods with cross-store install status.
-- Detect the OpenACAI Endnight Loader bridge through `BepInEx\plugins\OpenACAILoader` and `BepInEx\plugins\RedLoaderBepInExCompat`.
+- Detect the OpenACAI Endnight Loader core assembly through `BepInEx\plugins\OpenACAILoader`.
 - Keep old RedLoader/MelonLoader cleanup affordances so users can avoid competing loader bootstraps.
 - Present the manager in a frameless, transparent Sons-style shell with rough/jagged edges, Endnight splash-logo styling, and native-feeling chromatic text effects instead of a standard Windows app frame.
 

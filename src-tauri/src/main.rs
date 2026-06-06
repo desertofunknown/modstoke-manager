@@ -488,7 +488,7 @@ fn inspect_openacai_loader_zip(source: String) -> Result<LoaderZipInspection, St
         inspection.has_manifest |=
             entry == "bepinex/plugins/openacailoader/openacai-loader.manifest.json";
         inspection.has_bridge |=
-            entry == "bepinex/plugins/redloaderbepinexcompat/redloaderbepinexcompat.dll";
+            entry == "bepinex/plugins/openacailoader/openacai.endnight.loader.core.dll";
         inspection.has_bepinex_core |= entry == "bepinex/core/bepinex.core.dll";
         inspection.has_doorstop |= entry == "winhttp.dll" || entry == "doorstop_config.ini";
         inspection.has_private_admin_tool |= entry.contains("openacaiadmintool")
@@ -504,7 +504,7 @@ fn inspect_openacai_loader_zip(source: String) -> Result<LoaderZipInspection, St
 
     if !inspection.has_bridge {
         inspection.errors.push(
-            "Missing OpenACAI Endnight Loader core bridge at BepInEx/plugins/RedLoaderBepInExCompat/RedLoaderBepInExCompat.dll".to_string(),
+            "Missing OpenACAI Endnight Loader core assembly at BepInEx/plugins/OpenACAILoader/OpenACAI.Endnight.Loader.Core.dll".to_string(),
         );
     }
 
