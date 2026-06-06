@@ -202,7 +202,7 @@
     const NEXUS_PLACEHOLDER_IMAGE = "https://placehold.co/320x180/252525/FFF?text=Nexus";
     const NEXUS_DETAIL_PLACEHOLDER_IMAGE = "https://placehold.co/640x360/252525/FFF?text=Nexus";
     const NEXUS_DESCRIPTION_FALLBACK = "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing.";
-    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "url", "img", "color", "size", "center", "left", "right", "code", "quote", "spoiler", "font", "heading"]);
+    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "url", "img", "color", "size", "center", "left", "right", "align", "code", "quote", "spoiler", "font", "heading", "youtube", "video"]);
     const NEXUS_SAFE_COLOR_NAMES = new Set(["black", "white", "gray", "grey", "silver", "red", "maroon", "orange", "yellow", "olive", "lime", "green", "aqua", "cyan", "teal", "blue", "navy", "fuchsia", "magenta", "purple", "pink"]);
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
     const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
@@ -244,7 +244,7 @@
         selectedModDetails;
         selectedDetailDescription = selectedDetailDescriptionText();
         selectedDetailDescriptionHtml = selectedDetailDescriptionMarkup();
-        selectedDetailDescriptionCanToggle = shouldOfferDetailDescriptionToggle(selectedDetailDescription);
+        selectedDetailDescriptionCanToggle = shouldOfferDetailDescriptionToggle(selectedDetailDescription, selectedDetailDescriptionSource());
         if (!selectedDetailDescriptionCanToggle && detailDescriptionExpanded) {
             detailDescriptionExpanded = false;
         }
@@ -1351,8 +1351,11 @@
         return renderNexusRichText(selectedDetailDescriptionSource(), NEXUS_DESCRIPTION_FALLBACK);
     }
 
-    function shouldOfferDetailDescriptionToggle(description: string): boolean {
-        return description.length > 900 || description.split("\n").length > 12;
+    function shouldOfferDetailDescriptionToggle(description: string, source?: string): boolean {
+        const normalized = normalizeNexusMarkup(source);
+        const structuralWeight = (normalized.match(/\[\*\]/g)?.length ?? 0)
+            + (normalized.match(/\[(?:img|quote|code|spoiler|heading|hr|youtube|video)\b/gi)?.length ?? 0) * 2;
+        return description.length > 900 || description.split("\n").length > 12 || structuralWeight >= 8;
     }
 
     function cycleCatalogPreview(mod: NexusMod, urls: string[], step: number, event: MouseEvent) {
@@ -3043,8 +3046,15 @@
             .replace(/\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi, "$2 ($1)")
             .replace(/\[url\]([\s\S]*?)\[\/url\]/gi, "$1")
             .replace(/\[\*\]/g, "\n- ")
+            .replace(/\[\/?(?:table|tbody|thead|tfoot)[^\]]*\]/gi, "\n")
+            .replace(/\[\/?tr[^\]]*\]/gi, "\n")
+            .replace(/\[td[^\]]*\]/gi, "")
+            .replace(/\[\/td\]/gi, " | ")
+            .replace(/\[hr\s*\/?\]/gi, "\n---\n")
+            .replace(/\[youtube[^\]]*\]([\s\S]*?)\[\/youtube\]/gi, "YouTube: $1")
+            .replace(/\[video[^\]]*\]([\s\S]*?)\[\/video\]/gi, "Video: $1")
             .replace(/\[\/?\s*(?:list|ul|ol)[^\]]*\]/gi, "")
-            .replace(/\[\/?(?:b|i|u|s|size|color|font|center|left|right|quote|spoiler|code|heading)[^\]]*\]/gi, "")
+            .replace(/\[\/?(?:b|i|u|s|size|color|font|center|left|right|align|quote|spoiler|code|heading)[^\]]*\]/gi, "")
             .replace(/\[\/?[a-z0-9_-]+[^\]]*\]/gi, "")
             .replace(/[ \t]+/g, " ")
             .replace(/\n\s+/g, "\n")
@@ -3068,6 +3078,7 @@
             .replace(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi, "\n\n[heading]$2[/heading]\n\n")
             .replace(/<blockquote\b[^>]*>/gi, "\n\n[quote]")
             .replace(/<\/blockquote>/gi, "[/quote]\n\n")
+            .replace(/<hr\b[^>]*\/?>/gi, "\n\n[hr]\n\n")
             .replace(/<pre\b[^>]*>/gi, "\n\n[code]")
             .replace(/<\/pre>/gi, "[/code]\n\n")
             .replace(/<code\b[^>]*>/gi, "[code]")
@@ -3103,6 +3114,11 @@
             .replace(/\[(?:ul|ol|list)(?:=[^\]]+)?\]/gi, "\n[list]\n")
             .replace(/\[\/(?:ul|ol|list)\]/gi, "\n[/list]\n")
             .replace(/\[\*\]/g, "\n[*]")
+            .replace(/\[\/?(?:table|tbody|thead|tfoot)[^\]]*\]/gi, "\n\n")
+            .replace(/\[\/?tr[^\]]*\]/gi, "\n")
+            .replace(/\[td[^\]]*\]/gi, "")
+            .replace(/\[\/td\]/gi, " | ")
+            .replace(/\[hr\s*\/?\]/gi, "\n\n[hr]\n\n")
             .replace(/\[list\]\n{2,}/gi, "[list]\n")
             .replace(/\n{2,}\[\/list\]/gi, "\n[/list]")
             .replace(/([^\n])\[list\]/gi, "$1\n\n[list]")
@@ -3163,6 +3179,10 @@
                 : "";
         }
 
+        if (/^\[hr\]$/i.test(block)) {
+            return `<hr class="nexus-rich-rule" />`;
+        }
+
         const heading = block.match(/^\[heading\]([\s\S]*?)\[\/heading\]$/i);
         if (heading) {
             return `<p class="nexus-rich-heading">${renderNexusInline(heading[1])}</p>`;
@@ -3173,9 +3193,22 @@
             return `<pre><code>${escapeHtml(code[1])}</code></pre>`;
         }
 
-        const quote = block.match(/^\[quote(?:=[^\]]+)?\]([\s\S]*?)\[\/quote\]$/i);
+        const aligned = block.match(/^\[(center|left|right)\]([\s\S]*?)\[\/\1\]$/i) ?? block.match(/^\[align=([^\]]+)\]([\s\S]*?)\[\/align\]$/i);
+        if (aligned) {
+            const alignment = safeNexusAlignment(aligned[1]);
+            return `<div class="nexus-rich-align-${alignment}">${renderNexusBlocks(aligned[2], depth + 1)}</div>`;
+        }
+
+        const quote = block.match(/^\[quote(?:=([^\]]+))?\]([\s\S]*?)\[\/quote\]$/i);
         if (quote) {
-            return `<blockquote>${renderNexusBlocks(quote[1], depth + 1)}</blockquote>`;
+            const cite = safeNexusLabel(quote[1]);
+            return `<blockquote>${cite ? `<cite>${escapeHtml(cite)}</cite>` : ""}${renderNexusBlocks(quote[2], depth + 1)}</blockquote>`;
+        }
+
+        const spoiler = block.match(/^\[spoiler(?:=([^\]]+))?\]([\s\S]*?)\[\/spoiler\]$/i);
+        if (spoiler) {
+            const label = safeNexusLabel(spoiler[1]) || "Spoiler";
+            return `<div class="nexus-rich-spoiler-block"><span>${escapeHtml(label)}</span>${renderNexusBlocks(spoiler[2], depth + 1)}</div>`;
         }
 
         return `<p>${renderNexusInline(block)}</p>`;
@@ -3286,14 +3319,21 @@
             case "left":
             case "right":
                 return `<span class="nexus-rich-align-${node.name}">${inner}</span>`;
+            case "align":
+                return `<span class="nexus-rich-align-${safeNexusAlignment(node.attr)}">${inner}</span>`;
             case "code":
                 return `<code>${escapeHtml(collectNexusNodeText(node.children))}</code>`;
             case "quote":
                 return `<blockquote>${inner}</blockquote>`;
             case "spoiler":
-                return `<span class="nexus-rich-spoiler">${inner}</span>`;
+                return `<span class="nexus-rich-spoiler">${safeNexusLabel(node.attr) ? `<b>${escapeHtml(safeNexusLabel(node.attr) ?? "")}</b> ` : ""}${inner}</span>`;
             case "heading":
                 return `<span class="nexus-rich-heading">${inner}</span>`;
+            case "youtube":
+            case "video": {
+                const mediaUrl = safeNexusMediaUrl(node.name, node.attr, collectNexusNodeText(node.children));
+                return mediaUrl ? `<a class="nexus-rich-media-link" href="${escapeAttribute(mediaUrl)}" target="_blank" rel="noreferrer noopener">${node.name === "youtube" ? "Open YouTube video" : "Open video"}</a>` : inner;
+            }
             case "font":
                 return inner;
             default:
@@ -3320,6 +3360,33 @@
         } catch {
             return null;
         }
+    }
+
+    function safeNexusAlignment(value?: string): "left" | "center" | "right" {
+        const alignment = decodeHtmlEntities(value ?? "").trim().toLowerCase().replace(/^['"]|['"]$/g, "");
+        return alignment === "center" || alignment === "right" ? alignment : "left";
+    }
+
+    function safeNexusLabel(value?: string): string {
+        return decodeHtmlEntities(value ?? "")
+            .replace(/^['"]|['"]$/g, "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 80);
+    }
+
+    function safeNexusMediaUrl(kind: string, attr?: string, text?: string): string | null {
+        const raw = safeNexusLabel(attr) || safeNexusLabel(text);
+        const url = safeNexusUrl(raw);
+        if (url) {
+            return url;
+        }
+
+        if (kind === "youtube" && /^[a-z0-9_-]{6,32}$/i.test(raw)) {
+            return `https://www.youtube.com/watch?v=${encodeURIComponent(raw)}`;
+        }
+
+        return null;
     }
 
     function safeNexusColor(value?: string): string | null {
@@ -3892,18 +3959,20 @@
                     </div>
 
                     <div class="detail-text">
-                        <span class="detail-section-title">Directions / Description</span>
+                        <div class="detail-text-head">
+                            <span class="detail-section-title">Directions / Description</span>
+                            {#if selectedDetailDescriptionCanToggle}
+                                <button class="description-toggle" type="button" on:click={() => detailDescriptionExpanded = !detailDescriptionExpanded}>
+                                    {detailDescriptionExpanded ? "Show Less" : "Show More"}
+                                </button>
+                            {/if}
+                        </div>
                         <div
                             class="nexus-rich-text"
                             class:detail-description-collapsed={selectedDetailDescriptionCanToggle && !detailDescriptionExpanded}
                         >
                             {@html selectedDetailDescriptionHtml}
                         </div>
-                        {#if selectedDetailDescriptionCanToggle}
-                            <button class="description-toggle" type="button" on:click={() => detailDescriptionExpanded = !detailDescriptionExpanded}>
-                                {detailDescriptionExpanded ? "Show Less" : "Show More"}
-                            </button>
-                        {/if}
                     </div>
 
                     <div class="changelog-box">
@@ -4123,30 +4192,38 @@
                         {/if}
                     </div>
 
-                    <div class="detail-actions">
-                        <button class="install" disabled={!selectedNexusFile} on:click={installSelectedFileWithVortex}>{selectedInstallActionButtonLabel}</button>
-                        <button class="track-btn" disabled={activeNexusTrackId === selectedMod.mod_id} on:click={toggleSelectedModTracking}>
-                            {activeNexusTrackId === selectedMod.mod_id ? "Saving..." : isNexusModTracked(selectedMod.mod_id) ? "Tracked" : "Track"}
-                        </button>
-                        {#if installedMatch(selectedMod)}
-                            {#if isNexusModEndorsed(selectedMod.mod_id)}
-                                <button class="endorsed-btn" disabled>Endorsed</button>
-                            {:else}
-                                <button class="endorse-btn" disabled={activeNexusEndorseId === selectedMod.mod_id} on:click={endorseSelectedMod}>
-                                    {activeNexusEndorseId === selectedMod.mod_id ? "Endorsing..." : "Endorse"}
-                                </button>
-                            {/if}
-                        {/if}
-                        <button on:click={openSelectedModPage}>Open Page</button>
-                    </div>
+                </div>
+            </div>
 
-                    <div class="detail-link-actions" aria-label="Nexus page sections">
-                        <button on:click={() => openSelectedModTab("description")}>Description</button>
-                        <button on:click={openSelectedDownloadPage}>Files</button>
-                        <button on:click={() => openSelectedModTab("posts")}>Posts</button>
-                        <button on:click={() => openSelectedModTab("images")}>Images</button>
-                        <button on:click={() => openSelectedModTab("bugs")}>Bugs</button>
-                    </div>
+            <div class="detail-footer" aria-label="Nexus deployment actions">
+                <div class="detail-footer-copy">
+                    <span class="detail-section-title">Deployment</span>
+                    <small title={selectedInstallFileLabel}>{selectedInstallFileLabel}</small>
+                </div>
+
+                <div class="detail-actions">
+                    <button class="install" disabled={!selectedNexusFile} on:click={installSelectedFileWithVortex}>{selectedInstallActionButtonLabel}</button>
+                    <button class="track-btn" disabled={activeNexusTrackId === selectedMod.mod_id} on:click={toggleSelectedModTracking}>
+                        {activeNexusTrackId === selectedMod.mod_id ? "Saving..." : isNexusModTracked(selectedMod.mod_id) ? "Tracked" : "Track"}
+                    </button>
+                    {#if installedMatch(selectedMod)}
+                        {#if isNexusModEndorsed(selectedMod.mod_id)}
+                            <button class="endorsed-btn" disabled>Endorsed</button>
+                        {:else}
+                            <button class="endorse-btn" disabled={activeNexusEndorseId === selectedMod.mod_id} on:click={endorseSelectedMod}>
+                                {activeNexusEndorseId === selectedMod.mod_id ? "Endorsing..." : "Endorse"}
+                            </button>
+                        {/if}
+                    {/if}
+                    <button on:click={openSelectedModPage}>Open Page</button>
+                </div>
+
+                <div class="detail-link-actions" aria-label="Nexus page sections">
+                    <button on:click={() => openSelectedModTab("description")}>Description</button>
+                    <button on:click={openSelectedDownloadPage}>Files</button>
+                    <button on:click={() => openSelectedModTab("posts")}>Posts</button>
+                    <button on:click={() => openSelectedModTab("images")}>Images</button>
+                    <button on:click={() => openSelectedModTab("bugs")}>Bugs</button>
                 </div>
             </div>
         </section>
@@ -5239,18 +5316,70 @@
         white-space: nowrap;
     }
 
-    .detail-header,
-    .detail-actions {
+    .detail-header {
         align-items: center;
         display: flex;
         gap: 0.75em;
         justify-content: space-between;
     }
 
+    .detail-footer {
+        align-items: center;
+        background: rgba(18, 18, 18, 0.94);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-sizing: border-box;
+        display: grid;
+        flex: 0 0 auto;
+        gap: 0.65em;
+        grid-template-columns: minmax(14em, 1fr) minmax(18em, auto) minmax(18em, 0.9fr);
+        padding: 0.65em 0.75em;
+    }
+
+    .detail-footer-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2em;
+        min-width: 0;
+    }
+
+    .detail-footer-copy small {
+        color: #aab8c5;
+        font-size: 0.78em;
+        font-weight: 800;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .detail-actions {
+        align-items: center;
+        display: flex;
+        flex: 0 0 auto;
+        flex-wrap: wrap;
+        gap: 0.45em;
+        justify-content: flex-end;
+        min-width: 0;
+    }
+
+    .detail-actions button {
+        flex: 0 1 auto;
+        margin: 0;
+        min-height: 2.55em;
+        min-width: 6.8em;
+        padding: 0.42em 0.7em;
+    }
+
+    .detail-actions .install {
+        min-width: 11em;
+    }
+
     .detail-link-actions {
         display: flex;
         flex-wrap: wrap;
         gap: 0.45em;
+        justify-content: flex-end;
+        min-width: 0;
     }
 
     .detail-link-actions button {
@@ -5327,14 +5456,6 @@
 
     .detail-conflict-box {
         order: 6;
-    }
-
-    .detail-actions {
-        order: 7;
-    }
-
-    .detail-link-actions {
-        order: 8;
     }
 
     .detail-media-frame {
@@ -5421,6 +5542,14 @@
         overflow-y: auto;
     }
 
+    .detail-text-head {
+        align-items: center;
+        display: flex;
+        gap: 0.65em;
+        justify-content: space-between;
+        min-width: 0;
+    }
+
     .detail-text .nexus-rich-text,
     .changelog-row .nexus-rich-text {
         color: #b8c0c8;
@@ -5437,7 +5566,9 @@
     .nexus-rich-text :global(p:first-child),
     .nexus-rich-text :global(ul:first-child),
     .nexus-rich-text :global(blockquote:first-child),
-    .nexus-rich-text :global(pre:first-child) {
+    .nexus-rich-text :global(pre:first-child),
+    .nexus-rich-text :global(.nexus-rich-spoiler-block:first-child),
+    .nexus-rich-text :global(.nexus-rich-rule:first-child) {
         margin-top: 0;
     }
 
@@ -5475,6 +5606,21 @@
         color: #d6dde5;
         margin: 0.75em 0 0;
         padding: 0.1em 0 0.1em 0.8em;
+    }
+
+    .nexus-rich-text :global(blockquote cite) {
+        color: #eefcff;
+        display: block;
+        font-size: 0.82em;
+        font-style: normal;
+        font-weight: 900;
+        margin-bottom: 0.35em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-rule) {
+        border: 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.16);
+        margin: 0.85em 0 0;
     }
 
     .nexus-rich-text :global(code),
@@ -5524,6 +5670,11 @@
         text-align: right;
     }
 
+    .nexus-rich-text :global(.nexus-rich-align-center .nexus-rich-image),
+    .nexus-rich-text :global(.nexus-rich-align-right .nexus-rich-image) {
+        display: inline-block;
+    }
+
     .nexus-rich-text :global(.nexus-rich-size-small) {
         font-size: 0.86em;
     }
@@ -5545,6 +5696,32 @@
         padding: 0.05em 0.3em;
     }
 
+    .nexus-rich-text :global(.nexus-rich-spoiler b) {
+        color: #eefcff;
+        font-weight: 900;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-spoiler-block) {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        margin: 0.75em 0 0;
+        padding: 0.65em 0.75em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-spoiler-block > span) {
+        color: #eefcff;
+        display: block;
+        font-size: 0.82em;
+        font-weight: 900;
+        margin-bottom: 0.35em;
+        text-transform: uppercase;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-media-link) {
+        display: inline-flex;
+        margin-top: 0.2em;
+    }
+
     .description-toggle {
         background: rgba(120, 217, 244, 0.08);
         border: 1px solid rgba(120, 217, 244, 0.22);
@@ -5552,7 +5729,8 @@
         color: #78d9f4;
         font-size: 0.76em;
         font-weight: 900;
-        margin: 0.65em 0 0;
+        flex: 0 0 auto;
+        margin: 0;
         min-height: 2.25em;
         min-width: 7em;
         padding: 0.35em 0.7em;
@@ -6020,11 +6198,6 @@
         padding: 0.35em 0.55em;
     }
 
-    .detail-actions {
-        flex: 0 0 auto;
-        justify-content: flex-end;
-    }
-
     @media (max-width: 1120px) {
         .nexus-filter-row {
             grid-template-columns: minmax(13em, 1fr) repeat(2, minmax(8.5em, 0.55fr));
@@ -6081,9 +6254,7 @@
         }
 
         .file-picker,
-        .dependency-box,
-        .detail-actions,
-        .detail-link-actions {
+        .dependency-box {
             grid-column: 1 / -1;
         }
 
@@ -6105,14 +6276,6 @@
 
         .detail-conflict-box {
             order: 6;
-        }
-
-        .detail-actions {
-            order: 7;
-        }
-
-        .detail-link-actions {
-            order: 8;
         }
 
         .file-picker,
@@ -6167,6 +6330,21 @@
 
         .nxm-link-row {
             grid-template-columns: 1fr;
+        }
+
+        .detail-footer {
+            align-items: stretch;
+            grid-template-columns: 1fr;
+        }
+
+        .detail-actions,
+        .detail-link-actions {
+            justify-content: stretch;
+        }
+
+        .detail-actions button,
+        .detail-link-actions button {
+            flex: 1 1 8em;
         }
     }
 
@@ -6292,6 +6470,16 @@
         .button-row .vortex-install-btn {
             flex: 1 1 6.5em;
             min-width: 0;
+        }
+
+        .detail-footer {
+            gap: 0.45em;
+            padding: 0.5em 0.6em;
+        }
+
+        .detail-actions button,
+        .detail-link-actions button {
+            min-height: 2.3em;
         }
     }
 
