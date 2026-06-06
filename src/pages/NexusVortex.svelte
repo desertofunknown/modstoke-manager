@@ -717,6 +717,16 @@
     }
 
     async function setNexusTracking(modId: number, shouldTrack: boolean, label: string) {
+        const confirmed = await confirmNexusWrite({
+            action: shouldTrack ? "Track" : "Stop tracking",
+            label,
+            detail: "This updates your Nexus tracked mod list for Sons Of The Forest.",
+            okLabel: shouldTrack ? "Track" : "Untrack"
+        });
+        if (!confirmed) {
+            return;
+        }
+
         activeNexusTrackId = modId;
         status = `${shouldTrack ? "Tracking" : "Untracking"} ${label}...`;
         let keepStatus = false;
@@ -779,6 +789,16 @@
     }
 
     async function endorseKnownNexusMod(modId: number, version: string | undefined, label: string) {
+        const confirmed = await confirmNexusWrite({
+            action: "Endorse",
+            label,
+            detail: "Nexus may require that this account downloaded the mod and may enforce its normal endorsement waiting period.",
+            okLabel: "Endorse"
+        });
+        if (!confirmed) {
+            return;
+        }
+
         activeNexusEndorseId = modId;
         status = `Endorsing ${label}...`;
         let keepStatus = false;
@@ -845,8 +865,25 @@
         autoEndorseAttemptedIds = readAutoEndorseAttemptedIds();
     }
 
-    function toggleAutoEndorse(event: Event) {
-        autoEndorseDownloadedMods = (event.currentTarget as HTMLInputElement).checked;
+    async function toggleAutoEndorse(event: Event) {
+        const input = event.currentTarget as HTMLInputElement;
+        const requestedState = input.checked;
+
+        if (requestedState && !autoEndorseDownloadedMods) {
+            const confirmed = await confirmNexusWrite({
+                action: "Enable auto-endorse",
+                label: "Vortex-managed downloads",
+                detail: `The manager will attempt at most ${MAX_AUTO_ENDORSE_PER_REFRESH} eligible endorsements per refresh and remembers attempted Nexus mod IDs locally.`,
+                okLabel: "Enable"
+            });
+            if (!confirmed) {
+                input.checked = false;
+                autoEndorseDownloadedMods = false;
+                return;
+            }
+        }
+
+        autoEndorseDownloadedMods = requestedState;
         localStorage.setItem(NEXUS_AUTO_ENDORSE_KEY, autoEndorseDownloadedMods ? "true" : "false");
 
         if (autoEndorseDownloadedMods) {
@@ -894,6 +931,15 @@
         }
 
         return `${autoEndorsePendingCount} pending · ${autoEndorseAttemptedInstalledCount} attempted`;
+    }
+
+    async function confirmNexusWrite(options: { action: string; label: string; detail: string; okLabel: string }): Promise<boolean> {
+        return await dialog.confirm(`${options.action} ${options.label}?\n\n${options.detail}`, {
+            title: "Nexus account action",
+            kind: "warning",
+            okLabel: options.okLabel,
+            cancelLabel: "Cancel"
+        });
     }
 
     function markNexusModEndorsed(modId: number) {
