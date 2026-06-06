@@ -244,10 +244,13 @@
 <style>
   .app-frame {
     --frame-pad-x: clamp(18px, calc(1.65vw + 0.35vh), 52px);
-    --frame-pad-top: clamp(18px, calc(0.65vw + 1.55vh), 46px);
+    --frame-pad-top: clamp(22px, calc(0.7vw + 1.7vh), 50px);
     --frame-pad-bottom: clamp(12px, calc(0.55vw + 1.35vh), 32px);
-    --logo-height: clamp(24px, calc(1.15vw + 1.45vh), 54px);
-    --titlebar-height: clamp(54px, calc(1vw + 4.8vh), 88px);
+    --logo-aspect: 2;
+    --logo-height: clamp(24px, min(3.35vw, 5.4vh), 48px);
+    --logo-width: calc(var(--logo-height) * var(--logo-aspect));
+    --logo-bleed: calc(var(--logo-height) * 0.22);
+    --titlebar-height: clamp(58px, calc(var(--logo-height) + 34px), 92px);
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -265,6 +268,7 @@
     flex: 0 0 auto;
     justify-content: space-between;
     min-height: var(--titlebar-height);
+    overflow: visible;
     padding: 0 clamp(8px, 0.72vw, 18px) 0 clamp(8px, 0.82vw, 20px);
     user-select: none;
   }
@@ -274,6 +278,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.12em;
+    max-width: min(60vw, 760px);
     min-width: 0;
   }
 
@@ -282,8 +287,13 @@
     display: inline-flex;
     isolation: isolate;
     line-height: 1;
+    margin: var(--logo-bleed) 0 calc(var(--logo-bleed) * 0.34);
+    max-width: min(var(--logo-width), 42vw);
+    min-height: var(--logo-height);
+    overflow: visible;
     position: relative;
     text-transform: uppercase;
+    width: var(--logo-width);
   }
 
   .studio-logo::before {
@@ -294,15 +304,31 @@
     background-size: 100% 100%;
     content: "";
     filter: brightness(1.32) contrast(1.1) saturate(1.18) blur(1.5px);
-    height: calc(var(--logo-height) * 1.22);
-    left: calc(var(--logo-height) * -0.11);
+    height: calc(var(--logo-height) + (var(--logo-bleed) * 2));
+    left: calc(var(--logo-bleed) * -0.65);
     mix-blend-mode: screen;
     opacity: 0.46;
     pointer-events: none;
     position: absolute;
-    top: calc(var(--logo-height) * -0.11);
-    width: calc(var(--logo-height) * 2.24);
+    top: calc(var(--logo-bleed) * -0.95);
+    width: calc(var(--logo-width) + (var(--logo-bleed) * 1.3));
     z-index: 0;
+  }
+
+  .studio-logo::after {
+    animation: endnight-logo-scan 4.8s cubic-bezier(0.2, 0.9, 0.32, 1) infinite;
+    background:
+      linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.0) 27%, rgba(255, 255, 255, 0.54) 48%, rgba(84, 229, 255, 0.28) 54%, transparent 76%),
+      linear-gradient(0deg, transparent 0%, rgba(255, 255, 255, 0.24) 46%, transparent 52%);
+    content: "";
+    height: calc(var(--logo-height) * 1.05);
+    inset: calc(var(--logo-bleed) * -0.12) calc(var(--logo-bleed) * -0.32);
+    mix-blend-mode: screen;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    transform: translateX(calc(var(--logo-width) * -0.72)) skewX(-10deg);
+    z-index: 4;
   }
 
   .studio-logo-image {
@@ -314,13 +340,14 @@
     filter:
       brightness(1.14)
       contrast(1.15)
-      drop-shadow(-1.8px 0 rgba(255, 40, 67, 0.95))
-      drop-shadow(1.8px 0 rgba(62, 242, 255, 0.92))
+      drop-shadow(calc(var(--logo-height) * -0.045) 0 rgba(255, 40, 67, 0.95))
+      drop-shadow(calc(var(--logo-height) * 0.045) 0 rgba(62, 242, 255, 0.92))
       drop-shadow(0 0 9px rgba(255, 255, 255, 0.28));
     height: var(--logo-height);
     isolation: isolate;
     position: relative;
-    width: calc(var(--logo-height) * 2);
+    transform: translateZ(0);
+    width: var(--logo-width);
     z-index: 1;
   }
 
@@ -388,6 +415,29 @@
     78% {
       opacity: 0.58;
       transform: scale(1.035) translateX(calc(var(--logo-height) * -0.012));
+    }
+  }
+
+  @keyframes endnight-logo-scan {
+    0%,
+    58%,
+    100% {
+      opacity: 0;
+      transform: translateX(calc(var(--logo-width) * -0.72)) skewX(-10deg);
+    }
+
+    64% {
+      opacity: 0.42;
+    }
+
+    70% {
+      opacity: 0.9;
+      transform: translateX(calc(var(--logo-width) * 0.28)) skewX(-10deg);
+    }
+
+    76% {
+      opacity: 0.08;
+      transform: translateX(calc(var(--logo-width) * 0.78)) skewX(-10deg);
     }
   }
 
@@ -483,7 +533,7 @@
   @media (max-width: 900px) {
     .app-frame {
       --frame-pad-x: 22px;
-      --frame-pad-top: 18px;
+      --frame-pad-top: 20px;
       --frame-pad-bottom: 24px;
       --logo-height: 24px;
       --titlebar-height: clamp(50px, 7.2vh, 66px);
@@ -511,10 +561,10 @@
   @media (max-height: 720px) {
     .app-frame {
       --frame-pad-x: 18px;
-      --frame-pad-top: 12px;
+      --frame-pad-top: 16px;
       --frame-pad-bottom: 10px;
-      --logo-height: 20px;
-      --titlebar-height: 42px;
+      --logo-height: 22px;
+      --titlebar-height: 48px;
     }
 
     .window-subtitle {
