@@ -97,6 +97,13 @@
         tone: InstallPlanTone;
         notes: string[];
     };
+    type AuthorRequirementLink = {
+        key: string;
+        label: string;
+        url: string;
+        source: string;
+        mod_id?: number;
+    };
 
     let session: NexusSession = { is_connected: false };
     let apiKey = "";
@@ -145,6 +152,7 @@
     let selectedFileId: number | null = null;
     let selectedDependencies: NexusModDependency[] = [];
     let selectedDependencyMessage = "";
+    let selectedAuthorRequirements: AuthorRequirementLink[] = [];
     let nestedDependencySources: NestedDependencySource[] = [];
     let resolvedNestedDependencies: ResolvedNestedDependency[] = [];
     let isResolvingNestedDependencies = false;
@@ -198,6 +206,7 @@
     const MAX_AUTO_ENDORSE_PER_REFRESH = 3;
     const MAX_NESTED_DEPENDENCY_FILES = 8;
     const MAX_NESTED_DEPENDENCY_DEPTH = 2;
+    const MAX_AUTHOR_REQUIREMENT_LINKS = 6;
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
     const NEXUS_PLACEHOLDER_IMAGE = "https://placehold.co/320x180/252525/FFF?text=Nexus";
     const NEXUS_DETAIL_PLACEHOLDER_IMAGE = "https://placehold.co/640x360/252525/FFF?text=Nexus";
@@ -245,6 +254,10 @@
         selectedDetailDescription = selectedDetailDescriptionText();
         selectedDetailDescriptionHtml = selectedDetailDescriptionMarkup();
         selectedDetailDescriptionCanToggle = shouldOfferDetailDescriptionToggle(selectedDetailDescription, selectedDetailDescriptionSource());
+        selectedAuthorRequirements = extractAuthorRequirementLinks(
+            selectedDetailDescriptionSource(),
+            selectedModDetails?.mod_id ?? selectedMod?.mod_id
+        );
         if (!selectedDetailDescriptionCanToggle && detailDescriptionExpanded) {
             detailDescriptionExpanded = false;
         }
@@ -359,6 +372,7 @@
         selectedInstallConflict,
         resolvedDependencies,
         resolvedNestedDependencies,
+        selectedAuthorRequirements,
         vortexStagingPath,
         selectedInstallPlacement
     );
@@ -1358,6 +1372,99 @@
         return description.length > 900 || description.split("\n").length > 12 || structuralWeight >= 8;
     }
 
+    function extractAuthorRequirementLinks(source?: string, currentModId?: number): AuthorRequirementLink[] {
+        const normalized = normalizeNexusMarkup(source);
+        if (!normalized) {
+            return [];
+        }
+
+        const candidates: AuthorRequirementLink[] = [];
+        const seen = new Set<string>();
+
+        const addLink = (urlValue: string, labelValue?: string) => {
+            const url = safeNexusUrl(urlValue);
+            if (!url || seen.has(url)) {
+                return;
+            }
+
+            const nexusModId = nexusSotfModIdFromUrl(url);
+            if (currentModId && nexusModId === currentModId) {
+                return;
+            }
+
+            const label = authorRequirementLabel(labelValue, url, nexusModId);
+            const linkContext = `${label} ${url}`;
+            if (!nexusModId && !looksLikeRequirementContext(linkContext)) {
+                return;
+            }
+
+            seen.add(url);
+            candidates.push({
+                key: `${nexusModId ?? "link"}:${url}`,
+                label,
+                url,
+                source: nexusModId ? "Nexus mod link" : "Author link",
+                mod_id: nexusModId ?? undefined
+            });
+        };
+
+        const linkedPattern = /\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi;
+        let linkedMatch: RegExpExecArray | null;
+        while ((linkedMatch = linkedPattern.exec(normalized)) !== null) {
+            addLink(linkedMatch[1], plainText(linkedMatch[2]));
+        }
+
+        const plainUrlPattern = /\[url\]([\s\S]*?)\[\/url\]|https?:\/\/[^\s<>"'\]]+/gi;
+        let plainMatch: RegExpExecArray | null;
+        while ((plainMatch = plainUrlPattern.exec(normalized)) !== null) {
+            const raw = plainMatch[1] ?? plainMatch[0];
+            addLink(raw);
+        }
+
+        return candidates.slice(0, MAX_AUTHOR_REQUIREMENT_LINKS);
+    }
+
+    function looksLikeRequirementContext(value: string): boolean {
+        return /\b(require(?:d|ment|s)?|dependenc(?:y|ies)|prereq(?:uisite)?|needed|install first|runtime|framework|library|bepinex|redloader|sonssdk|harmony|doorstop|\.net|dotnet)\b/i.test(value);
+    }
+
+    function authorRequirementLabel(value: string | undefined, url: string, nexusModId: number | null): string {
+        const cleaned = plainText(value)
+            .replace(/^https?:\/\/\S+$/i, "")
+            .replace(/\s+/g, " ")
+            .trim();
+
+        if (cleaned) {
+            return cleaned.slice(0, 90);
+        }
+
+        if (nexusModId) {
+            return `Nexus mod ${nexusModId}`;
+        }
+
+        try {
+            const parsed = new URL(url);
+            return parsed.hostname.replace(/^www\./i, "");
+        } catch {
+            return "Author requirement";
+        }
+    }
+
+    function nexusSotfModIdFromUrl(value: string): number | null {
+        try {
+            const url = new URL(value);
+            const host = url.hostname.replace(/^www\./i, "").toLowerCase();
+            if (host !== "nexusmods.com") {
+                return null;
+            }
+
+            const match = url.pathname.match(/^\/sonsoftheforest\/mods\/(\d+)(?:\/|$)/i);
+            return match ? Number.parseInt(match[1], 10) : null;
+        } catch {
+            return null;
+        }
+    }
+
     function cycleCatalogPreview(mod: NexusMod, urls: string[], step: number, event: MouseEvent) {
         event.stopPropagation();
         if (urls.length < 2) {
@@ -1874,6 +1981,10 @@
 
     function dependencySummaryLabel(): string {
         if (resolvedDependencies.length === 0 && resolvedNestedDependencies.length === 0) {
+            if (selectedAuthorRequirements.length > 0) {
+                return `${selectedAuthorRequirements.length} author link${selectedAuthorRequirements.length === 1 ? "" : "s"}`;
+            }
+
             return "None listed";
         }
 
@@ -1918,6 +2029,7 @@
         conflict: LocalConflict | null,
         dependencies: ResolvedDependency[],
         nestedDependencies: ResolvedNestedDependency[],
+        authorRequirements: AuthorRequirementLink[],
         stagingPath: string | null,
         placement: InstallPlacement): InstallPlan {
         if (!mod || !file) {
@@ -1971,6 +2083,10 @@
 
         if (nestedReviewCount > 0) {
             notes.push(`${nestedReviewCount} nested installed dependency ${nestedReviewCount === 1 ? "needs" : "need"} a version review.`);
+        }
+
+        if (authorRequirements.length > 0) {
+            notes.push(`${authorRequirements.length} author-linked requirement ${authorRequirements.length === 1 ? "needs" : "need"} manual review.`);
         }
 
         if (conflict) {
@@ -2145,6 +2261,25 @@
         }
 
         await openModDetails(dependencyMod, { pushCurrent: true });
+    }
+
+    async function openAuthorRequirement(requirement: AuthorRequirementLink) {
+        if (requirement.mod_id) {
+            const linkedMod = mods.find(mod => mod.mod_id === requirement.mod_id)
+                ?? knownNexusDetails[requirement.mod_id]
+                ?? {
+                    mod_id: requirement.mod_id,
+                    name: requirement.label,
+                    summary: "Requirement linked from the author's Nexus description.",
+                    category_name: "Author requirement",
+                    category_source: "inferred" as const,
+                    loader_type: "Unknown"
+                };
+            await openModDetails(linkedMod, { pushCurrent: true });
+            return;
+        }
+
+        await openExternalTarget(requirement.url);
     }
 
     async function openDependencyLocation(dependency: ResolvedDependency) {
@@ -4359,6 +4494,21 @@
                                 </div>
                             {/each}
                         {/if}
+                        {#if selectedAuthorRequirements.length > 0}
+                            <div class="author-requirement-section">
+                                <span class="dependency-subtitle">Author-linked requirements</span>
+                                <span class="dependency-empty">These links came from the Nexus description text and are not API dependency rows.</span>
+                                {#each selectedAuthorRequirements as requirement (requirement.key)}
+                                    <div class="author-requirement-row">
+                                        <div class="author-requirement-main">
+                                            <span>{requirement.label}</span>
+                                            <small>{requirement.source}{requirement.mod_id ? ` · Mod ${requirement.mod_id}` : ""}</small>
+                                        </div>
+                                        <button on:click={() => openAuthorRequirement(requirement)}>{requirement.mod_id ? "Details" : "Open"}</button>
+                                    </div>
+                                {/each}
+                            </div>
+                        {/if}
                         {#if resolvedNestedDependencies.length > 0}
                             <div class="dependency-nested-section">
                                 <span class="dependency-subtitle">Nested dependencies</span>
@@ -6408,6 +6558,58 @@
         font-size: 0.75em;
         font-weight: 900;
         text-transform: uppercase;
+    }
+
+    .author-requirement-section {
+        border-top: 1px solid rgba(120, 217, 244, 0.14);
+        display: flex;
+        flex-direction: column;
+        gap: 0.35em;
+        margin-top: 0.3em;
+        padding-top: 0.5em;
+    }
+
+    .author-requirement-row {
+        align-items: center;
+        background: rgba(120, 217, 244, 0.05);
+        border: 1px solid rgba(120, 217, 244, 0.12);
+        display: flex;
+        gap: 0.55em;
+        justify-content: space-between;
+        min-width: 0;
+        padding: 0.45em 0.55em;
+    }
+
+    .author-requirement-main {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    .author-requirement-main span {
+        color: #78d9f4;
+        font-size: 0.84em;
+        font-weight: 900;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .author-requirement-main small {
+        color: #9aa5af;
+        font-size: 0.74em;
+        font-weight: 700;
+    }
+
+    .author-requirement-row button {
+        flex: 0 0 auto;
+        font-size: 0.72em;
+        margin: 0;
+        min-height: 2.1em;
+        min-width: 5.8em;
+        padding: 0.3em 0.5em;
     }
 
     .dependency-row span {

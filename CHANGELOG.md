@@ -9,6 +9,7 @@
   - Improved compact Nexus detail drawers so the mod name, preview image, and formatted author description stay first, with deployment actions collected in a bottom footer.
   - Preserved safe Nexus BBCode/HTML formatting for descriptions and changelogs, including heading levels, emphasis, ordered and unordered lists, quotes, spoilers, alignment, indentation, code blocks, rules, links, bounded inline images, generated tables, and media-link fallbacks.
   - Broadened Nexus dependency handling so selected-file checks fall back from materialized dependency candidates to range definitions and preserve version-range requirements as review metadata.
+  - Added author-linked requirement hints from Nexus description links when structured dependency rows are missing or incomplete, without extra Nexus requests.
   - Rebuilt and signed portable/setup EXEs as `0.2.0`.
 
 - 0.1.2
