@@ -33,7 +33,9 @@ export type NexusMod = {
     author?: string;
     uploaded_by?: string;
     picture_url?: string;
+    category_id?: number;
     category_name?: string;
+    category_source?: NexusCategorySource;
     endorsement_count?: number;
     mod_downloads?: number;
     mod_unique_downloads?: number;
@@ -42,6 +44,15 @@ export type NexusMod = {
     created_time?: string;
     updated_time?: string;
     loader_type?: string;
+};
+
+export type NexusCategorySource = "api" | "local" | "inferred";
+
+export type NexusCategory = {
+    category_id?: number;
+    name: string;
+    parent_category_id?: number;
+    source: NexusCategorySource;
 };
 
 export type NexusModFile = {
@@ -73,8 +84,14 @@ type RawNexusModsResponse = {
     rate_limit: NexusRateLimit;
 };
 
+type RawNexusGameInfoResponse = {
+    game: unknown;
+    rate_limit: NexusRateLimit;
+};
+
 type NexusModsResponse = {
     mods: NexusMod[];
+    categories: NexusCategory[];
     rate_limit: NexusRateLimit;
 };
 
@@ -109,9 +126,16 @@ export const NEXUS_CACHE_TTL_MINUTES = 10;
 
 const NEXUS_CACHE_TTL_MS = NEXUS_CACHE_TTL_MINUTES * 60 * 1000;
 const ALL_NEXUS_FEEDS = ["trending", "latest_added", "latest_updated", "updated"] as const;
+const LOCAL_SOTF_NEXUS_CATEGORIES: NexusCategory[] = [
+    { category_id: 4, name: "Gameplay", source: "local" },
+    { category_id: 2, name: "Miscellaneous", source: "local" },
+    { category_id: 3, name: "Visuals", source: "local" }
+];
 
 let sessionCache: { value: NexusSession; cachedAt: number } | null = null;
 let sessionRequest: Promise<NexusSession> | null = null;
+let categoriesCache: { value: NexusCategory[]; cachedAt: number } | null = null;
+let categoriesRequest: Promise<NexusCategory[]> | null = null;
 const modsCache = new Map<string, { value: NexusModsResponse; cachedAt: number }>();
 const modsRequests = new Map<string, Promise<NexusModsResponse>>();
 const detailsCache = new Map<number, { value: NexusMod; cachedAt: number }>();
@@ -128,6 +152,8 @@ function cacheFresh(cachedAt: number): boolean {
 export function clearNexusClientCache(): void {
     sessionCache = null;
     sessionRequest = null;
+    categoriesCache = null;
+    categoriesRequest = null;
     modsCache.clear();
     modsRequests.clear();
     detailsCache.clear();
@@ -171,7 +197,39 @@ export async function clearNexusApiKey(): Promise<void> {
     await invoke("nexus_clear_api_key");
 }
 
+export async function fetchNexusSotfCategories(options: { force?: boolean } = {}): Promise<NexusCategory[]> {
+    if (!options.force && categoriesCache && cacheFresh(categoriesCache.cachedAt)) {
+        return categoriesCache.value;
+    }
+
+    if (!options.force && categoriesRequest) {
+        return await categoriesRequest;
+    }
+
+    categoriesRequest = invoke<RawNexusGameInfoResponse>("nexus_fetch_sotf_game_info")
+        .then((response) => {
+            const categories = mergeNexusCategories([
+                ...normalizeNexusCategories(response.game),
+                ...LOCAL_SOTF_NEXUS_CATEGORIES
+            ]);
+            categoriesCache = { value: categories, cachedAt: Date.now() };
+            return categories;
+        })
+        .catch(() => {
+            const fallback = mergeNexusCategories(LOCAL_SOTF_NEXUS_CATEGORIES);
+            categoriesCache = { value: fallback, cachedAt: Date.now() };
+            return fallback;
+        })
+        .finally(() => {
+            categoriesRequest = null;
+        });
+
+    return await categoriesRequest;
+}
+
 export async function fetchNexusSotfMods(view: NexusView, options: { force?: boolean } = {}): Promise<NexusModsResponse> {
+    const categories = await fetchNexusSotfCategories(options);
+
     if (view === "all") {
         const cacheKey = "all";
         const cached = modsCache.get(cacheKey);
@@ -184,7 +242,7 @@ export async function fetchNexusSotfMods(view: NexusView, options: { force?: boo
             return await existingRequest;
         }
 
-        const request = Promise.allSettled(ALL_NEXUS_FEEDS.map(feed => fetchSingleNexusSotfMods(feed, options)))
+        const request = Promise.allSettled(ALL_NEXUS_FEEDS.map(feed => fetchSingleNexusSotfMods(feed, categories, options)))
             .then((responses) => {
                 const successful = responses
                     .filter((response): response is PromiseFulfilledResult<NexusModsResponse> => response.status === "fulfilled")
@@ -197,6 +255,7 @@ export async function fetchNexusSotfMods(view: NexusView, options: { force?: boo
 
                 const merged = {
                     mods: mergeNexusMods(successful.flatMap(response => response.mods)),
+                    categories,
                     rate_limit: successful[successful.length - 1].rate_limit
                 };
                 modsCache.set(cacheKey, { value: merged, cachedAt: Date.now() });
@@ -210,10 +269,10 @@ export async function fetchNexusSotfMods(view: NexusView, options: { force?: boo
         return await request;
     }
 
-    return await fetchSingleNexusSotfMods(view, options);
+    return await fetchSingleNexusSotfMods(view, categories, options);
 }
 
-async function fetchSingleNexusSotfMods(view: string, options: { force?: boolean } = {}): Promise<NexusModsResponse> {
+async function fetchSingleNexusSotfMods(view: string, categories: NexusCategory[], options: { force?: boolean } = {}): Promise<NexusModsResponse> {
     const cached = modsCache.get(view);
     if (!options.force && cached && cacheFresh(cached.cachedAt)) {
         return cached.value;
@@ -229,7 +288,8 @@ async function fetchSingleNexusSotfMods(view: string, options: { force?: boolean
             const rawMods = Array.isArray(response.mods) ? response.mods : response.mods.data ?? [];
             const normalized = {
                 ...response,
-                mods: mergeNexusMods(rawMods.map(normalizeNexusMod).filter(mod => mod.mod_id > 0))
+                categories,
+                mods: mergeNexusMods(rawMods.map(mod => normalizeNexusMod(mod, categories)).filter(mod => mod.mod_id > 0))
             };
             modsCache.set(view, { value: normalized, cachedAt: Date.now() });
             return normalized;
@@ -253,9 +313,12 @@ export async function fetchNexusModDetails(modId: number, options: { force?: boo
         return await existingRequest;
     }
 
-    const request = invoke<RawNexusModDetailsResponse>("nexus_fetch_mod_details", { modId })
-        .then((response) => {
-            const details = normalizeNexusMod(response.details);
+    const request = Promise.all([
+            invoke<RawNexusModDetailsResponse>("nexus_fetch_mod_details", { modId }),
+            fetchNexusSotfCategories(options)
+        ])
+        .then(([response, categories]) => {
+            const details = normalizeNexusMod(response.details, categories);
             detailsCache.set(modId, { value: details, cachedAt: Date.now() });
             return details;
         })
@@ -367,14 +430,139 @@ function emptyFieldsFrom(preferred: NexusMod, fallback: NexusMod): Partial<Nexus
     return result;
 }
 
-function normalizeNexusMod(raw: NexusMod & Record<string, unknown>): NexusMod {
+function normalizeNexusCategories(raw: unknown): NexusCategory[] {
+    const root = objectField(raw);
+    const data = objectField(root?.data);
+    const rawCategories = categoryRecords(root?.categories)
+        ?? categoryRecords(data?.categories)
+        ?? (Array.isArray(raw) ? raw : null)
+        ?? [];
+
+    return mergeNexusCategories(rawCategories
+        .map(category => normalizeNexusCategory(category, "api"))
+        .filter((category): category is NexusCategory => category !== null));
+}
+
+function normalizeNexusCategory(raw: unknown, source: NexusCategorySource): NexusCategory | null {
+    if (typeof raw === "string") {
+        return raw.trim().length > 0 ? { name: raw.trim(), source } : null;
+    }
+
+    const category = objectField(raw);
+    if (!category) {
+        return null;
+    }
+
+    const categoryId = numberField(category.category_id)
+        ?? numberField(category.id)
+        ?? numberField(category.game_category_id);
+    const parentCategoryId = numberField(category.parent_category_id)
+        ?? numberField(category.parent_id)
+        ?? numberField(category.parent);
+    const name = stringField(category.name)
+        ?? stringField(category.category_name)
+        ?? stringField(category.title);
+
+    if (!name || isRootNexusCategory(name, categoryId)) {
+        return null;
+    }
+
+    return {
+        category_id: categoryId,
+        name,
+        parent_category_id: parentCategoryId,
+        source
+    };
+}
+
+function categoryRecords(raw: unknown): unknown[] | null {
+    if (Array.isArray(raw)) {
+        return raw;
+    }
+
+    const object = objectField(raw);
+    if (object) {
+        return Object.values(object);
+    }
+
+    return null;
+}
+
+function mergeNexusCategories(input: NexusCategory[]): NexusCategory[] {
+    const byKey = new Map<string, NexusCategory>();
+    const byName = new Map<string, NexusCategory>();
+
+    for (const category of input) {
+        if (!category.name || isRootNexusCategory(category.name, category.category_id)) {
+            continue;
+        }
+
+        const key = category.category_id !== undefined
+            ? `id:${category.category_id}`
+            : `name:${category.name.toLowerCase()}`;
+        const existing = byKey.get(key);
+        const merged = preferNexusCategory(existing, category);
+        byKey.set(key, merged);
+    }
+
+    for (const category of byKey.values()) {
+        const nameKey = category.name.toLowerCase();
+        byName.set(nameKey, preferNexusCategory(byName.get(nameKey), category));
+    }
+
+    return Array.from(byName.values()).sort(compareNexusCategories);
+}
+
+function preferNexusCategory(existing: NexusCategory | undefined, next: NexusCategory): NexusCategory {
+    if (!existing) {
+        return next;
+    }
+
+    if (categorySourceRank(next.source) < categorySourceRank(existing.source)) {
+        return {
+            ...next,
+            category_id: next.category_id ?? existing.category_id,
+            parent_category_id: next.parent_category_id ?? existing.parent_category_id
+        };
+    }
+
+    return {
+        ...existing,
+        category_id: existing.category_id ?? next.category_id,
+        parent_category_id: existing.parent_category_id ?? next.parent_category_id
+    };
+}
+
+function compareNexusCategories(left: NexusCategory, right: NexusCategory): number {
+    const leftLocalIndex = LOCAL_SOTF_NEXUS_CATEGORIES.findIndex(category => category.name === left.name);
+    const rightLocalIndex = LOCAL_SOTF_NEXUS_CATEGORIES.findIndex(category => category.name === right.name);
+
+    if (leftLocalIndex !== -1 || rightLocalIndex !== -1) {
+        return (leftLocalIndex === -1 ? Number.MAX_SAFE_INTEGER : leftLocalIndex)
+            - (rightLocalIndex === -1 ? Number.MAX_SAFE_INTEGER : rightLocalIndex);
+    }
+
+    return (left.category_id ?? Number.MAX_SAFE_INTEGER) - (right.category_id ?? Number.MAX_SAFE_INTEGER)
+        || left.name.localeCompare(right.name);
+}
+
+function categorySourceRank(source: NexusCategorySource): number {
+    switch (source) {
+        case "api":
+            return 0;
+        case "local":
+            return 1;
+        default:
+            return 2;
+    }
+}
+
+function normalizeNexusMod(raw: NexusMod & Record<string, unknown>, categories: NexusCategory[] = LOCAL_SOTF_NEXUS_CATEGORIES): NexusMod {
     const modId = numberField(raw.mod_id) ?? numberField(raw.id) ?? 0;
     const rawSummary = stringField(raw.summary)
         ?? stringField(raw.description)
         ?? stringField(raw.short_description);
-    const category = stringField(raw.category_name)
-        ?? stringField(raw.category)
-        ?? inferNexusCategory(raw);
+    const resolvedCategory = resolveNexusCategory(raw, categories);
 
     return {
         ...raw,
@@ -391,7 +579,9 @@ function normalizeNexusMod(raw: NexusMod & Record<string, unknown>): NexusMod {
             ?? stringField(raw.picture)
             ?? stringField(raw.thumbnail_url)
             ?? stringField(raw.screenshot_url),
-        category_name: category,
+        category_id: resolvedCategory.category_id,
+        category_name: resolvedCategory.name,
+        category_source: resolvedCategory.source,
         endorsement_count: numberField(raw.endorsement_count),
         mod_downloads: numberField(raw.mod_downloads) ?? numberField(raw.downloads),
         mod_unique_downloads: numberField(raw.mod_unique_downloads) ?? numberField(raw.unique_downloads),
@@ -400,6 +590,49 @@ function normalizeNexusMod(raw: NexusMod & Record<string, unknown>): NexusMod {
         created_time: stringField(raw.created_time),
         updated_time: stringField(raw.updated_time),
         loader_type: inferLoaderType(raw)
+    };
+}
+
+function resolveNexusCategory(raw: Record<string, unknown>, categories: NexusCategory[]): NexusCategory {
+    const nestedCategory = objectField(raw.category);
+    const categoryId = numberField(raw.category_id)
+        ?? numberField(raw.categoryId)
+        ?? numberField(raw.cat)
+        ?? numberField(raw.category)
+        ?? numberField(nestedCategory?.category_id)
+        ?? numberField(nestedCategory?.id);
+    const categoryById = categoryId !== undefined
+        ? categories.find(category => category.category_id === categoryId)
+        : undefined;
+    const rawName = stringField(raw.category_name)
+        ?? stringField(raw.categoryName)
+        ?? stringField(nestedCategory?.name)
+        ?? stringField(nestedCategory?.category_name)
+        ?? stringField(raw.category);
+    const categoryByName = rawName
+        ? categories.find(category => category.name.toLowerCase() === rawName.toLowerCase())
+        : undefined;
+
+    if (categoryByName) {
+        return categoryByName;
+    }
+
+    if (rawName && !isRootNexusCategory(rawName, categoryId)) {
+        return {
+            category_id: categoryById?.category_id ?? categoryId,
+            name: rawName,
+            parent_category_id: categoryById?.parent_category_id,
+            source: categoryById?.source ?? "api"
+        };
+    }
+
+    if (categoryById) {
+        return categoryById;
+    }
+
+    return {
+        name: inferNexusCategory(raw),
+        source: "inferred"
     };
 }
 
@@ -464,27 +697,19 @@ function inferNexusCategory(raw: Record<string, unknown>): string {
         stringField(raw.short_description)
     ].filter(Boolean).join(" ").toLowerCase();
 
-    if (/translation|language|chinese|japanese|korean|spanish|french|german|russian/.test(text)) {
-        return "Translation";
-    }
-
-    if (/admin|cheat|trainer|debug|console|command|menu/.test(text)) {
-        return "Admin / Tools";
-    }
-
     if (/texture|graphic|visual|lighting|shader|hud|ui|radio|music|sound|audio/.test(text)) {
-        return "Visual / Audio";
+        return "Visuals";
     }
 
-    if (/save|backup|autosave|performance|fps|logging|crash|fix|patch/.test(text)) {
-        return "Fixes / Utility";
+    if (/translation|language|chinese|japanese|korean|spanish|french|german|russian|save|backup|autosave|preset/.test(text)) {
+        return "Miscellaneous";
     }
 
-    if (/build|cave|survival|item|weapon|enemy|npc|golf|vehicle|gameplay/.test(text)) {
+    if (/admin|cheat|trainer|debug|console|command|menu|performance|fps|logging|crash|fix|patch|build|cave|survival|item|weapon|enemy|npc|golf|vehicle|gameplay/.test(text)) {
         return "Gameplay";
     }
 
-    return "Uncategorized";
+    return "Miscellaneous";
 }
 
 function inferLoaderType(raw: Record<string, unknown>): string {
@@ -510,6 +735,16 @@ function inferLoaderType(raw: Record<string, unknown>): string {
 
 function stringField(value: unknown): string | undefined {
     return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function objectField(value: unknown): Record<string, unknown> | undefined {
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : undefined;
+}
+
+function isRootNexusCategory(name: string, categoryId?: number): boolean {
+    return categoryId === 0 || /^(sons\s+of\s+the\s+forest|sonsoftheforest)$/i.test(name);
 }
 
 function booleanField(value: unknown): boolean | undefined {

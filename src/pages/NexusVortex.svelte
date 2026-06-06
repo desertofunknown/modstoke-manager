@@ -14,6 +14,7 @@
         NEXUS_CACHE_TTL_MINUTES,
         pickRecommendedNexusFile,
         saveNexusApiKey,
+        type NexusCategory,
         type NexusModDependency,
         type NexusModFile,
         type NexusMod,
@@ -38,6 +39,7 @@
     let session: NexusSession = { is_connected: false };
     let apiKey = "";
     let mods: NexusMod[] = [];
+    let nexusCategories: NexusCategory[] = [];
     let inventory: InstalledInventoryEntry[] = [];
     let selectedView: NexusView = "all";
     let catalogMode: CatalogMode = "online";
@@ -65,7 +67,10 @@
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
     let nextManualRefreshAt = 0;
 
-    $: nexusCategories = Array.from(new Set(mods.map(mod => mod.category_name).filter(Boolean) as string[])).sort();
+    $: nexusCategoryOptions = buildNexusCategoryOptions(nexusCategories, mods);
+    $: if (selectedNexusCategory !== "all" && !nexusCategoryOptions.includes(selectedNexusCategory)) {
+        selectedNexusCategory = "all";
+    }
     $: visibleNexusMods = mods.filter(matchesNexusFilters);
     $: visibleInstalledEntries = inventory.filter(matchesInstalledFilters);
     $: installedCount = inventory.length;
@@ -263,6 +268,7 @@
         await clearNexusApiKey();
         session = { is_connected: false };
         mods = [];
+        nexusCategories = [];
     }
 
     async function loadMods(view: NexusView = selectedView, forceRefresh = false) {
@@ -289,6 +295,7 @@
             await refreshInventory();
             const response = await fetchNexusSotfMods(selectedView, { force: forceRefresh });
             mods = response.mods;
+            nexusCategories = response.categories;
             session = {
                 ...session,
                 rate_limit: response.rate_limit
@@ -496,6 +503,19 @@
             mod.author ?? "",
             mod.uploaded_by ?? ""
         ]);
+    }
+
+    function buildNexusCategoryOptions(categories: NexusCategory[], loadedMods: NexusMod[]): string[] {
+        const ordered = categories
+            .map(category => category.name)
+            .filter((name, index, names) => name && names.findIndex(candidate => candidate.toLowerCase() === name.toLowerCase()) === index);
+        const orderedNames = new Set(ordered.map(name => name.toLowerCase()));
+        const extra = Array.from(new Set(loadedMods
+            .map(mod => mod.category_name)
+            .filter((name): name is string => !!name && !orderedNames.has(name.toLowerCase()))))
+            .sort((left, right) => left.localeCompare(right));
+
+        return [...ordered, ...extra];
     }
 
     function matchesNexusFilters(mod: NexusMod): boolean {
@@ -765,7 +785,7 @@
                 <input class="generic-input key-input" bind:value={nexusSearchTerm} placeholder="Search Nexus" />
                 <select bind:value={selectedNexusCategory}>
                     <option value="all">All categories</option>
-                    {#each nexusCategories as category}
+                    {#each nexusCategoryOptions as category}
                         <option value={category}>{category}</option>
                     {/each}
                 </select>

@@ -77,6 +77,12 @@ struct NexusModsResponse {
 }
 
 #[derive(Serialize)]
+struct NexusGameInfoResponse {
+    game: serde_json::Value,
+    rate_limit: NexusRateLimit,
+}
+
+#[derive(Serialize)]
 struct NexusModFilesResponse {
     files: serde_json::Value,
     rate_limit: NexusRateLimit,
@@ -213,6 +219,32 @@ async fn nexus_fetch_sotf_mods(view: String) -> Result<NexusModsResponse, String
         .await
         .map_err(|e| e.to_string())?;
     Ok(NexusModsResponse { mods, rate_limit })
+}
+
+#[tauri::command]
+async fn nexus_fetch_sotf_game_info() -> Result<NexusGameInfoResponse, String> {
+    let key =
+        read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
+    let url = format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}.json");
+    let response = nexus_client(&key)
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let rate_limit = read_rate_limit(response.headers());
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Nexus game metadata request failed: {}",
+            response.status()
+        ));
+    }
+
+    let game = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(NexusGameInfoResponse { game, rate_limit })
 }
 
 #[tauri::command]
@@ -663,6 +695,7 @@ fn main() {
             nexus_get_session,
             nexus_clear_api_key,
             nexus_fetch_sotf_mods,
+            nexus_fetch_sotf_game_info,
             nexus_fetch_mod_details,
             nexus_fetch_mod_files,
             nexus_fetch_file_dependencies,
