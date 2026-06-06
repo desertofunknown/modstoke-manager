@@ -415,6 +415,9 @@
         resolvedDependencies,
         resolvedNestedDependencies,
         selectedAuthorRequirements,
+        selectedDependencyMessage,
+        nestedDependencyCheckAvailable(),
+        isResolvingNestedDependencies,
         vortexStagingPath,
         selectedInstallPlacement
     );
@@ -2189,7 +2192,16 @@
 
     function apiDependencyReadinessLabel(): string {
         if (resolvedDependencies.length === 0) {
-            return selectedDependencyMessage ? "No API rows returned" : "No API rows listed";
+            switch (installPlanDependencyLookupState(selectedDependencyMessage)) {
+                case "checking":
+                    return "Checking API rows";
+                case "failed":
+                    return "Lookup failed";
+                case "empty":
+                    return "No API rows returned";
+                default:
+                    return "No API rows listed";
+            }
         }
 
         const parts = dependencyReadinessParts(
@@ -2288,6 +2300,9 @@
         dependencies: ResolvedDependency[],
         nestedDependencies: ResolvedNestedDependency[],
         authorRequirements: AuthorRequirementLink[],
+        dependencyMessage: string,
+        nestedCheckAvailable: boolean,
+        isCheckingNestedDependencies: boolean,
         stagingPath: string | null,
         placement: InstallPlacement): InstallPlan {
         if (!mod || !file) {
@@ -2303,73 +2318,124 @@
         const autoTarget = match?.expectedLocation ?? inferNexusInstallTarget(mod, file);
         const explicitTarget = installPlacementTarget(placement);
         const target = explicitTarget ?? autoTarget;
-        const notes: string[] = [];
+        const reviewNotes: string[] = [];
+        const infoNotes: string[] = [];
         const missingCount = dependencies.filter(dependency => dependency.status === "missing").length;
         const mismatchCount = dependencies.filter(dependency => dependency.status === "version-mismatch").length;
         const reviewCount = dependencies.filter(dependency => dependency.status === "review").length;
         const nestedMissingCount = nestedDependencies.filter(source => source.dependency.status === "missing").length;
         const nestedMismatchCount = nestedDependencies.filter(source => source.dependency.status === "version-mismatch").length;
         const nestedReviewCount = nestedDependencies.filter(source => source.dependency.status === "review").length;
+        const dependencyLookupState = installPlanDependencyLookupState(dependencyMessage);
+        const dependencyFileIdCount = dependencies.filter(dependency => typeof dependency.file_id === "number").length;
 
         if (!stagingPath) {
-            notes.push("Vortex deployment metadata was not detected in this game folder yet.");
+            reviewNotes.push("Vortex deployment metadata was not detected in this game folder yet.");
         }
 
         if (isReviewNexusFile(file)) {
-            notes.push(`The selected file is marked ${fileChoiceCategoryLabel(file)} and should be reviewed before Vortex handoff.`);
+            reviewNotes.push(`The selected file is marked ${fileChoiceCategoryLabel(file)} and should be reviewed before Vortex handoff.`);
+        }
+
+        if (dependencyLookupState === "checking") {
+            reviewNotes.push("Dependency lookup is still running for the selected file.");
+        } else if (dependencyLookupState === "failed") {
+            reviewNotes.push("Dependency lookup failed; review requirements manually before Vortex handoff.");
+        } else if (dependencies.length === 0 && dependencyLookupState === "empty") {
+            infoNotes.push("Nexus returned no API dependency rows for this file; still review the author's directions.");
         }
 
         if (missingCount > 0) {
-            notes.push(`${missingCount} dependency ${missingCount === 1 ? "is" : "are"} missing locally.`);
+            reviewNotes.push(`${missingCount} dependency ${missingCount === 1 ? "is" : "are"} missing locally.`);
         }
 
         if (mismatchCount > 0) {
-            notes.push(`${mismatchCount} dependency ${mismatchCount === 1 ? "has" : "have"} a version mismatch.`);
+            reviewNotes.push(`${mismatchCount} dependency ${mismatchCount === 1 ? "has" : "have"} a version mismatch.`);
         }
 
         if (reviewCount > 0) {
-            notes.push(`${reviewCount} installed dependency ${reviewCount === 1 ? "needs" : "need"} a version review.`);
+            reviewNotes.push(`${reviewCount} installed dependency ${reviewCount === 1 ? "needs" : "need"} a version review.`);
+        }
+
+        if (dependencies.length > 0 && missingCount === 0 && mismatchCount === 0 && reviewCount === 0) {
+            infoNotes.push(`${dependencies.length} API dependency ${dependencies.length === 1 ? "row looks" : "rows look"} clear locally.`);
+        }
+
+        if (isCheckingNestedDependencies) {
+            reviewNotes.push("Nested dependency check is still running.");
+        } else if (nestedCheckAvailable && nestedDependencies.length === 0) {
+            infoNotes.push(`Nested dependency check is available for ${dependencyFileIdCount} returned dependency file ${dependencyFileIdCount === 1 ? "ID" : "IDs"}.`);
         }
 
         if (nestedMissingCount > 0) {
-            notes.push(`${nestedMissingCount} nested dependency ${nestedMissingCount === 1 ? "is" : "are"} missing locally.`);
+            reviewNotes.push(`${nestedMissingCount} nested dependency ${nestedMissingCount === 1 ? "is" : "are"} missing locally.`);
         }
 
         if (nestedMismatchCount > 0) {
-            notes.push(`${nestedMismatchCount} nested dependency ${nestedMismatchCount === 1 ? "has" : "have"} a version mismatch.`);
+            reviewNotes.push(`${nestedMismatchCount} nested dependency ${nestedMismatchCount === 1 ? "has" : "have"} a version mismatch.`);
         }
 
         if (nestedReviewCount > 0) {
-            notes.push(`${nestedReviewCount} nested installed dependency ${nestedReviewCount === 1 ? "needs" : "need"} a version review.`);
+            reviewNotes.push(`${nestedReviewCount} nested installed dependency ${nestedReviewCount === 1 ? "needs" : "need"} a version review.`);
+        }
+
+        if (nestedDependencies.length > 0 && nestedMissingCount === 0 && nestedMismatchCount === 0 && nestedReviewCount === 0) {
+            infoNotes.push(`${nestedDependencies.length} nested dependency ${nestedDependencies.length === 1 ? "row looks" : "rows look"} clear locally.`);
         }
 
         if (authorRequirements.length > 0) {
-            notes.push(`${authorRequirements.length} author-linked requirement ${authorRequirements.length === 1 ? "needs" : "need"} manual review.`);
+            reviewNotes.push(`${authorRequirements.length} author-linked requirement ${authorRequirements.length === 1 ? "needs" : "need"} manual review.`);
         }
 
         if (conflict) {
-            notes.push(`Local conflict detected across ${conflict.entries.length} matching installs.`);
+            reviewNotes.push(`Local conflict detected across ${conflict.entries.length} matching installs.`);
         }
 
         if (placement === "manual-review") {
-            notes.push("Manual placement review selected; confirm the author's directions before Vortex handoff.");
+            reviewNotes.push("Manual placement review selected; confirm the author's directions before Vortex handoff.");
         }
 
         if (explicitTarget && match && match.expectedLocation !== explicitTarget) {
-            notes.push(`Placement override differs from the detected local install target ${match.expectedLocation}.`);
+            reviewNotes.push(`Placement override differs from the detected local install target ${match.expectedLocation}.`);
         }
 
         if (match && !match.enabled) {
-            notes.push("The local match is currently disabled.");
+            reviewNotes.push("The local match is currently disabled.");
         }
 
+        const notes = [...reviewNotes, ...infoNotes];
         return {
             action: installPlanAction(mod, match),
             target,
             placement: installPlacementLabel(placement),
-            tone: notes.length > 0 ? "review" : "ready",
+            tone: reviewNotes.length > 0 ? "review" : "ready",
             notes: notes.length > 0 ? notes : ["No local blockers detected from API dependency data."]
         };
+    }
+
+    function installPlanDependencyLookupState(message: string): "checking" | "failed" | "empty" | "loaded" | "unknown" {
+        const normalized = message.trim().toLowerCase();
+        if (!normalized) {
+            return "unknown";
+        }
+
+        if (normalized.includes("checking")) {
+            return "checking";
+        }
+
+        if (normalized.includes("failed")) {
+            return "failed";
+        }
+
+        if (normalized.includes("no api") || normalized.includes("returned no")) {
+            return "empty";
+        }
+
+        if (normalized.includes("returned")) {
+            return "loaded";
+        }
+
+        return "unknown";
     }
 
     function installPlanAction(mod: NexusMod, match: InstalledInventoryEntry | null): string {
@@ -6298,6 +6364,9 @@
                             <span>File version <b>{selectedFileVersionLabel}</b></span>
                             <span>Uploaded <b>{selectedFileUploadedLabel}</b></span>
                             <span>Size <b>{selectedFileSizeLabel}</b></span>
+                            <span>API deps <b title={apiDependencyReadinessLabel()}>{resolvedDependencies.length}</b></span>
+                            <span>Author hints <b title={authorRequirementReadinessLabel()}>{selectedAuthorRequirements.length}</b></span>
+                            <span class="install-plan-file-fact">Nested <b title={nestedDependencyReadinessLabel()}>{nestedDependencyReadinessLabel()}</b></span>
                         </div>
                         <div class="install-plan-notes">
                             {#each selectedInstallPlan.notes as note}
