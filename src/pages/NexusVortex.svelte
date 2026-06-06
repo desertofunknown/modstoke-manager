@@ -53,6 +53,7 @@
     type DependencyStatus = "installed" | "missing" | "version-mismatch" | "review";
     type InstallPlanTone = "ready" | "review" | "blocked";
     type UpdateTone = "update" | "current" | "tracked" | "review" | "neutral";
+    type InstallPlacement = "auto" | "bepinex-plugin" | "redloader-mod" | "redloader-library" | "manual-review";
     type VersionComparison = "same" | "remote-newer" | "local-newer" | "different" | "unknown";
     type UpdateVerdict = {
         label: string;
@@ -82,6 +83,7 @@
     type InstallPlan = {
         action: string;
         target: string;
+        placement: string;
         tone: InstallPlanTone;
         notes: string[];
     };
@@ -131,9 +133,11 @@
     let selectedInstallPlan: InstallPlan = {
         action: "Choose a file",
         target: "-",
+        placement: "Auto",
         tone: "blocked",
         notes: ["Select a Nexus file before handing it to Vortex."]
     };
+    let selectedInstallPlacement: InstallPlacement = "auto";
     let selectedInstallActionButtonLabel = "Choose File";
     let selectedNxmUrl = "";
     let lastSelectedNxmUrl = "";
@@ -168,6 +172,7 @@
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
     const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
     const MOD_TYPE_FILTERS: ModTypeFilter[] = ["all", "bepinex-plugin", "redloader-mod", "redloader-library", "vortex", "native", "manual"];
+    const INSTALL_PLACEMENTS: InstallPlacement[] = ["auto", "bepinex-plugin", "redloader-mod", "redloader-library", "manual-review"];
     const NEXUS_SORT_MODES: NexusSortMode[] = ["attention", "updated", "downloads", "endorsements", "name", "version"];
     const INSTALLED_SORT_MODES: InstalledSortMode[] = ["attention", "name", "source", "location", "state", "version"];
     let nextManualRefreshAt = 0;
@@ -284,7 +289,8 @@
         selectedInstallMatch,
         selectedInstallConflict,
         resolvedDependencies,
-        vortexStagingPath
+        vortexStagingPath,
+        selectedInstallPlacement
     );
     $: selectedInstallActionButtonLabel = selectedInstallPlan.tone === "blocked"
         ? "Choose File"
@@ -1131,6 +1137,7 @@
         selectedModDetails = mod;
         selectedModFiles = [];
         selectedFileId = null;
+        selectedInstallPlacement = "auto";
         selectedDependencies = [];
         selectedChangelogs = [];
         isDetailLoading = true;
@@ -1473,17 +1480,21 @@
         match: InstalledInventoryEntry | null,
         conflict: LocalConflict | null,
         dependencies: ResolvedDependency[],
-        stagingPath: string | null): InstallPlan {
+        stagingPath: string | null,
+        placement: InstallPlacement): InstallPlan {
         if (!mod || !file) {
             return {
                 action: "Choose a file",
                 target: "-",
+                placement: "Auto",
                 tone: "blocked",
                 notes: ["Select a Nexus file before handing it to Vortex."]
             };
         }
 
-        const target = match?.expectedLocation ?? inferNexusInstallTarget(mod, file);
+        const autoTarget = match?.expectedLocation ?? inferNexusInstallTarget(mod, file);
+        const explicitTarget = installPlacementTarget(placement);
+        const target = explicitTarget ?? autoTarget;
         const notes: string[] = [];
         const missingCount = dependencies.filter(dependency => dependency.status === "missing").length;
         const mismatchCount = dependencies.filter(dependency => dependency.status === "version-mismatch").length;
@@ -1513,6 +1524,14 @@
             notes.push(`Local conflict detected across ${conflict.entries.length} matching installs.`);
         }
 
+        if (placement === "manual-review") {
+            notes.push("Manual placement review selected; confirm the author's directions before Vortex handoff.");
+        }
+
+        if (explicitTarget && match && match.expectedLocation !== explicitTarget) {
+            notes.push(`Placement override differs from the detected local install target ${match.expectedLocation}.`);
+        }
+
         if (match && !match.enabled) {
             notes.push("The local match is currently disabled.");
         }
@@ -1520,6 +1539,7 @@
         return {
             action: installPlanAction(mod, match),
             target,
+            placement: installPlacementLabel(placement),
             tone: notes.length > 0 ? "review" : "ready",
             notes: notes.length > 0 ? notes : ["No local blockers detected from API dependency data."]
         };
@@ -1535,6 +1555,36 @@
         }
 
         return match.installSource === "vortex" ? "Repair/redeploy in Vortex" : "Import/update via Vortex";
+    }
+
+    function installPlacementLabel(placement: InstallPlacement): string {
+        switch (placement) {
+            case "bepinex-plugin":
+                return "BepInEx plugin";
+            case "redloader-mod":
+                return "RedLoader mod";
+            case "redloader-library":
+                return "RedLoader library";
+            case "manual-review":
+                return "Manual review";
+            default:
+                return "Auto";
+        }
+    }
+
+    function installPlacementTarget(placement: InstallPlacement): string | null {
+        switch (placement) {
+            case "bepinex-plugin":
+                return "BepInEx/plugins";
+            case "redloader-mod":
+                return "Mods";
+            case "redloader-library":
+                return "Libs";
+            case "manual-review":
+                return "Manual review";
+            default:
+                return null;
+        }
     }
 
     function inferNexusInstallTarget(mod: NexusMod, file: NexusModFile): string {
@@ -3088,8 +3138,17 @@
                             <span class="detail-section-title">Install Plan</span>
                             <b>{installPlanToneLabel(selectedInstallPlan.tone)}</b>
                         </div>
+                        <label class="install-placement-control">
+                            <span>Placement</span>
+                            <select bind:value={selectedInstallPlacement} aria-label="Install placement override" disabled={!selectedNexusFile}>
+                                {#each INSTALL_PLACEMENTS as placement}
+                                    <option value={placement}>{installPlacementLabel(placement)}</option>
+                                {/each}
+                            </select>
+                        </label>
                         <div class="install-plan-facts">
                             <span>Action <b>{selectedInstallPlan.action}</b></span>
+                            <span>Placement <b>{selectedInstallPlan.placement}</b></span>
                             <span>Target <b>{selectedInstallPlan.target}</b></span>
                             <span class="install-plan-file-fact">File <b>{selectedInstallFileLabel}</b></span>
                             <span>File ID <b>{selectedNexusFile?.file_id ?? "-"}</b></span>
@@ -4422,6 +4481,28 @@
 
     .install-plan-blocked .install-plan-head b {
         color: #fd9b9d;
+    }
+
+    .install-placement-control {
+        align-items: center;
+        color: #8d99a5;
+        display: grid;
+        font-size: 0.76em;
+        gap: 0.5em;
+        grid-template-columns: minmax(5.5em, 0.35fr) minmax(0, 1fr);
+        margin-top: 0.55em;
+        min-width: 0;
+    }
+
+    .install-placement-control span {
+        font-weight: 900;
+        text-transform: uppercase;
+    }
+
+    .install-placement-control select {
+        margin: 0;
+        min-width: 0;
+        width: 100%;
     }
 
     .install-plan-facts {
