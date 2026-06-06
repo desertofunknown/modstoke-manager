@@ -188,6 +188,27 @@ const LOCAL_SOTF_NEXUS_CATEGORIES: NexusCategory[] = [
     { category_id: 2, name: "Miscellaneous", source: "local" },
     { category_id: 3, name: "Visuals", source: "local" }
 ];
+const DEPENDENCY_SOURCE_KEYS = [
+    "dependencies",
+    "dependency_definitions",
+    "dependencyDefinitions",
+    "dependency_ranges",
+    "dependencyRanges",
+    "items",
+    "results",
+    "nodes",
+    "edges"
+];
+const DEPENDENCY_WRAPPER_KEYS = [
+    "data",
+    "result",
+    "payload",
+    "response",
+    "modFileDependencyRangesResponse",
+    "modFileDependencyMaterializedResponse",
+    "mod_file_dependency_ranges_response",
+    "mod_file_dependency_materialized_response"
+];
 
 let sessionCache: { value: NexusSession; cachedAt: number } | null = null;
 let sessionRequest: Promise<NexusSession> | null = null;
@@ -875,24 +896,79 @@ export function normalizeDependencies(raw: unknown): NexusModDependency[] {
 }
 
 function dependencySourceRecords(raw: unknown): Array<Record<string, unknown>> {
-    const root = objectField(raw);
-    const data = objectField(root?.data);
+    const records: Array<Record<string, unknown>> = [];
+    const seen = new Set<Record<string, unknown>>();
+    collectDependencySourceRecords(raw, records, seen, 0);
+    return records;
+}
 
-    return [
-        ...(Array.isArray(raw) ? raw : []),
-        ...(Array.isArray(root?.data) ? root.data : []),
-        ...(Array.isArray(root?.dependencies) ? root.dependencies : []),
-        ...(Array.isArray(data?.dependencies) ? data.dependencies : []),
-        ...(Array.isArray(root?.dependency_definitions) ? root.dependency_definitions : []),
-        ...(Array.isArray(data?.dependency_definitions) ? data.dependency_definitions : [])
-    ].map(record => objectField(record)).filter((record): record is Record<string, unknown> => Boolean(record));
+function collectDependencySourceRecords(
+    value: unknown,
+    records: Array<Record<string, unknown>>,
+    seen: Set<Record<string, unknown>>,
+    depth: number
+) {
+    if (depth > 4 || value === undefined || value === null) {
+        return;
+    }
+
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            collectDependencySourceRecords(graphRecord(item), records, seen, depth + 1);
+        }
+        return;
+    }
+
+    const object = graphRecord(value);
+    if (!object) {
+        return;
+    }
+
+    if (isDependencyRecord(object) && !seen.has(object)) {
+        seen.add(object);
+        records.push(object);
+    }
+
+    for (const key of DEPENDENCY_SOURCE_KEYS) {
+        collectDependencySourceRecords(object[key], records, seen, depth + 1);
+    }
+
+    for (const key of DEPENDENCY_WRAPPER_KEYS) {
+        collectDependencySourceRecords(object[key], records, seen, depth + 1);
+    }
+}
+
+function isDependencyRecord(record: Record<string, unknown>): boolean {
+    return recordHasAnyField(record, [
+        "candidate_groups",
+        "candidateGroups",
+        "ranges",
+        "dependency_ranges",
+        "dependencyRanges",
+        "target_group",
+        "targetGroup",
+        "mod_id",
+        "modId",
+        "game_scoped_mod_id",
+        "gameScopedModId",
+        "file_id",
+        "fileId",
+        "game_scoped_file_id",
+        "gameScopedFileId",
+        "mod",
+        "file"
+    ]);
 }
 
 function normalizeDependencyRecord(dependency: Record<string, unknown>): NexusModDependency[] {
     const rows: NexusModDependency[] = [];
-    const candidateGroups = Array.isArray(dependency.candidate_groups)
-        ? dependency.candidate_groups.map(group => objectField(group)).filter((group): group is Record<string, unknown> => Boolean(group))
-        : [];
+    const candidateGroups = objectArrayFromFields(dependency, [
+        "candidate_groups",
+        "candidateGroups",
+        "candidate_update_groups",
+        "candidateUpdateGroups",
+        "groups"
+    ]);
 
     for (const group of candidateGroups) {
         const row = dependencyFromCandidateGroup(dependency, group);
@@ -901,9 +977,13 @@ function normalizeDependencyRecord(dependency: Record<string, unknown>): NexusMo
         }
     }
 
-    const ranges = Array.isArray(dependency.ranges)
-        ? dependency.ranges.map(range => objectField(range)).filter((range): range is Record<string, unknown> => Boolean(range))
-        : [];
+    const ranges = objectArrayFromFields(dependency, [
+        "ranges",
+        "dependency_ranges",
+        "dependencyRanges",
+        "range_definitions",
+        "rangeDefinitions"
+    ]);
     for (const range of ranges) {
         const row = dependencyFromRange(dependency, range);
         if (row) {
@@ -915,7 +995,8 @@ function normalizeDependencyRecord(dependency: Record<string, unknown>): NexusMo
         return rows;
     }
 
-    const directRange = objectField(dependency.target_group) && objectField(dependency.min_version)
+    const directRange = firstObjectFromFields(dependency, ["target_group", "targetGroup", "group", "update_group", "updateGroup"])
+        && firstObjectFromFields(dependency, ["min_version", "minVersion", "minimum_version", "minimumVersion"])
         ? dependencyFromRange(dependency, dependency)
         : null;
     if (directRange) {
@@ -927,15 +1008,30 @@ function normalizeDependencyRecord(dependency: Record<string, unknown>): NexusMo
 }
 
 function dependencyFromCandidateGroup(dependency: Record<string, unknown>, group: Record<string, unknown>): NexusModDependency | null {
-    const mod = objectField(group.mod);
-    const versions = Array.isArray(group.candidate_versions)
-        ? group.candidate_versions.map(version => objectField(version)).filter((version): version is Record<string, unknown> => Boolean(version))
-        : [];
+    const mod = firstObjectFromFields(group, ["mod", "target_mod", "targetMod", "game_mod", "gameMod"])
+        ?? firstObjectFromFields(dependency, ["mod", "target_mod", "targetMod"]);
+    const versions = objectArrayFromFields(group, [
+        "candidate_versions",
+        "candidateVersions",
+        "versions",
+        "files",
+        "candidate_files",
+        "candidateFiles"
+    ]);
     const version = versions[0];
-    const file = objectField(version?.file);
-    const modId = numberField(mod?.game_scoped_id) ?? numberField(mod?.mod_id) ?? numberField(mod?.id);
-    const fileId = numberField(file?.game_scoped_id) ?? numberField(file?.file_id) ?? numberField(file?.id);
-    const modName = stringField(mod?.name) ?? stringField(group.name);
+    const file = firstObjectFromFields(version, ["file", "mod_file", "modFile"])
+        ?? firstObjectFromFields(group, ["file", "mod_file", "modFile"])
+        ?? (version && recordHasAnyField(version, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "id", "name", "file_name", "fileName"]) ? version : undefined);
+    const modId = firstNumberFromFields(mod, ["game_scoped_id", "gameScopedId", "mod_id", "modId", "game_scoped_mod_id", "gameScopedModId", "id"])
+        ?? firstNumberFromFields(group, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId"])
+        ?? firstNumberFromFields(dependency, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId"]);
+    const fileId = firstNumberFromFields(file, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "game_scoped_file_id", "gameScopedFileId", "id"])
+        ?? firstNumberFromFields(version, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "game_scoped_file_id", "gameScopedFileId", "id"])
+        ?? firstNumberFromFields(group, ["file_id", "fileId", "game_scoped_file_id", "gameScopedFileId"])
+        ?? firstNumberFromFields(dependency, ["file_id", "fileId", "game_scoped_file_id", "gameScopedFileId"]);
+    const modName = firstStringFromFields(mod, ["name", "mod_name", "modName", "title"])
+        ?? firstStringFromFields(group, ["mod_name", "modName", "name", "title"])
+        ?? firstStringFromFields(dependency, ["mod_name", "modName", "name", "title"]);
 
     if (!modName && !modId) {
         return null;
@@ -946,23 +1042,34 @@ function dependencyFromCandidateGroup(dependency: Record<string, unknown>, group
         mod_id: modId,
         file_id: fileId,
         mod_name: modName ?? "Unknown dependency",
-        file_name: stringField(file?.name) ?? stringField(file?.file_name),
-        version: stringField(file?.version) ?? stringField(version?.version),
-        group_name: stringField(group.name)
+        file_name: firstStringFromFields(file, ["name", "file_name", "fileName", "logical_filename", "logicalFilename"])
+            ?? firstStringFromFields(version, ["name", "file_name", "fileName", "logical_filename", "logicalFilename"]),
+        version: firstStringFromFields(file, ["version", "file_version", "fileVersion", "mod_version", "modVersion"])
+            ?? firstStringFromFields(version, ["version", "file_version", "fileVersion", "name"]),
+        group_name: firstStringFromFields(group, ["name", "group_name", "groupName", "label"])
     };
 }
 
 function dependencyFromRange(dependency: Record<string, unknown>, range: Record<string, unknown>): NexusModDependency | null {
-    const targetGroup = objectField(range.target_group) ?? objectField(range.group);
-    const mod = objectField(targetGroup?.mod);
-    const minVersion = objectField(range.min_version);
-    const maxVersion = objectField(range.max_version);
-    const minFile = objectField(minVersion?.file);
-    const maxFile = objectField(maxVersion?.file);
+    const targetGroup = firstObjectFromFields(range, ["target_group", "targetGroup", "group", "update_group", "updateGroup"])
+        ?? firstObjectFromFields(dependency, ["target_group", "targetGroup", "group", "update_group", "updateGroup"]);
+    const mod = firstObjectFromFields(targetGroup, ["mod", "target_mod", "targetMod"])
+        ?? firstObjectFromFields(range, ["mod", "target_mod", "targetMod"])
+        ?? firstObjectFromFields(dependency, ["mod", "target_mod", "targetMod"]);
+    const minVersion = firstObjectFromFields(range, ["min_version", "minVersion", "minimum_version", "minimumVersion"])
+        ?? firstObjectFromFields(dependency, ["min_version", "minVersion", "minimum_version", "minimumVersion"]);
+    const maxVersion = firstObjectFromFields(range, ["max_version", "maxVersion", "maximum_version", "maximumVersion"])
+        ?? firstObjectFromFields(dependency, ["max_version", "maxVersion", "maximum_version", "maximumVersion"]);
+    const minFile = firstObjectFromFields(minVersion, ["file", "mod_file", "modFile"])
+        ?? (minVersion && recordHasAnyField(minVersion, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "id", "name", "file_name", "fileName"]) ? minVersion : undefined);
+    const maxFile = firstObjectFromFields(maxVersion, ["file", "mod_file", "modFile"])
+        ?? (maxVersion && recordHasAnyField(maxVersion, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "id", "name", "file_name", "fileName"]) ? maxVersion : undefined);
     const representativeFile = maxFile ?? minFile;
-    const modId = numberField(mod?.game_scoped_id) ?? numberField(mod?.mod_id) ?? numberField(mod?.id);
-    const fileId = numberField(representativeFile?.game_scoped_id) ?? numberField(representativeFile?.file_id) ?? numberField(representativeFile?.id);
-    const modName = stringField(mod?.name) ?? stringField(targetGroup?.name);
+    const modId = firstNumberFromFields(mod, ["game_scoped_id", "gameScopedId", "mod_id", "modId", "game_scoped_mod_id", "gameScopedModId", "id"])
+        ?? firstNumberFromFields(targetGroup, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId"]);
+    const fileId = firstNumberFromFields(representativeFile, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "game_scoped_file_id", "gameScopedFileId", "id"]);
+    const modName = firstStringFromFields(mod, ["name", "mod_name", "modName", "title"])
+        ?? firstStringFromFields(targetGroup, ["name", "group_name", "groupName", "label"]);
     const minLabel = dependencyVersionLabel(minVersion, minFile);
     const maxLabel = dependencyVersionLabel(maxVersion, maxFile);
     const exactVersion = minLabel && maxLabel && normalizedDependencyVersion(minLabel) === normalizedDependencyVersion(maxLabel)
@@ -978,36 +1085,27 @@ function dependencyFromRange(dependency: Record<string, unknown>, range: Record<
         mod_id: modId,
         file_id: fileId,
         mod_name: modName ?? "Unknown dependency",
-        file_name: stringField(representativeFile?.name) ?? stringField(representativeFile?.file_name),
+        file_name: firstStringFromFields(representativeFile, ["name", "file_name", "fileName", "logical_filename", "logicalFilename"]),
         version: exactVersion,
         version_requirement: dependencyRequirementLabel(minLabel, maxLabel),
-        group_name: stringField(targetGroup?.name)
+        group_name: firstStringFromFields(targetGroup, ["name", "group_name", "groupName", "label"])
     };
 }
 
 function dependencyFromFlatRecord(dependency: Record<string, unknown>): NexusModDependency | null {
-    const mod = objectField(dependency.mod);
-    const file = objectField(dependency.file);
-    const group = objectField(dependency.group) ?? objectField(dependency.target_group);
-    const groupMod = objectField(group?.mod);
-    const modId = numberField(dependency.mod_id)
-        ?? numberField(dependency.game_scoped_mod_id)
-        ?? numberField(mod?.game_scoped_id)
-        ?? numberField(mod?.mod_id)
-        ?? numberField(mod?.id)
-        ?? numberField(groupMod?.game_scoped_id)
-        ?? numberField(groupMod?.mod_id)
-        ?? numberField(groupMod?.id);
-    const fileId = numberField(dependency.file_id)
-        ?? numberField(dependency.game_scoped_file_id)
-        ?? numberField(file?.game_scoped_id)
-        ?? numberField(file?.file_id)
-        ?? numberField(file?.id);
-    const modName = stringField(dependency.mod_name)
-        ?? stringField(dependency.name)
-        ?? stringField(mod?.name)
-        ?? stringField(groupMod?.name)
-        ?? stringField(group?.name);
+    const mod = firstObjectFromFields(dependency, ["mod", "target_mod", "targetMod"]);
+    const file = firstObjectFromFields(dependency, ["file", "mod_file", "modFile"]);
+    const group = firstObjectFromFields(dependency, ["group", "target_group", "targetGroup", "update_group", "updateGroup"]);
+    const groupMod = firstObjectFromFields(group, ["mod", "target_mod", "targetMod"]);
+    const modId = firstNumberFromFields(dependency, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId"])
+        ?? firstNumberFromFields(mod, ["game_scoped_id", "gameScopedId", "mod_id", "modId", "id"])
+        ?? firstNumberFromFields(groupMod, ["game_scoped_id", "gameScopedId", "mod_id", "modId", "id"]);
+    const fileId = firstNumberFromFields(dependency, ["file_id", "fileId", "game_scoped_file_id", "gameScopedFileId"])
+        ?? firstNumberFromFields(file, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "id"]);
+    const modName = firstStringFromFields(dependency, ["mod_name", "modName", "name", "title"])
+        ?? firstStringFromFields(mod, ["name", "mod_name", "modName", "title"])
+        ?? firstStringFromFields(groupMod, ["name", "mod_name", "modName", "title"])
+        ?? firstStringFromFields(group, ["name", "group_name", "groupName", "label"]);
 
     if (!modName && !modId) {
         return null;
@@ -1018,25 +1116,20 @@ function dependencyFromFlatRecord(dependency: Record<string, unknown>): NexusMod
         mod_id: modId,
         file_id: fileId,
         mod_name: modName ?? "Unknown dependency",
-        file_name: stringField(dependency.file_name)
-            ?? stringField(dependency.logical_filename)
-            ?? stringField(file?.name)
-            ?? stringField(file?.file_name),
-        version: stringField(dependency.version)
-            ?? stringField(dependency.file_version)
-            ?? stringField(dependency.required_version)
-            ?? stringField(file?.version),
-        version_requirement: stringField(dependency.version_requirement)
-            ?? stringField(dependency.requirement)
-            ?? stringField(dependency.version_range),
-        group_name: stringField(dependency.group_name) ?? stringField(group?.name)
+        file_name: firstStringFromFields(dependency, ["file_name", "fileName", "logical_filename", "logicalFilename"])
+            ?? firstStringFromFields(file, ["name", "file_name", "fileName", "logical_filename", "logicalFilename"]),
+        version: firstStringFromFields(dependency, ["version", "file_version", "fileVersion", "required_version", "requiredVersion"])
+            ?? firstStringFromFields(file, ["version", "file_version", "fileVersion"]),
+        version_requirement: firstStringFromFields(dependency, ["version_requirement", "versionRequirement", "requirement", "version_range", "versionRange", "required_version_range", "requiredVersionRange"]),
+        group_name: firstStringFromFields(dependency, ["group_name", "groupName"]) ?? firstStringFromFields(group, ["name", "group_name", "groupName", "label"])
     };
 }
 
 function dependencyVersionLabel(version: Record<string, unknown> | undefined, file: Record<string, unknown> | undefined): string | undefined {
-    return stringField(file?.version)
-        ?? stringField(version?.version)
-        ?? stringField(version?.name);
+    return firstStringFromFields(file, ["version", "file_version", "fileVersion"])
+        ?? firstStringFromFields(version, ["version", "file_version", "fileVersion"])
+        ?? firstStringFromFields(file, ["name", "file_name", "fileName", "logical_filename", "logicalFilename"])
+        ?? firstStringFromFields(version, ["name"]);
 }
 
 function dependencyRequirementLabel(minVersion?: string, maxVersion?: string): string | undefined {
@@ -1310,6 +1403,92 @@ function objectField(value: unknown): Record<string, unknown> | undefined {
     return typeof value === "object" && value !== null && !Array.isArray(value)
         ? value as Record<string, unknown>
         : undefined;
+}
+
+function graphRecord(value: unknown): Record<string, unknown> | undefined {
+    const object = objectField(value);
+    if (!object) {
+        return undefined;
+    }
+
+    return objectField(object.node) ?? objectField(object.value) ?? object;
+}
+
+function objectArrayFromFields(source: Record<string, unknown> | undefined, keys: string[]): Array<Record<string, unknown>> {
+    if (!source) {
+        return [];
+    }
+
+    const records: Array<Record<string, unknown>> = [];
+    for (const key of keys) {
+        records.push(...objectArrayFromValue(source[key]));
+    }
+
+    return records;
+}
+
+function objectArrayFromValue(value: unknown, depth = 0): Array<Record<string, unknown>> {
+    if (depth > 2 || value === undefined || value === null) {
+        return [];
+    }
+
+    if (Array.isArray(value)) {
+        return value
+            .map(record => graphRecord(record))
+            .filter((record): record is Record<string, unknown> => Boolean(record));
+    }
+
+    const object = graphRecord(value);
+    if (!object) {
+        return [];
+    }
+
+    for (const key of ["data", "nodes", "edges", "items", "results"]) {
+        const nested = objectArrayFromValue(object[key], depth + 1);
+        if (nested.length > 0) {
+            return nested;
+        }
+    }
+
+    return [object];
+}
+
+function firstObjectFromFields(source: Record<string, unknown> | undefined, keys: string[]): Record<string, unknown> | undefined {
+    return objectArrayFromFields(source, keys)[0];
+}
+
+function firstStringFromFields(source: Record<string, unknown> | undefined, keys: string[]): string | undefined {
+    if (!source) {
+        return undefined;
+    }
+
+    for (const key of keys) {
+        const value = stringField(source[key]);
+        if (value) {
+            return value;
+        }
+    }
+
+    return undefined;
+}
+
+function firstNumberFromFields(source: Record<string, unknown> | undefined, keys: string[]): number | undefined {
+    if (!source) {
+        return undefined;
+    }
+
+    for (const key of keys) {
+        const value = numberField(source[key]);
+        if (value !== undefined) {
+            return value;
+        }
+    }
+
+    return undefined;
+}
+
+function recordHasAnyField(source: Record<string, unknown> | undefined, keys: string[]): boolean {
+    return Boolean(source && keys.some(key => source[key] !== undefined && source[key] !== null));
 }
 
 function isRootNexusCategory(name: string, categoryId?: number): boolean {

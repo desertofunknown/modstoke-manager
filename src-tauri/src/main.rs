@@ -409,20 +409,51 @@ async fn nexus_request_dependency_ranges_with_fallback(
 }
 
 fn nexus_dependency_payload_has_rows(value: &serde_json::Value) -> bool {
-    let has_rows = |key: &str, source: &serde_json::Value| {
-        source
-            .get(key)
-            .and_then(|rows| rows.as_array())
-            .is_some_and(|rows| !rows.is_empty())
+    nexus_dependency_container_has_rows(value, 0)
+}
+
+fn nexus_dependency_container_has_rows(value: &serde_json::Value, depth: usize) -> bool {
+    if depth > 4 {
+        return false;
+    }
+
+    if value.as_array().is_some_and(|rows| !rows.is_empty()) {
+        return true;
+    }
+
+    let Some(object) = value.as_object() else {
+        return false;
     };
 
-    value.as_array().is_some_and(|rows| !rows.is_empty())
-        || has_rows("dependencies", value)
-        || has_rows("dependency_definitions", value)
-        || value.get("data").is_some_and(|data| {
-            data.as_array().is_some_and(|rows| !rows.is_empty())
-                || has_rows("dependencies", data)
-                || has_rows("dependency_definitions", data)
+    const ROW_KEYS: &[&str] = &[
+        "dependencies",
+        "dependency_definitions",
+        "dependencyDefinitions",
+        "dependency_ranges",
+        "dependencyRanges",
+        "items",
+        "results",
+        "nodes",
+        "edges",
+    ];
+    const WRAPPER_KEYS: &[&str] = &[
+        "data",
+        "result",
+        "payload",
+        "response",
+        "modFileDependencyRangesResponse",
+        "modFileDependencyMaterializedResponse",
+        "mod_file_dependency_ranges_response",
+        "mod_file_dependency_materialized_response",
+    ];
+
+    ROW_KEYS
+        .iter()
+        .chain(WRAPPER_KEYS.iter())
+        .any(|key| {
+            object
+                .get(*key)
+                .is_some_and(|child| nexus_dependency_container_has_rows(child, depth + 1))
         })
 }
 
