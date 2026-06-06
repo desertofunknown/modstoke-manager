@@ -1,9 +1,8 @@
 import { BaseZipInstaller } from "./baseZipInstaller";
 import { getDirectoryPath, gameExePath, processName, processProgress } from "./store"
 import { get } from 'svelte/store'
-import { fs, http } from "@tauri-apps/api";
 import { TempFileCache } from "./tempFileCache";
-import { download } from "tauri-plugin-upload-api";
+import { download } from "@tauri-apps/plugin-upload";
 
 
 export abstract class BaseWebInstaller extends BaseZipInstaller {
@@ -16,7 +15,6 @@ export abstract class BaseWebInstaller extends BaseZipInstaller {
   }
 
   public async install(): Promise<void> {
-    const exePath = get(gameExePath);
     const exeDir = await getDirectoryPath();
 
     const selectedVersion = await this.getTargetVersion();
@@ -52,9 +50,11 @@ export abstract class BaseWebInstaller extends BaseZipInstaller {
       await download(
         downloadUrl,
         tempPath,
-        (progress, total) => {
+        ({ progress, total }) => {
           downloadProgress += progress;
-          processProgress.set(downloadProgress / total * 100);
+          if (total > 0) {
+            processProgress.set(downloadProgress / total * 100);
+          }
         }
       );
 

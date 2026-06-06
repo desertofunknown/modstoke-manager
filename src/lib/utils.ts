@@ -1,9 +1,9 @@
-import { invoke } from '@tauri-apps/api/tauri';
-import { exists } from '@tauri-apps/api/fs';
-import { dialog } from '@tauri-apps/api';
+import { invoke } from '@tauri-apps/api/core';
+import { exists } from '@tauri-apps/plugin-fs';
 import { processName, processProgress } from './store';
 import { TempFileCache } from './tempFileCache';
-import { download } from 'tauri-plugin-upload-api';
+import { download } from '@tauri-apps/plugin-upload';
+import * as dialog from "@tauri-apps/plugin-dialog"
 
 export async function unzip(sourcePath: string, destinationPath: string) {
     const src = sourcePath.replace(/\\/g, '/');
@@ -30,9 +30,11 @@ export async function downloadAndInstall(destination: string, downloadUrl: strin
       await download(
         downloadUrl,
         tempPath,
-        (progress, total) => {
+        ({ progress, total }) => {
           downloadProgress += progress;
-          processProgress.set(downloadProgress / total * 100);
+          if (total > 0) {
+            processProgress.set(downloadProgress / total * 100);
+          }
         }
       );
 

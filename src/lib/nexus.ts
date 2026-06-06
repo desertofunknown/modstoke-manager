@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/tauri";
+import { invoke } from "@tauri-apps/api/core";
 
 export type NexusUser = {
     user_id?: number;
@@ -55,24 +55,85 @@ type NexusModsResponse = {
 
 export type NexusView = "trending" | "latest_added" | "latest_updated";
 
-export async function getNexusSession(): Promise<NexusSession> {
-    return await invoke<NexusSession>("nexus_get_session");
+export const NEXUS_CACHE_TTL_MINUTES = 10;
+
+const NEXUS_CACHE_TTL_MS = NEXUS_CACHE_TTL_MINUTES * 60 * 1000;
+
+let sessionCache: { value: NexusSession; cachedAt: number } | null = null;
+let sessionRequest: Promise<NexusSession> | null = null;
+const modsCache = new Map<NexusView, { value: NexusModsResponse; cachedAt: number }>();
+const modsRequests = new Map<NexusView, Promise<NexusModsResponse>>();
+
+function cacheFresh(cachedAt: number): boolean {
+    return Date.now() - cachedAt < NEXUS_CACHE_TTL_MS;
+}
+
+export function clearNexusClientCache(): void {
+    sessionCache = null;
+    sessionRequest = null;
+    modsCache.clear();
+    modsRequests.clear();
+}
+
+export async function getNexusSession(options: { force?: boolean } = {}): Promise<NexusSession> {
+    if (!options.force && sessionCache && cacheFresh(sessionCache.cachedAt)) {
+        return sessionCache.value;
+    }
+
+    if (!options.force && sessionRequest) {
+        return await sessionRequest;
+    }
+
+    sessionRequest = invoke<NexusSession>("nexus_get_session")
+        .then((session) => {
+            sessionCache = { value: session, cachedAt: Date.now() };
+            return session;
+        })
+        .finally(() => {
+            sessionRequest = null;
+        });
+
+    return await sessionRequest;
 }
 
 export async function saveNexusApiKey(apiKey: string): Promise<NexusSession> {
-    return await invoke<NexusSession>("nexus_save_api_key", { apiKey });
+    clearNexusClientCache();
+    const session = await invoke<NexusSession>("nexus_save_api_key", { apiKey });
+    sessionCache = { value: session, cachedAt: Date.now() };
+    return session;
 }
 
 export async function clearNexusApiKey(): Promise<void> {
+    clearNexusClientCache();
     await invoke("nexus_clear_api_key");
 }
 
-export async function fetchNexusSotfMods(view: NexusView): Promise<NexusModsResponse> {
-    const response = await invoke<RawNexusModsResponse>("nexus_fetch_sotf_mods", { view });
-    return {
-        ...response,
-        mods: Array.isArray(response.mods) ? response.mods : response.mods.data ?? []
-    };
+export async function fetchNexusSotfMods(view: NexusView, options: { force?: boolean } = {}): Promise<NexusModsResponse> {
+    const cached = modsCache.get(view);
+    if (!options.force && cached && cacheFresh(cached.cachedAt)) {
+        return cached.value;
+    }
+
+    const existingRequest = modsRequests.get(view);
+    if (!options.force && existingRequest) {
+        return await existingRequest;
+    }
+
+    const request = invoke<RawNexusModsResponse>("nexus_fetch_sotf_mods", { view })
+        .then((response) => {
+            const normalized = {
+                ...response,
+                mods: Array.isArray(response.mods) ? response.mods : response.mods.data ?? []
+            };
+            modsCache.set(view, { value: normalized, cachedAt: Date.now() });
+            return normalized;
+        })
+        .finally(() => {
+            modsRequests.delete(view);
+        });
+
+    modsRequests.set(view, request);
+    return await request;
 }
 
 export function getNexusModPageUrl(mod: NexusMod): string {

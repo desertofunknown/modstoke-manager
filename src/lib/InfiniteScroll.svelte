@@ -53,4 +53,4 @@
     });
 </script>
 
-<div bind:this={component} style="width:0px" />
+<div bind:this={component} style="width:0px"></div>

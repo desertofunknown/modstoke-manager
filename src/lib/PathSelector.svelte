@@ -1,7 +1,6 @@
 <script lang="ts">
-    import { fs, dialog } from "@tauri-apps/api";
-    import { writable } from "svelte/store";
     import { gameExePath, isPathValid } from "./store";
+    import * as dialog from "@tauri-apps/plugin-dialog"
 
     async function selectPath() {
         try {
@@ -29,7 +28,7 @@
 
 <style>
     #path-selector {
-        margin-bottom: 1em;
+        margin-bottom: clamp(0.45em, 1.4vh, 1em);
         display: flex;
         width: 100%;
         align-items: center;
@@ -38,7 +37,7 @@
     .path-input {
         flex: 1; /* Takes up all available space */
         box-sizing: border-box;
-        height: 100%; /* Ensures that it takes the full height of its parent */
+        min-height: clamp(2.4em, 5vh, 3.1em);
         margin: 0; /* Removes default margin from input */
         border-radius: 2px 0 0 2px;
         width: 80%;
@@ -49,8 +48,19 @@
 
     .select-btn {
         border-radius: 0 2px 2px 0;
-        height: 100%; /* Ensures that it takes the full height of its parent */
+        min-height: clamp(2.4em, 5vh, 3.1em);
         margin: 0; /* Removes default margin from button */
         box-sizing: border-box;
+    }
+
+    @media (max-height: 720px) {
+        #path-selector {
+            margin-bottom: 0.35em;
+        }
+
+        .path-input,
+        .select-btn {
+            min-height: 2.25em;
+        }
     }
 </style>

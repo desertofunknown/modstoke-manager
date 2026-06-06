@@ -1,7 +1,7 @@
-import { dialog } from "@tauri-apps/api";
 import { BaseZipInstaller } from "./baseZipInstaller";
 import { getDirectoryPath } from "./store";
-import { invoke } from "@tauri-apps/api/tauri";
+import { invoke } from "@tauri-apps/api/core";
+import * as dialog from "@tauri-apps/plugin-dialog"
 
 type LoaderZipInspection = {
     is_valid: boolean;
@@ -48,11 +48,11 @@ export class ManualZipInstaller extends BaseZipInstaller {
         if (!inspection.is_valid) {
             const details = inspection.errors.length > 0
                 ? inspection.errors.join("\n")
-                : "The selected zip is missing the OpenACAI Loader manifest or compatibility bridge.";
+                : "The selected zip is missing the Endnight Loader manifest or compatibility bridge.";
 
             await dialog.message(details, {
-                title: "Invalid OpenACAI Loader package",
-                type: "error"
+                title: "Invalid Endnight Loader package",
+                kind: "error"
             });
 
             this._selectedZipPath = null;

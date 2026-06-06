@@ -1,4 +1,5 @@
-import { fs, path } from "@tauri-apps/api";
+import * as path from "@tauri-apps/api/path";
+import * as fs from "@tauri-apps/plugin-fs"
 
 export class TempFileCache {
   private static _cache: string[] = [];
@@ -21,7 +22,7 @@ export class TempFileCache {
       try {
         if(await fs.exists(filePath))
         {
-          await fs.removeFile(filePath);
+          await fs.remove(filePath);
         }
       } catch (error) {
         console.error(`Error deleting temp file ${filePath}:`, error);

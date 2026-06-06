@@ -5,10 +5,12 @@ import { BaseUninstaller } from "./baseUninstaller";
 import { writable, get } from "svelte/store";
 import { GithubInstaller } from "./githubInstaller";
 import { redLoaderInfo, unityExplorerInfo } from "./githubInfo";
-import { fs, invoke, path } from "@tauri-apps/api";
+import { invoke } from "@tauri-apps/api/core";
+import * as path from "@tauri-apps/api/path";
 import { gameExePath } from "./store";
 import semver from "semver";
 import { OpenAcaiLoaderInstaller } from "./openAcaiLoaderUpdater";
+import * as fs from "@tauri-apps/plugin-fs"
 
 export enum InstallMode {
     Install,
@@ -61,7 +63,7 @@ export class FeatureInstaller {
             for (const folder of this.additionalFoldersToCreate) {
                 let dir = await path.join(await getDirectoryPath(), folder);
                 if(!await fs.exists(dir)) {
-                    await fs.createDir(dir);
+                    await fs.mkdir(dir);
                 }
             }
         }
@@ -247,7 +249,7 @@ let openAcaiLoaderUninstaller = new BaseUninstaller([
 ], [
     "dobby.dll",
     "version.dll"
-], "OpenACAI Loader");
+], "Endnight Loader");
 openAcaiLoaderUninstaller.overrideCheckFiles = [
     "BepInEx\\plugins\\OpenACAILoader\\openacai-loader-state.json",
     "BepInEx\\plugins\\OpenACAILoader\\openacai-loader.manifest.json",
@@ -256,7 +258,7 @@ openAcaiLoaderUninstaller.overrideCheckFiles = [
 
 export let openAcaiLoaderFeature = new FeatureInstaller(openAcaiLoaderInstaller, openAcaiLoaderUninstaller, "BepInEx\\plugins\\OpenACAILoader\\openacai-loader.manifest.json");
 openAcaiLoaderFeature.additionalFoldersToCreate = ["Mods"];
-openAcaiLoaderFeature.description = "Installs or repairs the BepInEx-first OpenACAI Loader package from the public GitHub release manifest, then verifies installed file hashes.";
+openAcaiLoaderFeature.description = "Installs or repairs the BepInEx-first Endnight Loader package from the public GitHub release manifest, then verifies installed file hashes.";
 
 export let ueFeature = new FeatureInstaller(ueInstaller, ueUninstaller);
 ueFeature.description = "UnityExplorer is a modding tool which lets you analyze and manipulate the game at runtime."

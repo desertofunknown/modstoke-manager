@@ -1,5 +1,6 @@
-import { fs, path } from "@tauri-apps/api";
+import * as path from "@tauri-apps/api/path";
 import { getDirectoryPath } from "./store";
+import * as fs from "@tauri-apps/plugin-fs"
 
 export type LoaderType = "redloader-mod" | "redloader-library" | "bepinex-plugin";
 export type InstallSource = "native" | "vortex" | "manual";
@@ -41,6 +42,11 @@ type ManifestData = {
     author?: string;
     version?: string;
     type?: string;
+};
+
+type FsDirEntry = {
+    name?: string;
+    path?: string;
 };
 
 const MAX_SCAN_DEPTH = 4;
@@ -126,6 +132,64 @@ export function describeInstallSource(entry: InstalledInventoryEntry | null | un
     }
 
     return "Manual / local";
+}
+
+export async function setInventoryEntryEnabled(entry: InstalledInventoryEntry, shouldEnable: boolean): Promise<void> {
+    if (entry.installSource === "vortex") {
+        throw new Error("This mod is managed by Vortex. Use Vortex to enable or disable it so deployment metadata stays consistent.");
+    }
+
+    if (entry.assemblyPath) {
+        const enabledAssemblyPath = entry.assemblyPath.replace(/\.disabled$/i, ".dll");
+        const disabledAssemblyPath = entry.assemblyPath.replace(/\.dll$/i, ".disabled");
+
+        if (shouldEnable && await fs.exists(disabledAssemblyPath)) {
+            await fs.rename(disabledAssemblyPath, enabledAssemblyPath);
+            entry.assemblyPath = enabledAssemblyPath;
+            entry.enabled = true;
+            return;
+        }
+
+        if (!shouldEnable && await fs.exists(enabledAssemblyPath)) {
+            await fs.rename(enabledAssemblyPath, disabledAssemblyPath);
+            entry.assemblyPath = disabledAssemblyPath;
+            entry.enabled = false;
+            return;
+        }
+    }
+
+    if (!entry.packagePath) {
+        entry.enabled = shouldEnable;
+        return;
+    }
+
+    const gameRoot = await getDirectoryPath();
+    const packageName = await path.basename(entry.packagePath);
+    const rootPath = entry.expectedLocation === "Libs"
+        ? await path.join(gameRoot, "Libs")
+        : entry.expectedLocation === "BepInEx/plugins"
+            ? await path.join(gameRoot, "BepInEx", "plugins")
+            : await path.join(gameRoot, "Mods");
+    const enabledPackagePath = isDisabledPath(entry.packagePath)
+        ? await path.join(rootPath, packageName)
+        : entry.packagePath;
+    const disabledPackagePath = await path.join(rootPath, "_Disabled", packageName);
+
+    if (shouldEnable && await fs.exists(disabledPackagePath)) {
+        await fs.mkdir(rootPath, { recursive: true });
+        await fs.rename(disabledPackagePath, enabledPackagePath);
+        entry.packagePath = enabledPackagePath;
+        entry.enabled = true;
+        return;
+    }
+
+    if (!shouldEnable && await fs.exists(enabledPackagePath)) {
+        const disabledParent = await path.dirname(disabledPackagePath);
+        await fs.mkdir(disabledParent, { recursive: true });
+        await fs.rename(enabledPackagePath, disabledPackagePath);
+        entry.packagePath = disabledPackagePath;
+        entry.enabled = false;
+    }
 }
 
 async function scanRedLoaderRoot(
@@ -228,9 +292,14 @@ async function findManifestFolders(rootPath: string, depth: number = 0): Promise
     }
 
     for (const file of files) {
-        const name = file.name ?? await path.basename(file.path);
+        const filePath = await resolveDirEntryPath(rootPath, file);
+        if (!filePath) {
+            continue;
+        }
+
+        const name = file.name ?? await path.basename(filePath);
         if (name.toLowerCase() === "manifest.json") {
-            results.push(await path.dirname(file.path));
+            results.push(await path.dirname(filePath));
             continue;
         }
 
@@ -238,9 +307,7 @@ async function findManifestFolders(rootPath: string, depth: number = 0): Promise
             continue;
         }
 
-        if (await fs.exists(file.path)) {
-            results.push(...await findManifestFolders(file.path, depth + 1));
-        }
+        results.push(...await findManifestFolders(filePath, depth + 1));
     }
 
     return results;
@@ -260,18 +327,35 @@ async function findFiles(rootPath: string, predicate: (fileName: string) => bool
     }
 
     for (const file of files) {
-        const name = file.name ?? await path.basename(file.path);
+        const filePath = await resolveDirEntryPath(rootPath, file);
+        if (!filePath) {
+            continue;
+        }
+
+        const name = file.name ?? await path.basename(filePath);
         if (predicate(name)) {
-            results.push(file.path);
+            results.push(filePath);
             continue;
         }
 
         if (!name.startsWith(".") && !name.toLowerCase().endsWith(".dll")) {
-            results.push(...await findFiles(file.path, predicate, depth + 1));
+            results.push(...await findFiles(filePath, predicate, depth + 1));
         }
     }
 
     return results;
+}
+
+async function resolveDirEntryPath(parentPath: string, entry: FsDirEntry): Promise<string | null> {
+    if (entry.path) {
+        return entry.path;
+    }
+
+    if (entry.name) {
+        return await path.join(parentPath, entry.name);
+    }
+
+    return null;
 }
 
 async function readManifest(manifestPath: string): Promise<ManifestData> {
@@ -379,8 +463,13 @@ async function hasVortexMarker(packagePath: string | null | undefined, depth: nu
         }
 
         for (const file of await fs.readDir(packagePath)) {
-            const name = file.name ?? await path.basename(file.path);
-            if (!name.startsWith(".") && await hasVortexMarker(file.path, depth + 1)) {
+            const childPath = await resolveDirEntryPath(packagePath, file);
+            if (!childPath) {
+                continue;
+            }
+
+            const name = file.name ?? await path.basename(childPath);
+            if (!name.startsWith(".") && await hasVortexMarker(childPath, depth + 1)) {
                 return true;
             }
         }

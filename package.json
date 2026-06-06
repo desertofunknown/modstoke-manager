@@ -13,24 +13,29 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@tauri-apps/api": "^1.4.0",
-    "@types/lodash": "^4.17.15",
-    "lodash": "^4.17.21",
-    "semver": "^7.5.4",
-    "tauri-plugin-upload-api": "github:tauri-apps/tauri-plugin-upload#v1"
+    "@tauri-apps/api": "2.11.0",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@tauri-apps/plugin-fs": "^2.5.1",
+    "@tauri-apps/plugin-http": "^2.5.9",
+    "@tauri-apps/plugin-opener": "2.5.4",
+    "@tauri-apps/plugin-shell": "^2.3.5",
+    "@tauri-apps/plugin-upload": "^2.4.0",
+    "@types/lodash": "4.17.24",
+    "lodash": "4.18.1",
+    "semver": "7.8.2"
   },
   "devDependencies": {
-    "@iconify/json": "^2.2.302",
-    "@sveltejs/vite-plugin-svelte": "^2.5.3",
-    "@tauri-apps/cli": "^1.4.0",
-    "@tsconfig/svelte": "^5.0.0",
-    "@types/semver": "^7.5.0",
-    "svelte": "^4.0.5",
-    "svelte-check": "^3.4.6",
-    "svelte-preprocess": "^5.0.0",
-    "tslib": "^2.6.0",
-    "typescript": "^5.0.2",
-    "unplugin-icons": "^22.0.0",
-    "vite": "^4.4.4"
+    "@iconify/json": "2.2.483",
+    "@sveltejs/vite-plugin-svelte": "7.1.2",
+    "@tauri-apps/cli": "2.11.2",
+    "@tsconfig/svelte": "5.0.8",
+    "@types/semver": "7.7.1",
+    "svelte": "5.56.2",
+    "svelte-check": "4.6.0",
+    "svelte-preprocess": "6.0.5",
+    "tslib": "2.8.1",
+    "typescript": "6.0.3",
+    "unplugin-icons": "23.0.1",
+    "vite": "8.0.16"
   }
 }

@@ -1,9 +1,9 @@
 <script lang="ts">
   import { processProgress, processing } from './store';
     import { onMount, createEventDispatcher } from 'svelte';
-    import { dialog } from '@tauri-apps/api';
     import { ModDatabase, type Mod } from './mods';
     import StatusButton from './StatusButton.svelte';
+    import * as dialog from "@tauri-apps/plugin-dialog"
 
     export let mod: Mod;
     export let isGrid: boolean = false;
@@ -93,6 +93,16 @@
       await refresh();
     }
 
+    async function handleEnabledChange(event: Event) {
+      const checked = (event.currentTarget as HTMLInputElement).checked;
+      if (checked) {
+        await enableMod();
+        return;
+      }
+
+      await disableMod();
+    }
+
     async function refresh() {
       mod = mod;
       if(mod)
@@ -127,7 +137,7 @@
         `${mod.name} is currently managed by Vortex/Nexus. Use Vortex to ${action} it so deployment metadata stays consistent.`,
         {
           title: "Managed by Vortex",
-          type: "info"
+          kind: "info"
         }
       );
     }
@@ -159,6 +169,22 @@
 
       return "RedLoader Mod";
     }
+
+    function multiplayerLabel() {
+      if (mod.requiresAllPlayers) {
+        return "All players";
+      }
+
+      if (mod.isMultiplayerCompatible) {
+        return "MP compatible";
+      }
+
+      if (mod.modSide === "client") {
+        return "Client-side";
+      }
+
+      return "Compatibility unknown";
+    }
 </script>
 
 <div class="feature-container description {isGrid?'grid-thing':''}">
@@ -166,6 +192,7 @@
   <div class="meta-row">
     <span class="source-pill source-{mod.installedMod?.installSource ?? 'online'}">{sourceLabel()}</span>
     <span class="source-pill">{loaderLabel()}</span>
+    <span class="source-pill">{multiplayerLabel()}</span>
     {#if mod.installedMod?.vortexPackage}
       <span class="source-pill source-detail">{mod.installedMod.vortexPackage}</span>
     {/if}
@@ -191,11 +218,15 @@
     </div>
     <div class="vertical">
       {#if mod.isInstalled && !isLibrary && !isGrid}
-        {#if mod.installedMod?.isEnabled}
-          <button class="toggle-button install" on:click={disableMod}>Enabled</button>
-        {:else}
-          <button class="toggle-button uninstall" on:click={enableMod}>Disabled</button>
-        {/if}
+        <label class="enable-control" class:vortex-disabled={isVortexManaged()}>
+          <input
+            type="checkbox"
+            checked={!!mod.installedMod?.isEnabled}
+            disabled={isVortexManaged()}
+            on:change={handleEnabledChange}
+          />
+          <span>{mod.installedMod?.isEnabled ? "Enabled" : "Disabled"}</span>
+        </label>
       {/if}
       <span class="description-content">Author: <b class="update">{mod.user.name}</b></span>
       <span class="description-content">Version: <b class="update">{mod.latestVersion}</b></span>
@@ -205,11 +236,15 @@
   </div>
 
   {#if mod.isInstalled && !isLibrary && isGrid}
-    {#if mod.installedMod?.isEnabled}
-      <button class="toggle-button grid-toggle-button install" on:click={disableMod}>Enabled</button>
-    {:else}
-      <button class="toggle-button grid-toggle-button uninstall" on:click={enableMod}>Disabled</button>
-    {/if}
+    <label class="enable-control grid-enable-control" class:vortex-disabled={isVortexManaged()}>
+      <input
+        type="checkbox"
+        checked={!!mod.installedMod?.isEnabled}
+        disabled={isVortexManaged()}
+        on:change={handleEnabledChange}
+      />
+      <span>{mod.installedMod?.isEnabled ? "Enabled" : "Disabled"}</span>
+    </label>
   {/if}
 
   <div class="bottom-container">
@@ -347,6 +382,62 @@
     font-weight: 400;
     background-color: rgb(25, 25, 25);
     align-self: flex-start;
+  }
+
+  .enable-control {
+    align-items: center;
+    background: rgba(18, 18, 18, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: #62f09b;
+    display: inline-flex;
+    font-size: 0.85em;
+    font-weight: 800;
+    gap: 0.55em;
+    margin: 0 0 0.7em;
+    padding: 0.42em 0.62em;
+    text-transform: uppercase;
+  }
+
+  .enable-control input[type="checkbox"] {
+    appearance: none;
+    background: rgba(8, 8, 8, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    display: grid;
+    float: none;
+    height: 1.2em;
+    margin: 0;
+    padding: 0;
+    place-content: center;
+    transform: none;
+    width: 1.2em;
+  }
+
+  .enable-control input[type="checkbox"]::before {
+    box-shadow: inset 1em 1em #62f09b;
+    content: "";
+    height: 0.68em;
+    transform: scale(0);
+    transition: transform 120ms ease-in-out;
+    width: 0.68em;
+  }
+
+  .enable-control input[type="checkbox"]:checked::before {
+    transform: scale(1);
+  }
+
+  .enable-control:not(:has(input:checked)) {
+    color: #fd9b9d;
+  }
+
+  .vortex-disabled {
+    color: #78d9f4;
+    opacity: 0.72;
+  }
+
+  .grid-enable-control {
+    bottom: 7em;
+    left: 1em;
+    position: absolute;
   }
 
   .grid-thing {

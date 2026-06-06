@@ -6,17 +6,20 @@
 
 Developer: Alex Cooper
 
-OpenACAI Mod Manager is a Tauri/Svelte manager for installing and maintaining the OpenACAI Loader package for Sons of the Forest.
+OpenACAI Mod Manager is a Tauri 2/Svelte 5 manager for installing and maintaining the Endnight Loader/OpenACAI Loader package for Sons of the Forest.
 
-It is based on Toni Macaroni's RedManager, but the main loader flow has been changed for OpenACAI Loader:
+It is based on Toni Macaroni's RedManager, but the main loader flow has been changed for the OpenACAI-maintained Endnight Loader:
 
 - Select and install a local `OpenACAILoader.zip`.
-- Install or repair the latest public OpenACAI Loader package from GitHub Release assets using a signed-by-hash update manifest.
+- Install or repair the latest public Endnight Loader/OpenACAI Loader package from GitHub Release assets using a signed-by-hash update manifest.
 - Verify loader-owned files with SHA256 before launching the game, and keep a cached last-known release manifest for offline comparison.
 - Detect whether installed mods are RedLoader packages, RedLoader libraries, BepInEx plugins, native-store installs, manual installs, or Nexus/Vortex-managed packages.
-- Connect a Nexus Mods account through a locally stored API key and browse Nexus/Vortex-side Sons Of The Forest mods with cross-store install status.
+- Browse the live SOTF Mods storefront with category, type, compatibility, search, and installed/online filters that mirror the real store taxonomy.
+- Enable or disable installed native/manual mods from the manager with source-aware checkboxes; Vortex-managed packages are detected but left read-only so Vortex deployment metadata is not corrupted.
+- Connect a Nexus Mods account through the Nexus browser SSO flow where available, with a manual API token fallback for testing stored locally in the OS credential vault, and browse Nexus/Vortex-side Sons Of The Forest mods with cross-store install status.
 - Detect the OpenACAI Loader bridge through `BepInEx\plugins\OpenACAILoader` and `BepInEx\plugins\RedLoaderBepInExCompat`.
 - Keep old RedLoader/MelonLoader cleanup affordances so users can avoid competing loader bootstraps.
+- Present the manager in a frameless, transparent Sons-style shell with rough/jagged edges, Endnight splash-logo styling, and native-feeling chromatic text effects instead of a standard Windows app frame.
 
 This public manager does not include the private OpenACAI anti-cheat/admin mod.
 
@@ -49,6 +52,7 @@ Local test-copy workflow is documented in `LOCAL_TESTING.md`.
 npm ci
 npm run check
 npm run build
+npm run tauri build
 ```
 
 For the desktop shell:
@@ -56,6 +60,14 @@ For the desktop shell:
 ```powershell
 npm run tauri dev
 ```
+
+## Storefront Notes
+
+The native Mods tab reads from the live SOTF Mods API and currently supports the public storefront categories `Library`, `Misc`, `Model Swap`, and `Quality of Life`, plus type filters for mods, libraries, and builds.
+
+The Nexus/Vortex tab uses the Nexus Mods API for account validation and Sons Of The Forest mod feeds. Browser SSO needs a Nexus-approved application slug; until `openacai-mod-manager` is registered by Nexus Mods, the advanced manual token path is only for development/testing builds.
+
+Nexus API usage must follow the [Nexus Mods API Acceptable Use Policy](https://help.nexusmods.com/article/114-api-acceptable-use-policy). This manager sends consistent `Application-Name`, `Application-Version`, and User-Agent metadata, stores user tokens locally instead of on OpenACAI servers, caches Nexus feed/session calls for 10 minutes, and rate-limits manual refresh clicks to avoid excessive API traffic. It must not bulk scrape, rehost Nexus data, impersonate another application, or ship as a public-facing app that relies on personal API keys instead of a registered Nexus application slug.
 
 To refresh prebuilt files and the ignored local portable test executable:
 
@@ -69,4 +81,6 @@ OpenACAI-authored manager changes are licensed under `GPL-3.0-or-later`.
 
 The original RedManager project is licensed under `Apache-2.0`; its license text is preserved in `LICENSES/Apache-2.0.txt`, and attribution is preserved in `THIRD_PARTY_NOTICES.md`.
 
-The OpenACAI Loader packages managed by this app are built on BepInEx and RedLoader/SonsSdk components. Their LGPL notices are preserved by the loader package and called out in this manager's third-party notices.
+The Endnight Loader/OpenACAI Loader packages managed by this app are built on BepInEx and RedLoader/SonsSdk components. Their LGPL notices are preserved by the loader package and called out in this manager's third-party notices.
+
+Selected Sons of the Forest UI textures, splash logo textures, and font assets are bundled into the Tauri frontend so they are not distributed as loose external runtime files. Those assets remain copyright property of Endnight Games and are included only for this open-source, noncommercial Sons of the Forest mod-management integration. They are not available for commercial reuse.

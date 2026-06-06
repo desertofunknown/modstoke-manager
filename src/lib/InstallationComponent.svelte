@@ -97,14 +97,14 @@
   }
 
   .description {
-    padding: 10px;
+    padding: clamp(0.45em, 1.2vh, 0.65em);
     border-radius: 2px;
     border: 1px solid rgba(255, 255, 255, 0.16);
     background: rgba(42, 42, 42, 0.58);
   }
 
   .description-content {
-    margin-bottom: 1em;
+    margin-bottom: clamp(0.45em, 1.1vh, 0.8em);
     display: block;
     text-align: center;
     font-size: 0.9em;
@@ -117,5 +117,27 @@
 
   .btn-right {
     border-radius: 0 2px 2px 0;
+  }
+
+  .feature-container button {
+    margin-bottom: 0;
+  }
+
+  @media (max-height: 780px) {
+    .description-content {
+      font-size: 0.82em;
+      line-height: 1.25;
+    }
+  }
+
+  @media (max-height: 720px) {
+    .description {
+      padding: 0.42em 0.55em;
+    }
+
+    .description-content {
+      font-size: 0.76em;
+      margin-bottom: 0.34em;
+    }
   }
 </style>

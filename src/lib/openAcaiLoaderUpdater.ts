@@ -1,11 +1,12 @@
-import { fs, path } from "@tauri-apps/api";
-import { fetch as tauriFetch, ResponseType } from "@tauri-apps/api/http";
-import { invoke } from "@tauri-apps/api/tauri";
-import { download } from "tauri-plugin-upload-api";
+import * as path from "@tauri-apps/api/path";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { invoke } from "@tauri-apps/api/core";
+import { download } from "@tauri-apps/plugin-upload";
 import semver from "semver";
 import { BaseZipInstaller } from "./baseZipInstaller";
 import { getDirectoryPath, processName, processProgress } from "./store";
 import { TempFileCache } from "./tempFileCache";
+import * as fs from "@tauri-apps/plugin-fs"
 
 export type LoaderManifestFile = {
     path: string;
@@ -66,7 +67,7 @@ export class OpenAcaiLoaderInstaller extends BaseZipInstaller {
     private manifest: LoaderUpdateManifest | null = null;
 
     constructor() {
-        super("OpenACAI Loader");
+        super("Endnight Loader");
     }
 
     public async prepare(): Promise<boolean> {
@@ -84,7 +85,7 @@ export class OpenAcaiLoaderInstaller extends BaseZipInstaller {
         try {
             return (this.manifest ?? await fetchLatestLoaderManifest()).version;
         } catch (error) {
-            console.log("Failed to get latest OpenACAI Loader version", error);
+            console.log("Failed to get latest Endnight Loader version", error);
             return null;
         }
     }
@@ -92,15 +93,14 @@ export class OpenAcaiLoaderInstaller extends BaseZipInstaller {
 
 export async function fetchLatestLoaderManifest(): Promise<LoaderUpdateManifest> {
     try {
-        const response = await tauriFetch<LoaderUpdateManifest>(`${LOADER_MANIFEST_URL}?t=${Date.now()}`, {
-            method: "GET",
-            responseType: ResponseType.JSON
+        const response = await tauriFetch(`${LOADER_MANIFEST_URL}?t=${Date.now()}`, {
+            method: "GET"
         });
         if (response.status < 200 || response.status >= 300) {
-            throw new Error(`Failed to fetch OpenACAI Loader manifest: ${response.status}`);
+            throw new Error(`Failed to fetch Endnight Loader manifest: ${response.status}`);
         }
 
-        const manifest = validateLoaderManifest(response.data as LoaderUpdateManifest, "remote");
+        const manifest = validateLoaderManifest(await response.json() as LoaderUpdateManifest, "remote");
         await writeCachedLatestManifest(manifest);
         return manifest;
     } catch (error) {
@@ -121,7 +121,7 @@ export async function verifyInstalledLoader(manifest?: LoaderUpdateManifest): Pr
     const totalFiles = manifest.files.length;
     let verifiedFiles = 0;
 
-    processName.set(`Verifying OpenACAI Loader files...`);
+    processName.set(`Verifying Endnight Loader files...`);
     processProgress.set(0);
 
     for (const [index, file] of manifest.files.entries()) {
@@ -188,14 +188,14 @@ export async function downloadVerifyAndInstallLoader(manifest: LoaderUpdateManif
     const existingBepInExConfig = await readExistingBepInExConfig(gameRoot);
 
     try {
-        processName.set(`Downloading OpenACAI Loader ${manifest.version}...`);
+        processName.set(`Downloading Endnight Loader ${manifest.version}...`);
         processProgress.set(0);
 
         let downloadProgress = 0;
         await download(
             manifest.package.downloadUrl,
             tempPath,
-            (progress, total) => {
+            ({ progress, total }) => {
                 downloadProgress += progress;
                 if (total > 0) {
                     processProgress.set(downloadProgress / total * 100);
@@ -203,7 +203,7 @@ export async function downloadVerifyAndInstallLoader(manifest: LoaderUpdateManif
             }
         );
 
-        processName.set("Verifying OpenACAI Loader package...");
+        processName.set("Verifying Endnight Loader package...");
         const packageHash = await hashFile(tempPath);
         if (packageHash.toUpperCase() !== manifest.package.sha256.toUpperCase()) {
             throw new Error(`Downloaded loader package hash mismatch. Expected ${manifest.package.sha256}, got ${packageHash}.`);
@@ -216,7 +216,7 @@ export async function downloadVerifyAndInstallLoader(manifest: LoaderUpdateManif
             throw new Error(inspection.errors.join("\n") || "Downloaded loader package failed validation.");
         }
 
-        processName.set(`Installing OpenACAI Loader ${manifest.version}...`);
+        processName.set(`Installing Endnight Loader ${manifest.version}...`);
         await thisUnzip(tempPath, gameRoot);
         await restoreBepInExConfig(gameRoot, existingBepInExConfig);
     } finally {
@@ -244,7 +244,7 @@ async function hashFile(filePath: string): Promise<string> {
 
 function validateLoaderManifest(manifest: LoaderUpdateManifest, source: LoaderManifestSource): LoaderUpdateManifest {
     if (!manifest.version || !manifest.package?.downloadUrl || !manifest.package?.sha256 || !Array.isArray(manifest.files)) {
-        throw new Error("OpenACAI Loader manifest is missing required update metadata.");
+        throw new Error("Endnight Loader manifest is missing required update metadata.");
     }
 
     return {
@@ -261,10 +261,10 @@ async function writeCachedLatestManifest(manifest: LoaderUpdateManifest): Promis
         const cacheableManifest = { ...manifest };
         delete cacheableManifest.source;
 
-        await fs.createDir(cacheDir, { recursive: true });
+        await fs.mkdir(cacheDir, { recursive: true });
         await fs.writeTextFile(cachePath, JSON.stringify(cacheableManifest, null, 2));
     } catch (error) {
-        console.log("Failed to cache latest OpenACAI Loader manifest", error);
+        console.log("Failed to cache latest Endnight Loader manifest", error);
     }
 }
 
@@ -277,7 +277,7 @@ async function readCachedLatestManifest(): Promise<LoaderUpdateManifest | null> 
 
         return validateLoaderManifest(JSON.parse(await fs.readTextFile(cachePath)) as LoaderUpdateManifest, "cache");
     } catch (error) {
-        console.log("Failed to read cached OpenACAI Loader manifest", error);
+        console.log("Failed to read cached Endnight Loader manifest", error);
         return null;
     }
 }

@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { dialog, shell } from "@tauri-apps/api";
     import InstallFeature from "../lib/InstallationComponent.svelte";
     import PathSelector from "../lib/PathSelector.svelte";
     import { openAcaiLoaderFeature, melonFeature } from "../lib/featureInstaller";
@@ -11,6 +10,9 @@
         type LoaderIntegrityReport
     } from "../lib/openAcaiLoaderUpdater";
     import openAcaiMark from "/openacai-mark.svg";
+    import * as dialog from "@tauri-apps/plugin-dialog"
+    import * as shell from "@tauri-apps/plugin-shell"
+    import { Command } from "@tauri-apps/plugin-shell";
 
     let features = [melonFeature, openAcaiLoaderFeature];
     let loaderReport: LoaderIntegrityReport | null = null;
@@ -37,9 +39,9 @@
                 loaderReport = await ensureLatestOpenAcaiLoader();
                 updateLoaderStatus(loaderReport);
             } catch (error) {
-                await dialog.message(`OpenACAI Loader could not be verified or updated:\n${error}`, {
+                await dialog.message(`Endnight Loader could not be verified or updated:\n${error}`, {
                     title: "Loader update failed",
-                    type: "error"
+                    kind: "error"
                 });
                 processing.set(false);
                 return;
@@ -48,7 +50,24 @@
             processing.set(false);
         }
 
-        await shell.open("steam://rungameid/1326470");
+        await launchGame();
+    }
+
+    async function launchGame() {
+        const steamUrl = "steam://rungameid/1326470";
+        try {
+            const cmd = Command.create("open-explorer", [steamUrl]);
+            const result = await cmd.execute();
+            if (result.code === 0) {
+                return;
+            }
+
+            console.log("explorer steam launch failed, falling back to shell.open", result.stderr);
+        } catch (error) {
+            console.log("explorer steam launch failed, falling back to shell.open", error);
+        }
+
+        await shell.open(steamUrl);
     }
 
     async function refreshLoaderStatus(showProgress = true) {
@@ -77,14 +96,14 @@
         try {
             loaderReport = await ensureLatestOpenAcaiLoader();
             updateLoaderStatus(loaderReport);
-            await dialog.message("OpenACAI Loader files are verified and current.", {
+            await dialog.message("Endnight Loader files are verified and current.", {
                 title: "Loader verified",
-                type: "info"
+                kind: "info"
             });
         } catch (error) {
             await dialog.message(`${error}`, {
                 title: "Loader repair failed",
-                type: "error"
+                kind: "error"
             });
         } finally {
             processing.set(false);
@@ -123,13 +142,13 @@
     }
 </script>
 
-<div class="column">
+<div class="column main-page">
     <section class="brand-panel">
         <a class="brand-link" href="https://gitlab.com/Godsring/openacai-loader" target="_blank" rel="noreferrer">
             <img class="brand-mark" src={openAcaiMark} alt="OpenACAI" />
             <span class="brand-copy">
-                <span class="brand-title">OpenACAI Loader</span>
-                <span class="brand-subtitle">Sons Of The Forest Mod Manager</span>
+                <span class="brand-title">Endnight Loader</span>
+                <span class="brand-subtitle">OpenACAI Mod Manager</span>
             </span>
         </a>
     </section>
@@ -139,7 +158,7 @@
             <InstallFeature feature={feature} />
         {/each}
         <section class="loader-health">
-            <span class="description-content">OpenACAI Loader integrity</span>
+            <span class="description-content">Endnight Loader integrity</span>
             <span class="health-status {loaderStatusClass}">{loaderStatus}</span>
             {#if loaderDetail(loaderReport)}
                 <span class="health-detail">{loaderDetail(loaderReport)}</span>
@@ -150,23 +169,29 @@
             </div>
         </section>
     {/if}
-    <br>
-    <br>
     {#if $isPathValid}
-        <button class="tool-button" on:click={openFolder}>Open Game Folder</button>
-        <button class="tool-button" on:click={startGame}>Start Game</button>
+        <div class="main-actions">
+            <button class="tool-button" on:click={openFolder}>Open Game Folder</button>
+            <button class="tool-button" on:click={startGame}>Start Game</button>
+        </div>
     {/if}
     {#if !$isDotnetInstalled}
-        <br>
         <span class="runtime-note"><a href="https://dotnet.microsoft.com/en-us/download/dotnet/11.0" target="_blank">.NET 11</a> is recommended for current OpenACAI loader builds.</span>
     {/if}
 </div>
 
 <style>
+    .main-page {
+        gap: clamp(0.55em, 1.5vh, 0.95em);
+        height: 100%;
+        justify-content: flex-start;
+        min-height: 0;
+    }
+
     .brand-panel {
         display: flex;
         justify-content: center;
-        margin: 0 auto 1.4em auto;
+        margin: 0 auto clamp(0.35em, 1.2vh, 0.9em) auto;
         width: min(100%, 520px);
     }
 
@@ -176,16 +201,16 @@
         border: 1px solid rgba(255, 255, 255, 0.14);
         border-radius: 2px;
         display: flex;
-        gap: 1em;
+        gap: 0.9em;
         justify-content: center;
-        padding: 1em 1.2em;
+        padding: 0.75em 1em;
         width: 100%;
     }
 
     .brand-mark {
         display: block;
-        height: 92px;
-        width: 92px;
+        height: clamp(58px, 8.2vh, 78px);
+        width: clamp(58px, 8.2vh, 78px);
         object-fit: contain;
     }
 
@@ -198,14 +223,14 @@
 
     .brand-title {
         color: #f4f4f4;
-        font-size: 1.7em;
+        font-size: 1.48em;
         font-weight: 700;
         text-transform: uppercase;
     }
 
     .brand-subtitle {
         color: #b8b8b8;
-        font-size: 0.9em;
+        font-size: 0.82em;
         font-weight: 600;
         margin-top: 0.4em;
     }
@@ -222,9 +247,9 @@
         display: flex;
         flex-direction: column;
         gap: 0.5em;
-        margin: 0.8em auto;
+        margin: 0.25em auto;
         max-width: 520px;
-        padding: 0.9em;
+        padding: clamp(0.6em, 1.4vh, 0.9em);
         text-align: left;
         width: min(100%, 520px);
     }
@@ -261,6 +286,89 @@
 
     .runtime-note {
         color: #a2a2a2;
+        display: block;
+        font-size: 0.86em;
         font-weight: 500;
+        line-height: 1.3;
+    }
+
+    .main-actions {
+        display: flex;
+        gap: 0.6em;
+        justify-content: center;
+        margin: 0 auto;
+        width: min(100%, 520px);
+    }
+
+    .main-actions > button {
+        flex: 1;
+        margin: 0;
+    }
+
+    @media (max-width: 700px) {
+        .brand-link,
+        .health-actions,
+        .main-actions {
+            flex-direction: column;
+        }
+
+        .brand-copy {
+            text-align: center;
+        }
+    }
+
+    @media (max-height: 780px) {
+        .main-page {
+            gap: 0.45em;
+        }
+
+        .brand-panel {
+            margin-bottom: 0.25em;
+        }
+
+        .brand-link {
+            padding: 0.55em 0.8em;
+        }
+
+        .brand-title {
+            font-size: 1.25em;
+        }
+
+        .brand-subtitle,
+        .health-status {
+            font-size: 0.78em;
+        }
+
+        .health-detail {
+            display: none;
+        }
+
+        .loader-health {
+            gap: 0.35em;
+            margin: 0.1em auto;
+            padding: 0.55em 0.7em;
+        }
+    }
+
+    @media (max-height: 720px) {
+        .brand-mark {
+            height: 44px;
+            width: 44px;
+        }
+
+        .brand-title {
+            font-size: 1.08em;
+        }
+
+        .description-content,
+        .health-status,
+        .runtime-note {
+            font-size: 0.74em;
+        }
+
+        .health-actions,
+        .main-actions {
+            gap: 0.4em;
+        }
     }
 </style>

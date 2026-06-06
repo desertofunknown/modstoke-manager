@@ -2,97 +2,56 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "devPath": "http://localhost:1420",
-    "distDir": "../dist",
-    "withGlobalTauri": false
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420"
   },
-  "package": {
-    "productName": "OpenACAI Mod Manager",
-    "version": "0.2.0"
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installerIcon": "icons/openacai.ico",
+        "installMode": "currentUser"
+      },
+      "wix": null
+    },
+    "icon": [
+      "icons/openacai.ico",
+      "icons/icon.png",
+      "icons/icon.ico"
+    ]
   },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "shell": {
-        "all": true,
-        "scope": [
-          {
-            "name": "dotnet-template-check",
-            "cmd": "dotnet",
-            "args": ["new", { "validator": "\\S+" }, "-h"]
-          },
-          {
-            "name": "dotnet-install-template",
-            "cmd": "dotnet",
-            "args": ["new", "--install", "RedLoader.Templates"]
-          },
-          {
-            "name": "dotnet-create-project",
-            "cmd": "dotnet",
-            "args": true
-          },
-          {
-            "name": "open-explorer",
-            "cmd": "explorer",
-            "args": [{ "validator": ".*" }]
-          }
-        ]
-      },
-      "fs": {
-        "all": true,
-        "scope": ["**"]
-      },
-      "dialog": {
-        "all": true
-      },
-      "path": {
-        "all": true
-      },
-      "http": {
-        "all": true,
-        "scope": [
-          "https://github.com/*",
-          "https://release-assets.githubusercontent.com/*",
-          "https://objects.githubusercontent.com/*",
-          "https://raw.githubusercontent.com/desertofunknown/*",
-          "https://gitlab.com/Godsring/*",
-          "https://api.sotf-mods.com/*",
-          "https://sotf-mods.com/*"
-        ]
-      }
-    },
-    "bundle": {
-      "active": true,
-      "targets": ["nsis"],
-      "identifier": "com.alexcooper.openacai.modmanager",
-      "icon": [
-        "icons/openacai.ico",
-        "icons/icon.png",
-        "icons/icon.ico"
-      ],
-      "windows": {
-        "webviewInstallMode": {
-          "type": "downloadBootstrapper",
-          "silent": true
-        },
-        "nsis": {
-          "installerIcon": "icons/openacai.ico",
-          "installMode": "currentUser"
-        },
-        "wix": null
-      }
-    },
-    "security": {
-      "csp": ""
-    },
+  "productName": "OpenACAI Mod Manager",
+  "mainBinaryName": "OpenACAI Mod Manager",
+  "version": "0.2.0",
+  "identifier": "com.alexcooper.openacai.modmanager",
+  "plugins": {},
+  "app": {
+    "withGlobalTauri": false,
     "windows": [
       {
+        "center": true,
+        "decorations": false,
         "fullscreen": false,
+        "minHeight": 680,
+        "minWidth": 980,
         "resizable": true,
+        "shadow": false,
         "title": "OpenACAI Mod Manager",
-        "width": 800,
-        "height": 650
+        "transparent": true,
+        "width": 1280,
+        "height": 820,
+        "useHttpsScheme": true
       }
-    ]
+    ],
+    "security": {
+      "csp": "default-src 'self' asset: http://asset.localhost ipc: http://ipc.localhost; connect-src 'self' ipc: http://ipc.localhost https://api.sotf-mods.com https://sotf-mods.com https://api.nexusmods.com https://api.github.com https://github.com https://release-assets.githubusercontent.com https://objects.githubusercontent.com https://raw.githubusercontent.com https://gitlab.com wss://sso.nexusmods.com; img-src 'self' asset: http://asset.localhost https: data:; style-src 'self' 'unsafe-inline'; font-src 'self' asset: http://asset.localhost; script-src 'self'"
+    }
   }
 }

@@ -1,22 +1,24 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::fs::File;
 use std::fs;
+use std::fs::File;
 use std::io::Read;
 use zip::read::ZipArchive;
 
-use std::io::{BufReader, BufRead};
-use winreg::{RegKey, enums::*};
 use regex::Regex;
 use serde::Serialize;
+use std::io::{BufRead, BufReader};
+use winreg::{enums::*, RegKey};
 
-use std::{error::Error, path::Path, path::PathBuf, ptr::null_mut};
 use reqwest::header::{HeaderMap, HeaderValue};
 use sha2::{Digest, Sha256};
+use std::{error::Error, path::Path, path::PathBuf, ptr::null_mut};
 use windows::{
     core,
-    Win32::Storage::FileSystem::{GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW, VS_FIXEDFILEINFO},
+    Win32::Storage::FileSystem::{
+        GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW, VS_FIXEDFILEINFO,
+    },
 };
 
 const SOTF_APP_ID: &str = "1326470";
@@ -24,7 +26,10 @@ const NEXUS_API_BASE: &str = "https://api.nexusmods.com";
 const NEXUS_GAME_DOMAIN: &str = "sonsoftheforest";
 const NEXUS_CREDENTIAL_SERVICE: &str = "OpenACAI Mod Manager";
 const NEXUS_CREDENTIAL_ACCOUNT: &str = "nexusmods-api-key";
-const NEXUS_USER_AGENT: &str = "OpenACAI-Mod-Manager/0.2.0 (SonsOfTheForest; Windows)";
+const NEXUS_USER_AGENT: &str =
+    "OpenACAI-Mod-Manager/0.2.0 (SonsOfTheForest; Windows; SignedPublisher=OpenACAI Inc)";
+const NEXUS_APPLICATION_NAME: &str = "OpenACAI Mod Manager";
+const NEXUS_APPLICATION_VERSION: &str = "0.2.0";
 
 #[derive(Serialize)]
 struct LoaderZipInspection {
@@ -104,7 +109,9 @@ async fn nexus_save_api_key(api_key: String) -> Result<NexusSession, String> {
     }
 
     let (user, rate_limit) = validate_nexus_key(&cleaned).await?;
-    nexus_credential_entry()?.set_password(&cleaned).map_err(|e| e.to_string())?;
+    nexus_credential_entry()?
+        .set_password(&cleaned)
+        .map_err(|e| e.to_string())?;
 
     Ok(NexusSession {
         is_connected: true,
@@ -156,7 +163,8 @@ fn nexus_clear_api_key() -> Result<(), String> {
 
 #[tauri::command]
 async fn nexus_fetch_sotf_mods(view: String) -> Result<NexusModsResponse, String> {
-    let key = read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
+    let key =
+        read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
     let endpoint = match view.as_str() {
         "latest_added" => "latest_added",
         "latest_updated" => "latest_updated",
@@ -164,14 +172,21 @@ async fn nexus_fetch_sotf_mods(view: String) -> Result<NexusModsResponse, String
         _ => "trending",
     };
     let url = format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/{endpoint}.json");
-    let response = nexus_client(&key).get(url).send().await.map_err(|e| e.to_string())?;
+    let response = nexus_client(&key)
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     let rate_limit = read_rate_limit(response.headers());
 
     if !response.status().is_success() {
         return Err(format!("Nexus request failed: {}", response.status()));
     }
 
-    let mods = response.json::<serde_json::Value>().await.map_err(|e| e.to_string())?;
+    let mods = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(NexusModsResponse { mods, rate_limit })
 }
 
@@ -184,14 +199,26 @@ async fn validate_nexus_key(api_key: &str) -> Result<(NexusUser, NexusRateLimit)
     let rate_limit = read_rate_limit(response.headers());
 
     if !response.status().is_success() {
-        return Err(format!("Nexus account validation failed: {}", response.status()));
+        return Err(format!(
+            "Nexus account validation failed: {}",
+            response.status()
+        ));
     }
 
-    let value = response.json::<serde_json::Value>().await.map_err(|e| e.to_string())?;
+    let value = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
     let user = NexusUser {
         user_id: value.get("user_id").and_then(|v| v.as_u64()),
-        name: value.get("name").and_then(|v| v.as_str()).map(|v| v.to_string()),
-        profile_url: value.get("profile_url").and_then(|v| v.as_str()).map(|v| v.to_string()),
+        name: value
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string()),
+        profile_url: value
+            .get("profile_url")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string()),
         is_premium: value.get("is_premium").and_then(|v| v.as_bool()),
         is_supporter: value.get("is_supporter").and_then(|v| v.as_bool()),
     };
@@ -201,8 +228,19 @@ async fn validate_nexus_key(api_key: &str) -> Result<(NexusUser, NexusRateLimit)
 
 fn nexus_client(api_key: &str) -> reqwest::Client {
     let mut headers = HeaderMap::new();
-    headers.insert("apikey", HeaderValue::from_str(api_key).unwrap_or_else(|_| HeaderValue::from_static("")));
+    headers.insert(
+        "apikey",
+        HeaderValue::from_str(api_key).unwrap_or_else(|_| HeaderValue::from_static("")),
+    );
     headers.insert("User-Agent", HeaderValue::from_static(NEXUS_USER_AGENT));
+    headers.insert(
+        "Application-Name",
+        HeaderValue::from_static(NEXUS_APPLICATION_NAME),
+    );
+    headers.insert(
+        "Application-Version",
+        HeaderValue::from_static(NEXUS_APPLICATION_VERSION),
+    );
 
     reqwest::Client::builder()
         .default_headers(headers)
@@ -222,11 +260,15 @@ fn read_rate_limit(headers: &HeaderMap) -> NexusRateLimit {
 }
 
 fn read_header(headers: &HeaderMap, name: &str) -> Option<String> {
-    headers.get(name).and_then(|value| value.to_str().ok()).map(|value| value.to_string())
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_string())
 }
 
 fn nexus_credential_entry() -> Result<keyring::Entry, String> {
-    keyring::Entry::new(NEXUS_CREDENTIAL_SERVICE, NEXUS_CREDENTIAL_ACCOUNT).map_err(|e| e.to_string())
+    keyring::Entry::new(NEXUS_CREDENTIAL_SERVICE, NEXUS_CREDENTIAL_ACCOUNT)
+        .map_err(|e| e.to_string())
 }
 
 fn read_nexus_api_key() -> Result<Option<String>, String> {
@@ -287,39 +329,42 @@ fn get_file_description(path: impl AsRef<Path>) -> Result<String, Box<dyn Error>
             &mut ptr,
             &mut len,
         )
-    }.as_bool();
+    }
+    .as_bool();
 
     if !success {
         return Err("Failed to query file description".into());
     }
 
     let info = ptr as *const VS_FIXEDFILEINFO;
-    unsafe{
+    unsafe {
         if (*info).dwSignature != 0xfeef04bd {
             return Err("Invalid fixed file info signature".into());
         }
 
         let description = *info;
-        
-        Ok(format!("{}.{}.{}", 
+
+        Ok(format!(
+            "{}.{}.{}",
             description.dwFileVersionMS >> 16,
             description.dwFileVersionMS & 0xffff,
             description.dwFileVersionLS >> 16,
         ))
     }
-
 }
 
 #[tauri::command]
 async fn get_steam_path() -> Option<String> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let steam_install: PathBuf = hklm.open_subkey_with_flags(r"SOFTWARE\WOW6432Node\Valve\Steam", KEY_READ)
-    .and_then(|key| key.get_value::<String, _>("InstallPath"))
-    .or_else(|_| {
-        hklm.open_subkey_with_flags(r"SOFTWARE\Valve\Steam", KEY_READ)
-            .and_then(|key| key.get_value::<String, _>("InstallPath"))
-    }).ok()?
-    .into();
+    let steam_install: PathBuf = hklm
+        .open_subkey_with_flags(r"SOFTWARE\WOW6432Node\Valve\Steam", KEY_READ)
+        .and_then(|key| key.get_value::<String, _>("InstallPath"))
+        .or_else(|_| {
+            hklm.open_subkey_with_flags(r"SOFTWARE\Valve\Steam", KEY_READ)
+                .and_then(|key| key.get_value::<String, _>("InstallPath"))
+        })
+        .ok()?
+        .into();
 
     let vdf = steam_install.join(r"steamapps\libraryfolders.vdf");
     if !vdf.exists() {
@@ -348,7 +393,10 @@ async fn get_steam_path() -> Option<String> {
             for line in reader.lines() {
                 if let Ok(text) = line {
                     if let Some(cap) = install_re.captures(&text) {
-                        let file_path = path.join("common").join(&cap[1]).join("SonsOfTheForest.exe");
+                        let file_path = path
+                            .join("common")
+                            .join(&cap[1])
+                            .join("SonsOfTheForest.exe");
                         if file_path.exists() {
                             return file_path.to_str().map(|s| s.to_string());
                         }
@@ -361,7 +409,6 @@ async fn get_steam_path() -> Option<String> {
     None
 }
 
-
 fn unzip_file(source: &str, destination: &str) -> Result<(), String> {
     let reader = File::open(source).map_err(|e| e.to_string())?;
     let mut archive = ZipArchive::new(reader).map_err(|e| e.to_string())?;
@@ -369,7 +416,8 @@ fn unzip_file(source: &str, destination: &str) -> Result<(), String> {
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
-        let enclosed_name = file.enclosed_name()
+        let enclosed_name = file
+            .enclosed_name()
             .ok_or_else(|| format!("Unsafe path in zip entry: {}", file.name()))?
             .to_owned();
         let outpath = destination_root.join(enclosed_name);
@@ -393,10 +441,13 @@ fn unzip_file(source: &str, destination: &str) -> Result<(), String> {
             if outpath.is_file() {
                 fs::remove_file(&outpath).map_err(|e| e.to_string())?;
             } else {
-                return Err(format!("Refusing to overwrite non-file path: {}", outpath.display()));
+                return Err(format!(
+                    "Refusing to overwrite non-file path: {}",
+                    outpath.display()
+                ));
             }
         }
-        
+
         let mut outfile = File::create(&outpath).map_err(|e| e.to_string())?;
         std::io::copy(&mut file, &mut outfile).map_err(|e| e.to_string())?;
     }
@@ -404,7 +455,9 @@ fn unzip_file(source: &str, destination: &str) -> Result<(), String> {
 }
 
 fn normalize_zip_entry(name: &str) -> String {
-    name.replace('\\', "/").trim_start_matches("./").to_ascii_lowercase()
+    name.replace('\\', "/")
+        .trim_start_matches("./")
+        .to_ascii_lowercase()
 }
 
 #[tauri::command]
@@ -425,13 +478,17 @@ fn inspect_openacai_loader_zip(source: String) -> Result<LoaderZipInspection, St
     for i in 0..archive.len() {
         let file = archive.by_index(i).map_err(|e| e.to_string())?;
         if file.enclosed_name().is_none() {
-            inspection.errors.push(format!("Unsafe path in zip entry: {}", file.name()));
+            inspection
+                .errors
+                .push(format!("Unsafe path in zip entry: {}", file.name()));
             continue;
         }
 
         let entry = normalize_zip_entry(file.name());
-        inspection.has_manifest |= entry == "bepinex/plugins/openacailoader/openacai-loader.manifest.json";
-        inspection.has_bridge |= entry == "bepinex/plugins/redloaderbepinexcompat/redloaderbepinexcompat.dll";
+        inspection.has_manifest |=
+            entry == "bepinex/plugins/openacailoader/openacai-loader.manifest.json";
+        inspection.has_bridge |=
+            entry == "bepinex/plugins/redloaderbepinexcompat/redloaderbepinexcompat.dll";
         inspection.has_bepinex_core |= entry == "bepinex/core/bepinex.core.dll";
         inspection.has_doorstop |= entry == "winhttp.dll" || entry == "doorstop_config.ini";
         inspection.has_private_admin_tool |= entry.contains("openacaiadmintool")
@@ -440,19 +497,27 @@ fn inspect_openacai_loader_zip(source: String) -> Result<LoaderZipInspection, St
     }
 
     if !inspection.has_manifest {
-        inspection.errors.push("Missing BepInEx/plugins/OpenACAILoader/openacai-loader.manifest.json".to_string());
+        inspection.errors.push(
+            "Missing BepInEx/plugins/OpenACAILoader/openacai-loader.manifest.json".to_string(),
+        );
     }
 
     if !inspection.has_bridge {
-        inspection.errors.push("Missing BepInEx/plugins/RedLoaderBepInExCompat/RedLoaderBepInExCompat.dll".to_string());
+        inspection.errors.push(
+            "Missing BepInEx/plugins/RedLoaderBepInExCompat/RedLoaderBepInExCompat.dll".to_string(),
+        );
     }
 
     if !inspection.has_bepinex_core {
-        inspection.errors.push("Missing BepInEx/core/BepInEx.Core.dll".to_string());
+        inspection
+            .errors
+            .push("Missing BepInEx/core/BepInEx.Core.dll".to_string());
     }
 
     if !inspection.has_doorstop {
-        inspection.errors.push("Missing Doorstop bootstrap files (winhttp.dll or doorstop_config.ini).".to_string());
+        inspection.errors.push(
+            "Missing Doorstop bootstrap files (winhttp.dll or doorstop_config.ini).".to_string(),
+        );
     }
 
     if inspection.has_private_admin_tool {
@@ -470,6 +535,10 @@ fn unzip_handler(source: String, destination: String) -> Result<(), String> {
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             unzip_handler,
             inspect_openacai_loader_zip,
