@@ -47,6 +47,7 @@
 
     type CatalogMode = "online" | "installed";
     type InstallFilter = "all" | "attention" | "installed" | "missing" | "updates" | "disabled" | "vortex" | "native" | "manual" | "tracked" | "endorsements" | "conflicts";
+    type ModTypeFilter = "all" | "bepinex-plugin" | "redloader-mod" | "redloader-library" | "vortex" | "native" | "manual";
     type NexusSortMode = "attention" | "updated" | "downloads" | "endorsements" | "name" | "version";
     type InstalledSortMode = "attention" | "name" | "source" | "location" | "state" | "version";
     type DependencyStatus = "installed" | "missing" | "version-mismatch" | "review";
@@ -65,6 +66,7 @@
         nexusSearchTerm: string;
         selectedNexusCategory: string;
         selectedInstallFilter: InstallFilter;
+        selectedModTypeFilter: ModTypeFilter;
         selectedNexusSort: NexusSortMode;
         selectedInstalledSort: InstalledSortMode;
     };
@@ -99,6 +101,7 @@
     let nexusSearchTerm = "";
     let selectedNexusCategory = "all";
     let selectedInstallFilter: InstallFilter = "all";
+    let selectedModTypeFilter: ModTypeFilter = "all";
     let selectedNexusSort: NexusSortMode = "attention";
     let selectedInstalledSort: InstalledSortMode = "attention";
     let nexusCatalogLoadedAt: number | null = null;
@@ -164,6 +167,7 @@
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
     const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
+    const MOD_TYPE_FILTERS: ModTypeFilter[] = ["all", "bepinex-plugin", "redloader-mod", "redloader-library", "vortex", "native", "manual"];
     const NEXUS_SORT_MODES: NexusSortMode[] = ["attention", "updated", "downloads", "endorsements", "name", "version"];
     const INSTALLED_SORT_MODES: InstalledSortMode[] = ["attention", "name", "source", "location", "state", "version"];
     let nextManualRefreshAt = 0;
@@ -220,6 +224,7 @@
         nexusSearchTerm;
         selectedNexusCategory;
         selectedInstallFilter;
+        selectedModTypeFilter;
         selectedNexusSort;
         inventory;
         trackedMods;
@@ -229,6 +234,7 @@
     $: {
         nexusSearchTerm;
         selectedInstallFilter;
+        selectedModTypeFilter;
         selectedInstalledSort;
         trackedMods;
         knownNexusDetails;
@@ -237,7 +243,8 @@
     }
     $: hasActiveNexusFilters = nexusSearchTerm.trim().length > 0
         || selectedNexusCategory !== "all"
-        || selectedInstallFilter !== "all";
+        || selectedInstallFilter !== "all"
+        || selectedModTypeFilter !== "all";
     $: {
         inventory;
         resolvedDependencies = selectedDependencies.map(resolveDependencyStatus);
@@ -302,6 +309,7 @@
         nexusSearchTerm;
         selectedNexusCategory;
         selectedInstallFilter;
+        selectedModTypeFilter;
         selectedNexusSort;
         selectedInstalledSort;
         if (nexusUiPreferencesLoaded) {
@@ -350,6 +358,7 @@
                 nexusSearchTerm = typeof parsed.nexusSearchTerm === "string" ? parsed.nexusSearchTerm : "";
                 selectedNexusCategory = typeof parsed.selectedNexusCategory === "string" ? parsed.selectedNexusCategory : "all";
                 selectedInstallFilter = validOption(parsed.selectedInstallFilter, INSTALL_FILTERS, selectedInstallFilter);
+                selectedModTypeFilter = validOption(parsed.selectedModTypeFilter, MOD_TYPE_FILTERS, selectedModTypeFilter);
                 selectedNexusSort = validOption(parsed.selectedNexusSort, NEXUS_SORT_MODES, selectedNexusSort);
                 selectedInstalledSort = validOption(parsed.selectedInstalledSort, INSTALLED_SORT_MODES, selectedInstalledSort);
             }
@@ -366,6 +375,7 @@
             nexusSearchTerm,
             selectedNexusCategory,
             selectedInstallFilter,
+            selectedModTypeFilter,
             selectedNexusSort,
             selectedInstalledSort
         };
@@ -1036,6 +1046,7 @@
         nexusSearchTerm = "";
         selectedNexusCategory = "all";
         selectedInstallFilter = "all";
+        selectedModTypeFilter = "all";
     }
 
     async function openModPage(mod: NexusMod) {
@@ -1935,6 +1946,10 @@
             return false;
         }
 
+        if (!nexusModMatchesTypeFilter(mod, match)) {
+            return false;
+        }
+
         if (selectedInstallFilter === "installed" && !match) {
             return false;
         }
@@ -1991,8 +2006,14 @@
             entry.version ?? "",
             entry.vortexPackage ?? "",
             entry.expectedLocation,
-            entry.loaderType
+            entry.loaderType,
+            loaderTypeLabel(entry),
+            describeInstallSource(entry)
         ].some(value => value.toLowerCase().includes(search))) {
+            return false;
+        }
+
+        if (!installedEntryMatchesTypeFilter(entry)) {
             return false;
         }
 
@@ -2037,6 +2058,52 @@
         }
 
         return true;
+    }
+
+    function nexusModMatchesTypeFilter(mod: NexusMod, match: InstalledInventoryEntry | null): boolean {
+        if (selectedModTypeFilter === "all") {
+            return true;
+        }
+
+        if (selectedModTypeFilter === "vortex" || selectedModTypeFilter === "native" || selectedModTypeFilter === "manual") {
+            return match?.installSource === selectedModTypeFilter;
+        }
+
+        if (match) {
+            return match.loaderType === selectedModTypeFilter;
+        }
+
+        const text = [
+            mod.loader_type,
+            mod.category_name,
+            mod.name,
+            mod.summary,
+            mod.description
+        ].filter(Boolean).join(" ").toLowerCase();
+
+        switch (selectedModTypeFilter) {
+            case "bepinex-plugin":
+                return /\b(bepinex|plugin|plugins)\b/.test(text);
+            case "redloader-library":
+                return /\b(redloader|red loader)\b/.test(text) && /\b(library|libraries|lib|libs)\b/.test(text);
+            case "redloader-mod":
+                return /\b(redloader|red loader)\b/.test(text) && !/\b(library|libraries|lib|libs)\b/.test(text);
+            default:
+                return true;
+        }
+    }
+
+    function installedEntryMatchesTypeFilter(entry: InstalledInventoryEntry): boolean {
+        switch (selectedModTypeFilter) {
+            case "all":
+                return true;
+            case "vortex":
+            case "native":
+            case "manual":
+                return entry.installSource === selectedModTypeFilter;
+            default:
+                return entry.loaderType === selectedModTypeFilter;
+        }
     }
 
     function loaderTypeLabel(entry: InstalledInventoryEntry): string {
@@ -2645,6 +2712,15 @@
                     <option value="tracked">Tracked</option>
                     <option value="endorsements">Needs endorsement</option>
                     <option value="conflicts">Conflicts</option>
+                </select>
+                <select bind:value={selectedModTypeFilter} aria-label="Filter by mod type">
+                    <option value="all">All mod types</option>
+                    <option value="bepinex-plugin">BepInEx plugins</option>
+                    <option value="redloader-mod">RedLoader mods</option>
+                    <option value="redloader-library">RedLoader libraries</option>
+                    <option value="vortex">Vortex / Nexus</option>
+                    <option value="native">OpenACAI native</option>
+                    <option value="manual">Manual / local</option>
                 </select>
                 {#if catalogMode === "online"}
                     <select bind:value={selectedNexusSort} aria-label="Sort Nexus mods">
@@ -3565,7 +3641,7 @@
         display: grid;
         flex: 0 0 auto;
         gap: 0.6em;
-        grid-template-columns: minmax(14em, 1fr) repeat(3, minmax(8.5em, 0.55fr)) minmax(6.5em, 0.28fr);
+        grid-template-columns: minmax(14em, 1fr) repeat(4, minmax(8.5em, 0.55fr)) minmax(6.5em, 0.28fr);
         width: 100%;
     }
 
@@ -4645,6 +4721,10 @@
     }
 
     @media (max-width: 1120px) {
+        .nexus-filter-row {
+            grid-template-columns: minmax(13em, 1fr) repeat(2, minmax(8.5em, 0.55fr));
+        }
+
         .vortex-summary {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
