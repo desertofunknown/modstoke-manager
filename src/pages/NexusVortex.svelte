@@ -1264,6 +1264,16 @@
         return displayName;
     }
 
+    function conflictGroupSummary(conflict: LocalConflict): string {
+        const sources = Array.from(new Set(conflict.entries.map(describeInstallSource))).join(" / ");
+        const locations = Array.from(new Set(conflict.entries.map(entry => entry.expectedLocation))).join(" / ");
+        return `${conflict.entries.length} installs · ${sources} · ${locations}`;
+    }
+
+    function conflictEntryPath(entry: InstalledInventoryEntry): string {
+        return entry.packagePath ?? entry.assemblyPath ?? entry.vortexPackage ?? entry.id;
+    }
+
     function isConflictedEntry(entry: InstalledInventoryEntry | null | undefined): boolean {
         return !!entry && localConflictEntryKeys.has(inventoryEntryKey(entry));
     }
@@ -1878,6 +1888,43 @@
                     </select>
                 {/if}
             </div>
+
+            {#if selectedInstallFilter === "conflicts" && localConflicts.length > 0}
+                <div class="conflict-review" aria-live="polite">
+                    <div class="conflict-review-head">
+                        <div>
+                            <span class="detail-section-title">Conflict Review</span>
+                            <p>{localConflicts.length} duplicate deployment {localConflicts.length === 1 ? "group" : "groups"} detected across {conflictCount} installed entries.</p>
+                        </div>
+                        <button class="cat-btn" on:click={showInstalledInventory}>Show All Installed</button>
+                    </div>
+
+                    <div class="conflict-group-list">
+                        {#each localConflicts as conflict}
+                            <section class="conflict-group">
+                                <div class="conflict-group-title">
+                                    <span>{conflict.label}</span>
+                                    <small>{conflictGroupSummary(conflict)}</small>
+                                </div>
+
+                                {#each conflict.entries as entry}
+                                    <div class="conflict-entry">
+                                        <div class="conflict-entry-main">
+                                            <span>{entry.name}</span>
+                                            <small>{describeInstallSource(entry)} · {loaderTypeLabel(entry)} · {entry.expectedLocation} · {entry.enabled ? "Enabled" : "Disabled"}</small>
+                                            <small>{conflictEntryPath(entry)}</small>
+                                        </div>
+                                        <div class="conflict-entry-actions">
+                                            <span>{entry.version ?? "-"}</span>
+                                            <button on:click={() => openInventoryLocation(entry)}>Open Folder</button>
+                                        </div>
+                                    </div>
+                                {/each}
+                            </section>
+                        {/each}
+                    </div>
+                </div>
+            {/if}
 
             <div class="nexus-scroller" aria-live="polite">
                 {#if catalogMode === "online"}
@@ -2560,6 +2607,141 @@
     .cat-btn-selected {
         background-color: #111;
         color: #38d68d;
+    }
+
+    .conflict-review {
+        background: rgba(18, 18, 18, 0.86);
+        border: 1px solid rgba(253, 198, 109, 0.28);
+        box-sizing: border-box;
+        display: flex;
+        flex: 0 0 auto;
+        flex-direction: column;
+        gap: 0.6em;
+        max-height: clamp(170px, 25vh, 260px);
+        min-height: 0;
+        overflow: hidden;
+        padding: 0.75em;
+        text-align: left;
+    }
+
+    .conflict-review-head {
+        align-items: center;
+        display: flex;
+        gap: 1em;
+        justify-content: space-between;
+        min-width: 0;
+    }
+
+    .conflict-review-head p {
+        color: #9aa5af;
+        font-size: 0.78em;
+        font-weight: 700;
+        margin: 0.25em 0 0;
+    }
+
+    .conflict-review-head .cat-btn {
+        width: 10.5em;
+    }
+
+    .conflict-group-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.55em;
+        min-height: 0;
+        overflow-y: auto;
+        padding-right: 0.25em;
+    }
+
+    .conflict-group {
+        background: rgba(10, 10, 10, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        flex-direction: column;
+        gap: 0.45em;
+        padding: 0.55em;
+        text-align: left;
+    }
+
+    .conflict-group-title {
+        align-items: baseline;
+        display: flex;
+        gap: 0.7em;
+        justify-content: space-between;
+        min-width: 0;
+    }
+
+    .conflict-group-title span {
+        color: #eefcff;
+        font-size: 0.88em;
+        font-weight: 900;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .conflict-group-title small,
+    .conflict-entry small {
+        color: #9aa5af;
+        font-size: 0.72em;
+        font-weight: 700;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .conflict-entry {
+        align-items: center;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        gap: 0.75em;
+        justify-content: space-between;
+        min-width: 0;
+        padding-top: 0.45em;
+    }
+
+    .conflict-entry-main {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: 0.12em;
+        min-width: 0;
+        text-align: left;
+    }
+
+    .conflict-entry-main span {
+        color: #d6dde5;
+        font-size: 0.82em;
+        font-weight: 900;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .conflict-entry-actions {
+        align-items: center;
+        display: flex;
+        flex: 0 0 auto;
+        gap: 0.5em;
+    }
+
+    .conflict-entry-actions span {
+        color: #fdc66d;
+        font-size: 0.75em;
+        font-weight: 900;
+        max-width: 7em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .conflict-entry-actions button {
+        font-size: 0.72em;
+        margin: 0;
+        min-width: 7.4em;
+        padding: 0.48em 0.65em;
     }
 
     .nexus-scroller {
