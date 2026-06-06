@@ -3217,7 +3217,9 @@
             .replace(/\[img[^\]]*\][\s\S]*?\[\/img\]/gi, " ")
             .replace(/\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi, "$2 ($1)")
             .replace(/\[url\]([\s\S]*?)\[\/url\]/gi, "$1")
-            .replace(/\[\*\]/g, "\n- ")
+            .replace(/\[\*(?:=[^\]]+)?\]/g, "\n- ")
+            .replace(/\[\s*li(?:\s[^\]]*|=[^\]]*)?\]/gi, "\n- ")
+            .replace(/\[\/\s*li\]/gi, "\n")
             .replace(/\[\/?(?:table|tbody|thead|tfoot)[^\]]*\]/gi, "\n")
             .replace(/\[\/?tr[^\]]*\]/gi, "\n")
             .replace(/\[(?:td|th)[^\]]*\]/gi, "")
@@ -3227,7 +3229,7 @@
             .replace(/\[youtube[^\]]*\]([\s\S]*?)\[\/youtube\]/gi, "YouTube: $1")
             .replace(/\[video[^\]]*\]([\s\S]*?)\[\/video\]/gi, "Video: $1")
             .replace(/\[\/?\s*(?:list|ul|ol|olist)[^\]]*\]/gi, "")
-            .replace(/\[\/?(?:b|i|u|s|sub|sup|size|color|font|center|left|right|justify|align|indent|quote|spoiler|code|heading|h[1-6])[^\]]*\]/gi, "")
+            .replace(/\[\/?(?:b|i|u|s|sub|sup|size|color|font|center|left|right|justify|align|indent|quote|spoiler|code|heading|h[1-6]|div|p|span)[^\]]*\]/gi, "")
             .replace(/\[\/?[a-z0-9_-]+[^\]]*\]/gi, "")
             .replace(/[ \t]+/g, " ")
             .replace(/\n\s+/g, "\n")
@@ -3261,6 +3263,20 @@
             .replace(/<\/pre>/gi, "[/code]\n\n")
             .replace(/<code\b[^>]*>/gi, "[code]")
             .replace(/<\/code>/gi, "[/code]")
+            .replace(/<center\b[^>]*>/gi, "\n\n[center]")
+            .replace(/<\/center>/gi, "[/center]\n\n")
+            .replace(/<(p|div)\b([^>]*)>([\s\S]*?)<\/\1>/gi, (_match, tag: string, attrs: string, body: string) => {
+                const alignment = htmlAlignmentAttribute(attrs);
+                return alignment ? `\n\n[align=${alignment}]${body}[/align]\n\n` : `\n\n${body}\n\n`;
+            })
+            .replace(/<font\b([^>]*)>([\s\S]*?)<\/font>/gi, (_match, attrs: string, body: string) => {
+                const color = htmlColorAttribute(attrs);
+                return color ? `[color=${color}]${body}[/color]` : body;
+            })
+            .replace(/<span\b([^>]*)>([\s\S]*?)<\/span>/gi, (_match, attrs: string, body: string) => {
+                const color = htmlColorAttribute(attrs);
+                return color ? `[color=${color}]${body}[/color]` : body;
+            })
             .replace(/<strong\b[^>]*>|<b\b[^>]*>/gi, "[b]")
             .replace(/<\/strong>|<\/b>/gi, "[/b]")
             .replace(/<em\b[^>]*>|<i\b[^>]*>/gi, "[i]")
@@ -3274,9 +3290,9 @@
             .replace(/<\/?(?:tbody|thead|tfoot)\b[^>]*>/gi, "")
             .replace(/<tr\b[^>]*>/gi, "\n[tr]")
             .replace(/<\/tr>/gi, "[/tr]\n")
-            .replace(/<th\b[^>]*>/gi, "[th]")
+            .replace(/<th\b([^>]*)>/gi, (_match, attrs: string) => `[th${nexusHtmlTableCellAttributes(attrs)}]`)
             .replace(/<\/th>/gi, "[/th]")
-            .replace(/<td\b[^>]*>/gi, "[td]")
+            .replace(/<td\b([^>]*)>/gi, (_match, attrs: string) => `[td${nexusHtmlTableCellAttributes(attrs)}]`)
             .replace(/<\/td>/gi, "[/td]")
             .replace(/<ul\b[^>]*>/gi, "\n[list]\n")
             .replace(/<\/ul>/gi, "\n[/list]\n")
@@ -3306,6 +3322,8 @@
             .replace(/\[(?:br|break)\s*\/?\]/gi, "\n")
             .replace(/\[(?:pre|raw|noparse)\]/gi, "[code]")
             .replace(/\[\/(?:pre|raw|noparse)\]/gi, "[/code]")
+            .replace(/\[\s*li(?:\s[^\]]*|=[^\]]*)?\]/gi, "\n[*]")
+            .replace(/\[\/\s*li\]/gi, "\n")
             .replace(/\[h([1-6])\]/gi, "[heading=$1]")
             .replace(/\[\/h[1-6]\]/gi, "[/heading]")
             .replace(/\[(url|img|color|size|align|indent|quote|spoiler|heading|youtube|video|list|olist|ol|ul)([ \t][^\]]+)\]/gi, (_match, tag: string, attrs: string) => normalizeNexusBbOpeningTag(tag, attrs))
@@ -3322,7 +3340,7 @@
                 return `\n[olist${type ? `=${type}` : ""}]\n`;
             })
             .replace(/\[\/(?:ul|ol|list|olist)\]/gi, "\n[/list]\n")
-            .replace(/\[\*\]/g, "\n[*]")
+            .replace(/\[\*(?:=[^\]]+)?\]/g, "\n[*]")
             .replace(/\[table[^\]]*\]/gi, "\n\n[table]\n")
             .replace(/\[\/table\]/gi, "\n[/table]\n\n")
             .replace(/\[\/?(?:tbody|thead|tfoot)[^\]]*\]/gi, "")
@@ -3366,6 +3384,20 @@
             const attr = match[2];
             const close = findNexusStructureClose(text, structuralPattern.lastIndex, tag === "table" ? "table" : "list");
             if (!close) {
+                const remainder = text.slice(structuralPattern.lastIndex).trim();
+                if (tag !== "table" && /\[\*\]/.test(remainder)) {
+                    appendNexusTextChunks(chunks, text.slice(cursor, match.index));
+                    chunks.push({
+                        kind: "list",
+                        value: remainder,
+                        ordered: tag === "olist" || isOrderedNexusListAttr(attr),
+                        style: nexusOrderedListType(attr) ?? undefined
+                    });
+                    cursor = text.length;
+                    structuralPattern.lastIndex = text.length;
+                    break;
+                }
+
                 continue;
             }
 
@@ -3572,7 +3604,7 @@
 
     function splitNexusMarkedListItems(value: string): string[] {
         const items: string[] = [];
-        const tokenPattern = /\[\*\]|\[\/?(?:list|olist|table)(?:=[^\]]+)?\]/gi;
+        const tokenPattern = /\[\*(?:=[^\]]+)?\]|\[\/?(?:list|olist|table)(?:=[^\]]+)?\]/gi;
         let listDepth = 0;
         let tableDepth = 0;
         let currentStart: number | null = null;
@@ -3580,7 +3612,7 @@
 
         while ((match = tokenPattern.exec(value)) !== null) {
             const token = match[0].toLowerCase();
-            if (token === "[*]") {
+            if (token.startsWith("[*")) {
                 if (listDepth === 0 && tableDepth === 0) {
                     if (currentStart !== null) {
                         const item = value.slice(currentStart, match.index).trim();
@@ -3694,8 +3726,11 @@
                 return url ? `<a href="${escapeAttribute(url)}" target="_blank" rel="noreferrer noopener">${inner || escapeHtml(url)}</a>` : inner;
             }
             case "img": {
-                const url = safeNexusUrl(node.attr ?? collectNexusNodeText(node.children));
-                return url ? `<img class="nexus-rich-image" src="${escapeAttribute(url)}" alt="" />${node.attr ? inner : ""}` : inner;
+                const text = collectNexusNodeText(node.children);
+                const attrUrl = safeNexusUrl(node.attr);
+                const textUrl = safeNexusUrl(text);
+                const url = attrUrl ?? textUrl;
+                return url ? `<img class="nexus-rich-image" src="${escapeAttribute(url)}" alt="" />${attrUrl && inner ? inner : ""}` : inner;
             }
             case "color": {
                 const color = safeNexusColor(node.attr);
@@ -3863,6 +3898,30 @@
         const pattern = new RegExp(`${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i");
         const match = attrs.match(pattern);
         return match ? decodeHtmlEntities(match[1] ?? match[2] ?? match[3] ?? "") : null;
+    }
+
+    function htmlAlignmentAttribute(attrs: string): "left" | "center" | "right" | "justify" | null {
+        const direct = htmlAttribute(attrs, "align");
+        const style = htmlAttribute(attrs, "style");
+        const styled = style?.match(/text-align\s*:\s*([a-z-]+)/i)?.[1];
+        const raw = decodeHtmlEntities(direct ?? styled ?? "").trim().toLowerCase();
+        return raw === "left" || raw === "center" || raw === "right" || raw === "justify" ? raw : null;
+    }
+
+    function htmlColorAttribute(attrs: string): string | null {
+        const direct = htmlAttribute(attrs, "color");
+        const style = htmlAttribute(attrs, "style");
+        const styled = style?.match(/(?:^|;)\s*color\s*:\s*([^;]+)/i)?.[1];
+        return safeNexusColor(direct ?? styled ?? "");
+    }
+
+    function nexusHtmlTableCellAttributes(attrs: string): string {
+        const colspan = safeNexusTableSpan(htmlAttribute(attrs, "colspan") ?? htmlAttribute(attrs, "col") ?? undefined);
+        const rowspan = safeNexusTableSpan(htmlAttribute(attrs, "rowspan") ?? htmlAttribute(attrs, "row") ?? undefined);
+        return [
+            colspan ? `colspan="${colspan}"` : "",
+            rowspan ? `rowspan="${rowspan}"` : ""
+        ].filter(Boolean).map(attribute => ` ${attribute}`).join("");
     }
 
     function safeNexusUrl(value?: string): string | null {
