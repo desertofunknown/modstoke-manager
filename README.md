@@ -24,7 +24,7 @@ It is based on Toni Macaroni's RedManager, but the main loader flow has been cha
 - Display Nexus premium/supporter/tier status returned by the account validation API, show existing endorsements for downloaded SOTF mods, and let users manually endorse downloaded mods from the online, detail, and installed inventory views.
 - Track or untrack Nexus-hosted SOTF mods from the manager, filter the catalog to tracked mods, and review API-listed changelog entries plus local update state for installed matches.
 - Detect local duplicate/conflict groups across Nexus IDs, manifest names, local package IDs, and Vortex package labels, with a dedicated Conflicts filter in both online and installed views.
-- Triage the Nexus/Vortex catalog with attention, update, disabled, tracked, source, and conflict filters plus separate online/installed sort modes.
+- Triage the Nexus/Vortex catalog with attention, update, disabled, tracked, source, and conflict filters plus separate online/installed sort modes and clickable health summary cards.
 - Optionally auto-endorse Vortex-managed SOTF downloads with a local user toggle, once-per-mod attempt tracking, and a small per-refresh cap so the manager does not create excessive Nexus API traffic.
 - Detect the OpenACAI Endnight Loader core assembly through `BepInEx\plugins\OpenACAILoader`.
 - Keep old RedLoader/MelonLoader cleanup affordances so users can avoid competing loader bootstraps.

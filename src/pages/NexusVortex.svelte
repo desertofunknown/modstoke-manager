@@ -750,6 +750,24 @@
         await openExternalTarget(vortexStagingPath);
     }
 
+    function showInstalledInventory() {
+        catalogMode = "installed";
+        selectedInstallFilter = "all";
+    }
+
+    function showCurrentAttention() {
+        selectedInstallFilter = "attention";
+    }
+
+    function showUpdatesOrDisabled() {
+        catalogMode = "installed";
+        selectedInstallFilter = updateCount > 0 ? "updates" : "disabled";
+    }
+
+    function showLocalConflicts() {
+        selectedInstallFilter = "conflicts";
+    }
+
     async function openModPage(mod: NexusMod) {
         await shell.open(getNexusModPageUrl(mod));
     }
@@ -1770,29 +1788,29 @@
                 <span class="summary-label">Vortex Deployment</span>
                 <span class="summary-value">{vortexStagingPath ? "Detected" : "Not detected"}</span>
             </div>
-            <div class="summary-card">
+            <button type="button" class="summary-card summary-action" on:click={showInstalledInventory}>
                 <span class="summary-label">Installed</span>
                 <span class="summary-value">{installedCount}</span>
-            </div>
-            <div class="summary-card" class:attention-summary={(catalogMode === "online" ? onlineAttentionCount : installedAttentionCount) > 0}>
+            </button>
+            <button type="button" class="summary-card summary-action" class:attention-summary={(catalogMode === "online" ? onlineAttentionCount : installedAttentionCount) > 0} on:click={showCurrentAttention}>
                 <span class="summary-label">Attention</span>
                 <span class="summary-value">{catalogMode === "online" ? onlineAttentionCount : installedAttentionCount}</span>
                 <span class="summary-note">{catalogMode === "online" ? "Tracked missing, updates, conflicts" : "Updates, disabled, conflicts"}</span>
-            </div>
+            </button>
             <div class="summary-card">
                 <span class="summary-label">Vortex / Native / Manual</span>
                 <span class="summary-value">{vortexCount} / {nativeCount} / {manualCount}</span>
             </div>
-            <div class="summary-card" class:update-summary={updateCount > 0 || disabledCount > 0}>
+            <button type="button" class="summary-card summary-action" class:update-summary={updateCount > 0 || disabledCount > 0} on:click={showUpdatesOrDisabled}>
                 <span class="summary-label">Updates / Disabled</span>
                 <span class="summary-value">{updateCount} / {disabledCount}</span>
                 <span class="summary-note">Local deployment state</span>
-            </div>
-            <div class="summary-card" class:conflict-summary={conflictCount > 0}>
+            </button>
+            <button type="button" class="summary-card summary-action" class:conflict-summary={conflictCount > 0} on:click={showLocalConflicts}>
                 <span class="summary-label">Local Conflicts</span>
                 <span class="summary-value">{conflictCount}</span>
                 <span class="summary-note">{conflictCount > 0 ? "Review duplicate deployments" : "No duplicate installs"}</span>
-            </div>
+            </button>
         </div>
 
         <section class="catalog-panel">
@@ -2395,6 +2413,23 @@
         gap: 0.15em;
         min-width: 0;
         padding: 0.55em 0.75em;
+    }
+
+    button.summary-card {
+        -webkit-mask-image: none;
+        color: inherit;
+        cursor: pointer;
+        margin: 0;
+        mask-image: none;
+        text-align: left;
+        text-transform: none;
+    }
+
+    .summary-action:hover,
+    .summary-action:focus-visible {
+        border-color: rgba(120, 217, 244, 0.55);
+        box-shadow: inset 0 0 0 1px rgba(120, 217, 244, 0.14);
+        outline: none;
     }
 
     .summary-label {
