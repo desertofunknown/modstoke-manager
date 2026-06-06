@@ -3,22 +3,24 @@
     import SOTFMods from "./Mods.svelte";
     import NexusVortex from "./NexusVortex.svelte";
     import LucideCloudDownload from "~icons/lucide/cloud-download";
+    import LucideLayoutGrid from "~icons/lucide/layout-grid";
+    import LucideMaximize2 from "~icons/lucide/maximize-2";
     import LucideSearch from "~icons/lucide/search";
     import LucideStore from "~icons/lucide/store";
     import LucideX from "~icons/lucide/x";
 
-    type ModHubSource = "sotf" | "nexus";
+    type ModHubSource = "all" | "sotf" | "nexus";
 
     const MOD_HUB_SOURCE_KEY = "openacai-mod-hub-source";
     const MOD_HUB_SEARCH_KEY = "openacai-mod-hub-search";
 
-    let activeSource: ModHubSource = "sotf";
+    let activeSource: ModHubSource = "all";
     let sharedSearchTerm = "";
     let sharedSearchVersion = 0;
 
     onMount(() => {
         const savedSource = localStorage.getItem(MOD_HUB_SOURCE_KEY);
-        if (savedSource === "sotf" || savedSource === "nexus") {
+        if (savedSource === "all" || savedSource === "sotf" || savedSource === "nexus") {
             activeSource = savedSource;
         }
 
@@ -52,6 +54,16 @@
 <div class="mod-hub">
     <div class="hub-toolbar">
         <div class="source-switch" aria-label="Mod source">
+            <button
+                type="button"
+                class:source-selected={activeSource === "all"}
+                aria-pressed={activeSource === "all"}
+                on:click={() => selectSource("all")}
+                title="Browse all stores"
+            >
+                <LucideLayoutGrid aria-hidden="true" />
+                <span>All Stores</span>
+            </button>
             <button
                 type="button"
                 class:source-selected={activeSource === "sotf"}
@@ -95,7 +107,7 @@
         </label>
     </div>
 
-    <div class="source-panel">
+    <div class="source-panel" class:all-source-panel={activeSource === "all"}>
         {#if activeSource === "sotf"}
             <SOTFMods
                 sharedSearchTerm={sharedSearchTerm}
@@ -103,6 +115,40 @@
                 showEmbeddedSearch={false}
                 on:searchChange={(event) => setSharedSearchTerm(event.detail)}
             />
+        {:else if activeSource === "all"}
+            <section class="source-section">
+                <div class="source-section-head">
+                    <span><LucideStore aria-hidden="true" /> SOTF Mods</span>
+                    <button type="button" on:click={() => selectSource("sotf")} title="Open SOTF Mods source" aria-label="Open SOTF Mods source">
+                        <LucideMaximize2 aria-hidden="true" />
+                    </button>
+                </div>
+                <div class="source-section-body">
+                    <SOTFMods
+                        sharedSearchTerm={sharedSearchTerm}
+                        sharedSearchVersion={sharedSearchVersion}
+                        showEmbeddedSearch={false}
+                        on:searchChange={(event) => setSharedSearchTerm(event.detail)}
+                    />
+                </div>
+            </section>
+
+            <section class="source-section">
+                <div class="source-section-head">
+                    <span><LucideCloudDownload aria-hidden="true" /> Nexus / Vortex</span>
+                    <button type="button" on:click={() => selectSource("nexus")} title="Open Nexus / Vortex source" aria-label="Open Nexus / Vortex source">
+                        <LucideMaximize2 aria-hidden="true" />
+                    </button>
+                </div>
+                <div class="source-section-body nexus-source-section-body">
+                    <NexusVortex
+                        sharedSearchTerm={sharedSearchTerm}
+                        sharedSearchVersion={sharedSearchVersion}
+                        showEmbeddedSearch={false}
+                        on:searchChange={(event) => setSharedSearchTerm(event.detail)}
+                    />
+                </div>
+            </section>
         {:else}
             <NexusVortex
                 sharedSearchTerm={sharedSearchTerm}
@@ -140,7 +186,7 @@
         display: grid;
         flex: 0 0 auto;
         gap: 0.45em;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         width: 100%;
     }
 
@@ -255,6 +301,90 @@
         width: 100%;
     }
 
+    .all-source-panel {
+        gap: 0.75em;
+        overflow-y: auto;
+        padding-right: 0.28em;
+        scrollbar-gutter: stable;
+    }
+
+    .source-section {
+        background: rgba(10, 10, 10, 0.34);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-sizing: border-box;
+        display: flex;
+        flex: 0 0 auto;
+        flex-direction: column;
+        gap: 0.5em;
+        min-height: 0;
+        padding: 0.65em;
+        width: 100%;
+    }
+
+    .source-section-head {
+        align-items: center;
+        display: flex;
+        flex: 0 0 auto;
+        gap: 0.65em;
+        justify-content: space-between;
+        min-width: 0;
+    }
+
+    .source-section-head span {
+        align-items: center;
+        color: #d8e3ea;
+        display: inline-flex;
+        gap: 0.45em;
+        font-size: 0.82em;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .source-section-head :global(svg) {
+        color: #62f09b;
+        flex: 0 0 auto;
+        font-size: 1.02em;
+        stroke-width: 2.35;
+    }
+
+    .source-section-head button {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: none;
+        color: #aeb6bb;
+        display: grid;
+        height: 2.15em;
+        justify-content: center;
+        margin: 0;
+        min-height: 0;
+        min-width: 2.35em;
+        padding: 0;
+        width: 2.35em;
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+
+    .source-section-head button:hover {
+        border-color: rgba(98, 240, 155, 0.44);
+        color: #62f09b;
+    }
+
+    .source-section-body {
+        height: clamp(31em, 62vh, 46em);
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .nexus-source-section-body {
+        height: clamp(44em, 80vh, 58em);
+    }
+
     @media (max-width: 620px) {
         .hub-toolbar {
             grid-template-columns: 1fr;
@@ -267,6 +397,15 @@
         .source-switch button {
             font-size: 0.82em;
             padding: 0 0.55em;
+        }
+
+        .source-section {
+            padding: 0.5em;
+        }
+
+        .source-section-body,
+        .nexus-source-section-body {
+            height: clamp(34em, 86vh, 54em);
         }
     }
 
