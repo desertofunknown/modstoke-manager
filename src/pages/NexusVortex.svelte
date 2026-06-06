@@ -89,6 +89,7 @@
     let onlineAttentionCount = 0;
     let installedAttentionCount = 0;
     let resolvedDependencies: ResolvedDependency[] = [];
+    let hasActiveNexusFilters = false;
     let isLoading = false;
     let isDetailLoading = false;
     let status = "";
@@ -181,6 +182,9 @@
         localConflictEntryKeys;
         visibleInstalledEntries = sortInstalledEntries(inventory.filter(matchesInstalledFilters));
     }
+    $: hasActiveNexusFilters = nexusSearchTerm.trim().length > 0
+        || selectedNexusCategory !== "all"
+        || selectedInstallFilter !== "all";
     $: {
         inventory;
         resolvedDependencies = selectedDependencies.map(resolveDependencyStatus);
@@ -844,6 +848,12 @@
     function showLocalConflicts() {
         catalogMode = "installed";
         selectedInstallFilter = "conflicts";
+    }
+
+    function clearNexusFilters() {
+        nexusSearchTerm = "";
+        selectedNexusCategory = "all";
+        selectedInstallFilter = "all";
     }
 
     async function openModPage(mod: NexusMod) {
@@ -1999,6 +2009,7 @@
                         <option value="version">Sort: version</option>
                     </select>
                 {/if}
+                <button class="cat-btn filter-reset-btn" disabled={!hasActiveNexusFilters} on:click={clearNexusFilters}>Clear</button>
             </div>
 
             {#if selectedInstallFilter === "conflicts" && localConflicts.length > 0}
@@ -2735,7 +2746,7 @@
         display: grid;
         flex: 0 0 auto;
         gap: 0.6em;
-        grid-template-columns: minmax(16em, 1fr) repeat(3, minmax(10em, 0.55fr));
+        grid-template-columns: minmax(14em, 1fr) repeat(3, minmax(8.5em, 0.55fr)) minmax(6.5em, 0.28fr);
         width: 100%;
     }
 
@@ -2765,6 +2776,11 @@
     .refresh-btn {
         color: #c8c8c8;
         width: 8em;
+    }
+
+    .filter-reset-btn {
+        color: #c8c8c8;
+        width: 100%;
     }
 
     .middle-btn {
