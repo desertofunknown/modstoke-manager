@@ -159,7 +159,7 @@
         : "Refresh Nexus data";
 
     $: nexusCategoryOptions = buildNexusCategoryOptions(nexusCategories, mods);
-    $: if (selectedNexusCategory !== "all" && !nexusCategoryOptions.includes(selectedNexusCategory)) {
+    $: if (selectedNexusCategory !== "all" && nexusCategoryOptions.length > 0 && !nexusCategoryOptions.includes(selectedNexusCategory)) {
         selectedNexusCategory = "all";
     }
     $: installedCount = inventory.length;
