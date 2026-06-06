@@ -100,6 +100,7 @@
     let selectedFileId: number | null = null;
     let selectedDependencies: NexusModDependency[] = [];
     let selectedChangelogs: NexusModChangelog[] = [];
+    let detailBackStack: NexusMod[] = [];
     let selectedInstallMatch: InstalledInventoryEntry | null = null;
     let selectedInstallConflict: LocalConflict | null = null;
     let selectedInstallPlan: InstallPlan = {
@@ -944,7 +945,18 @@
         }
     }
 
-    async function openModDetails(mod: NexusMod) {
+    async function openConflictEntryDetails(entry: InstalledInventoryEntry) {
+        const mod = nexusModForInstalledEntry(entry);
+        if (mod) {
+            await openModDetails(mod, { pushCurrent: !!selectedMod });
+        }
+    }
+
+    async function openModDetails(mod: NexusMod, options: { pushCurrent?: boolean } = {}) {
+        if (options.pushCurrent && selectedMod && selectedMod.mod_id !== mod.mod_id) {
+            detailBackStack = [...detailBackStack, selectedModDetails ?? selectedMod].slice(-8);
+        }
+
         selectedMod = mod;
         selectedModDetails = mod;
         selectedModFiles = [];
@@ -988,7 +1000,18 @@
         selectedFileId = null;
         selectedDependencies = [];
         selectedChangelogs = [];
+        detailBackStack = [];
         clearNxmCopyFeedback();
+    }
+
+    async function openPreviousDetail() {
+        const previous = detailBackStack[detailBackStack.length - 1];
+        if (!previous) {
+            return;
+        }
+
+        detailBackStack = detailBackStack.slice(0, -1);
+        await openModDetails(previous);
     }
 
     async function selectNexusFile(fileId: number) {
@@ -1410,12 +1433,48 @@
         await shell.open(`https://www.nexusmods.com/sonsoftheforest/mods/${dependency.mod_id}`);
     }
 
+    async function openDependencyDetails(dependency: ResolvedDependency) {
+        const dependencyMod = nexusModForDependency(dependency);
+        if (!dependencyMod) {
+            return;
+        }
+
+        await openModDetails(dependencyMod, { pushCurrent: true });
+    }
+
     async function openDependencyLocation(dependency: ResolvedDependency) {
         if (!dependency.match) {
             return;
         }
 
         await openInventoryLocation(dependency.match);
+    }
+
+    function nexusModForDependency(dependency: ResolvedDependency): NexusMod | null {
+        if (!dependency.mod_id) {
+            return null;
+        }
+
+        const loadedMod = mods.find(mod => mod.mod_id === dependency.mod_id);
+        if (loadedMod) {
+            return loadedMod;
+        }
+
+        const summary = [
+            dependency.file_name,
+            dependency.group_name,
+            dependency.version ? `Requires ${dependency.version}` : ""
+        ].filter(Boolean).join(" · ");
+
+        return {
+            mod_id: dependency.mod_id,
+            name: dependency.mod_name,
+            summary: summary || "Dependency returned by the Nexus file dependency API.",
+            version: dependency.version,
+            category_name: "Dependency",
+            category_source: "inferred",
+            loader_type: "Unknown"
+        };
     }
 
     function findLocalConflicts(entries: InstalledInventoryEntry[]): LocalConflict[] {
@@ -2263,6 +2322,9 @@
                                             >
                                                 {conflictEntryActionLabel(entry)}
                                             </button>
+                                            {#if numericNexusId(entry.nexusModId)}
+                                                <button on:click={() => openConflictEntryDetails(entry)}>Details</button>
+                                            {/if}
                                             <button on:click={() => openInventoryLocation(entry)}>Open Folder</button>
                                         </div>
                                     </div>
@@ -2461,7 +2523,12 @@
                     <span class="panel-title">{selectedModDetails?.name ?? selectedMod.name}</span>
                     <span class="panel-subtitle">{selectedModDetails?.category_name ?? "Nexus"} · {selectedModDetails?.loader_type ?? "Unknown type"} · {selectedModDetails?.author ?? selectedModDetails?.uploaded_by ?? "Unknown author"}</span>
                 </div>
-                <button class="close-detail" on:click={closeModDetails}>Close</button>
+                <div class="detail-header-actions">
+                    {#if detailBackStack.length > 0}
+                        <button class="back-detail" on:click={openPreviousDetail}>Back</button>
+                    {/if}
+                    <button class="close-detail" on:click={closeModDetails}>Close</button>
+                </div>
             </div>
 
             {#if isDetailLoading}
@@ -2568,6 +2635,9 @@
                                             >
                                                 {conflictEntryActionLabel(entry)}
                                             </button>
+                                            {#if numericNexusId(entry.nexusModId)}
+                                                <button on:click={() => openConflictEntryDetails(entry)}>Details</button>
+                                            {/if}
                                             <button on:click={() => openInventoryLocation(entry)}>Open Folder</button>
                                         </div>
                                     </div>
@@ -2622,6 +2692,7 @@
                                     <small>{dependencyStatusLabel(dependency)}</small>
                                     <div class="dependency-actions">
                                         {#if dependency.mod_id}
+                                            <button on:click={() => openDependencyDetails(dependency)}>Details</button>
                                             <button on:click={() => openDependencyPage(dependency)}>Nexus</button>
                                         {/if}
                                         {#if dependency.match}
@@ -3634,6 +3705,20 @@
         min-width: 0;
     }
 
+    .detail-header-actions {
+        display: flex;
+        flex: 0 0 auto;
+        gap: 0.5em;
+    }
+
+    .detail-header-actions button {
+        margin: 0;
+    }
+
+    .back-detail {
+        min-width: 5.5em;
+    }
+
     .close-detail {
         color: #fd9b9d;
         min-width: 7em;
@@ -4156,6 +4241,20 @@
 
         .detail-panel {
             max-height: 92vh;
+        }
+
+        .detail-header {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .detail-header-actions {
+            width: 100%;
+        }
+
+        .detail-header-actions button {
+            flex: 1 1 0;
+            min-width: 0;
         }
 
         .detail-link-actions {
