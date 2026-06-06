@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy, onMount, tick } from "svelte";
+    import { createEventDispatcher, onDestroy, onMount, tick } from "svelte";
     import semver from "semver";
     import SvgSpinnersBlocksWave from "~icons/svg-spinners/blocks-wave";
     import LucideChevronLeft from "~icons/lucide/chevron-left";
@@ -48,6 +48,12 @@
     import * as dialog from "@tauri-apps/plugin-dialog"
     import * as shell from "@tauri-apps/plugin-shell"
     import { Command } from "@tauri-apps/plugin-shell";
+
+    export let sharedSearchTerm = "";
+    export let sharedSearchVersion = 0;
+    export let showEmbeddedSearch = true;
+
+    const dispatch = createEventDispatcher<{ searchChange: string }>();
 
     type CatalogMode = "online" | "installed";
     type InstallFilter = "all" | "attention" | "installed" | "missing" | "updates" | "disabled" | "vortex" | "native" | "manual" | "tracked" | "endorsements" | "conflicts";
@@ -133,6 +139,7 @@
     let selectedView: NexusView = "all";
     let catalogMode: CatalogMode = "online";
     let nexusSearchTerm = "";
+    let lastAppliedSharedSearchVersion = 0;
     let selectedNexusCategory = "all";
     let selectedInstallFilter: InstallFilter = "all";
     let selectedModTypeFilter: ModTypeFilter = "all";
@@ -333,6 +340,10 @@
         || selectedNexusCategory !== "all"
         || selectedInstallFilter !== "all"
         || selectedModTypeFilter !== "all";
+    $: if (sharedSearchVersion > 0 && sharedSearchVersion !== lastAppliedSharedSearchVersion) {
+        lastAppliedSharedSearchVersion = sharedSearchVersion;
+        applySharedSearch(sharedSearchTerm);
+    }
     $: {
         inventory;
         resolvedDependencies = selectedDependencies.map(resolveDependencyStatus);
@@ -466,6 +477,10 @@
     onMount(async () => {
         setupNexusLayoutObserver();
         loadNexusUiPreferences();
+        if (sharedSearchVersion > 0) {
+            applySharedSearch(sharedSearchTerm);
+            lastAppliedSharedSearchVersion = sharedSearchVersion;
+        }
         loadEndorsementPreferences();
         await refreshInventory();
         await refreshSession();
@@ -625,6 +640,21 @@
 
     function validOption<T extends string>(value: unknown, options: T[], fallback: T): T {
         return typeof value === "string" && options.includes(value as T) ? value as T : fallback;
+    }
+
+    function applySharedSearch(value: string) {
+        if (value === nexusSearchTerm) {
+            return;
+        }
+
+        handleNexusSearchInput(value, false);
+    }
+
+    function handleNexusSearchInput(value: string, emit = true) {
+        nexusSearchTerm = value;
+        if (emit) {
+            dispatch("searchChange", value);
+        }
     }
 
     async function refreshInventory() {
@@ -1330,7 +1360,7 @@
     }
 
     function clearNexusFilters() {
-        nexusSearchTerm = "";
+        handleNexusSearchInput("");
         selectedNexusCategory = "all";
         selectedInstallFilter = "all";
         selectedModTypeFilter = "all";
@@ -3421,6 +3451,7 @@
         | { kind: "tag"; name: string; attr?: string; rawAttrs?: string; children: NexusRichNode[] };
     type NexusBlockChunk =
         | { kind: "block"; value: string }
+        | { kind: "line"; value: string }
         | { kind: "list"; value: string; ordered: boolean; style?: string }
         | { kind: "table"; value: string };
     type NexusTableCell = {
@@ -3747,9 +3778,88 @@
         for (const block of value.split(/\n{2,}/)) {
             const trimmed = block.trim();
             if (trimmed) {
-                chunks.push({ kind: "block", value: trimmed });
+                const listChunk = nexusPlainListChunk(trimmed);
+                chunks.push(listChunk ?? {
+                    kind: shouldPreserveNexusLineLayout(trimmed) ? "line" : "block",
+                    value: trimmed
+                });
             }
         }
+    }
+
+    function nexusPlainListChunk(value: string): NexusBlockChunk | null {
+        if (hasNexusBlockStructure(value)) {
+            return null;
+        }
+
+        const lines = value
+            .split("\n")
+            .map(line => line.trim())
+            .filter(Boolean);
+        if (lines.length < 2) {
+            return null;
+        }
+
+        const bulletItems = lines.map(line => line.match(/^(?:[-*]|\u2022)\s+(.+)$/)?.[1]?.trim() ?? "");
+        if (bulletItems.every(Boolean)) {
+            return {
+                kind: "list",
+                ordered: false,
+                value: bulletItems.map(item => `[*]${item}`).join("\n")
+            };
+        }
+
+        const numberedItems = lines.map(line => line.match(/^\d+[.)]\s+(.+)$/)?.[1]?.trim() ?? "");
+        if (numberedItems.every(Boolean)) {
+            return {
+                kind: "list",
+                ordered: true,
+                style: "1",
+                value: numberedItems.map(item => `[*]${item}`).join("\n")
+            };
+        }
+
+        const alphaItems = lines.map(line => line.match(/^[a-z][.)]\s+(.+)$/i)?.[1]?.trim() ?? "");
+        if (alphaItems.every(Boolean)) {
+            const startsUpper = /^[A-Z][.)]/.test(lines[0]);
+            return {
+                kind: "list",
+                ordered: true,
+                style: startsUpper ? "A" : "a",
+                value: alphaItems.map(item => `[*]${item}`).join("\n")
+            };
+        }
+
+        return null;
+    }
+
+    function shouldPreserveNexusLineLayout(value: string): boolean {
+        if (hasNexusBlockStructure(value)) {
+            return false;
+        }
+
+        const lines = value.split("\n");
+        const nonEmpty = lines.map(line => line.trim()).filter(Boolean);
+        if (nonEmpty.length < 3) {
+            return false;
+        }
+
+        const structuralLines = lines.filter(line => {
+            const trimmed = line.trim();
+            return /^\s{2,}\S/.test(line)
+                || /\S\s{2,}\S/.test(line)
+                || /^[A-Za-z0-9][A-Za-z0-9 /&+_.()'-]{1,42}:\s+\S/.test(trimmed)
+                || /^(?:[A-Z][A-Z0-9 _/&+.'()-]{3,}|[=*_ -]{4,})$/.test(trimmed)
+                || /(?:[A-Za-z]:\\|\.{0,2}\/|\\)[^\s]+/.test(trimmed)
+                || /(?:\.dll|\.json|\.cfg|\.ini|\.zip|\.rar|\.7z)\b/i.test(trimmed);
+        }).length;
+
+        if (structuralLines >= 2) {
+            return true;
+        }
+
+        const averageLength = nonEmpty.reduce((total, line) => total + line.length, 0) / nonEmpty.length;
+        return nonEmpty.length >= 4 && averageLength <= 64 && !/[.!?]\s+[A-Z]/.test(nonEmpty.join(" "));
     }
 
     function findNexusStructureClose(text: string, startIndex: number, tag: string): { start: number; end: number } | null {
@@ -3794,6 +3904,10 @@
 
         if (chunk.kind === "table") {
             return renderNexusTable(block, depth);
+        }
+
+        if (chunk.kind === "line") {
+            return `<div class="nexus-rich-line-block">${renderNexusInline(block)}</div>`;
         }
 
         const columns = block.match(/^\[(columns|cols)(?:=([^\]]+))?\]([\s\S]*?)\[\/\1\]$/i);
@@ -4328,11 +4442,20 @@
                     ?? nexusBbAttribute(node.rawAttrs, "background-color")
                     ?? nexusBbAttribute(node.rawAttrs, "bgcolor")
                 );
+                const fontClass = safeNexusFontClass(
+                    nexusBbAttribute(node.rawAttrs, "face")
+                    ?? nexusBbAttribute(node.rawAttrs, "font")
+                    ?? nexusBbAttribute(node.rawAttrs, "font-family")
+                    ?? node.attr
+                );
+                const classes = ["nexus-rich-font", fontClass ? `nexus-rich-font-${fontClass}` : ""]
+                    .filter(Boolean)
+                    .join(" ");
                 const style = [
                     color ? `color: ${color}` : "",
                     background ? `background-color: ${background}` : ""
                 ].filter(Boolean).join("; ");
-                return style ? `<span class="nexus-rich-font" style="${escapeAttribute(style)}">${inner}</span>` : inner;
+                return style || fontClass ? `<span class="${classes}"${style ? ` style="${escapeAttribute(style)}"` : ""}>${inner}</span>` : inner;
             }
             case "box":
             case "panel":
@@ -4627,10 +4750,15 @@
         const color = htmlColorAttribute(attrs);
         const background = htmlBackgroundColorAttribute(attrs);
         const size = htmlSizeAttribute(attrs);
+        const fontClass = htmlFontClassAttribute(attrs);
         const weight = style.match(/(?:^|;)\s*font-weight\s*:\s*([^;]+)/i)?.[1]?.trim().toLowerCase();
         const fontStyle = style.match(/(?:^|;)\s*font-style\s*:\s*([^;]+)/i)?.[1]?.trim().toLowerCase();
         const textDecoration = style.match(/(?:^|;)\s*text-decoration(?:-line)?\s*:\s*([^;]+)/i)?.[1]?.trim().toLowerCase() ?? "";
         const wrappers: Array<[string, string]> = [];
+
+        if (fontClass) {
+            wrappers.push([`[font=${fontClass}]`, "[/font]"]);
+        }
 
         if (color) {
             wrappers.push([`[color=${color}]`, "[/color]"]);
@@ -4661,6 +4789,17 @@
         }
 
         return wrappers.reduce((text, [open, close]) => `${open}${text}${close}`, body);
+    }
+
+    function htmlFontClassAttribute(attrs: string): "mono" | "serif" | "sans" | null {
+        const direct = htmlAttribute(attrs, "face")
+            ?? htmlAttribute(attrs, "font")
+            ?? htmlAttribute(attrs, "font-family");
+        const style = htmlAttribute(attrs, "style");
+        const styled = style?.match(/(?:^|;)\s*font-family\s*:\s*([^;]+)/i)?.[1];
+        const classes = htmlAttribute(attrs, "class") ?? "";
+        const classed = classes.match(/(?:^|\s)(mono|monospace|serif|sans|sans-serif|code|preformatted)(?:\s|$)/i)?.[1];
+        return safeNexusFontClass(direct ?? styled ?? classed ?? "");
     }
 
     function hasNexusBlockishMarkup(value: string): boolean {
@@ -4912,6 +5051,30 @@
             .replace(/[\[\]\r\n]/g, "")
             .trim()
             .slice(0, 120);
+    }
+
+    function safeNexusFontClass(value?: string): "mono" | "serif" | "sans" | null {
+        const normalized = decodeHtmlEntities(value ?? "")
+            .replace(/^['"]|['"]$/g, "")
+            .replace(/\s*!important\s*$/i, "")
+            .toLowerCase();
+        if (!normalized) {
+            return null;
+        }
+
+        if (/(?:consolas|courier|monaco|menlo|mono|fixed|terminal|cascadia|jetbrains|source code|lucida console|inconsolata)/.test(normalized)) {
+            return "mono";
+        }
+
+        if (/(?:georgia|garamond|cambria|times|serif)/.test(normalized) && !/sans/.test(normalized)) {
+            return "serif";
+        }
+
+        if (/(?:arial|verdana|tahoma|trebuchet|calibri|segoe|helvetica|sans)/.test(normalized)) {
+            return "sans";
+        }
+
+        return null;
     }
 
     function isOrderedNexusListAttr(value?: string): boolean {
@@ -5323,8 +5486,10 @@
                 </button>
             </div>
 
-            <div class="nexus-filter-row">
-                <input class="generic-input key-input" bind:value={nexusSearchTerm} placeholder="Search Nexus" />
+            <div class="nexus-filter-row" class:compact-filter-row={!showEmbeddedSearch}>
+                {#if showEmbeddedSearch}
+                    <input class="generic-input key-input" value={nexusSearchTerm} on:input={(event) => handleNexusSearchInput((event.currentTarget as HTMLInputElement).value)} placeholder="Search Nexus" />
+                {/if}
                 <select bind:value={selectedNexusCategory}>
                     <option value="all">All categories</option>
                     {#each nexusCategoryOptions as category}
@@ -6545,6 +6710,10 @@
         width: 100%;
     }
 
+    .nexus-filter-row.compact-filter-row {
+        grid-template-columns: repeat(4, minmax(8.5em, 1fr)) minmax(6.5em, 0.38fr);
+    }
+
     .nexus-filter-row .key-input {
         max-width: none;
     }
@@ -7586,11 +7755,22 @@
         margin: 0.55em 0 0;
     }
 
+    .nexus-rich-text :global(.nexus-rich-line-block) {
+        border-left: 2px solid rgba(120, 217, 244, 0.18);
+        color: #c6d0d9;
+        line-height: 1.48;
+        margin: 0.65em 0 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        padding-left: 0.7em;
+    }
+
     .nexus-rich-text :global(p:first-child),
     .nexus-rich-text :global(ul:first-child),
     .nexus-rich-text :global(ol:first-child),
     .nexus-rich-text :global(blockquote:first-child),
     .nexus-rich-text :global(pre:first-child),
+    .nexus-rich-text :global(.nexus-rich-line-block:first-child),
     .nexus-rich-text :global(.nexus-rich-table-wrap:first-child),
     .nexus-rich-text :global(.nexus-rich-spoiler-block:first-child),
     .nexus-rich-text :global(.nexus-rich-box:first-child),
@@ -7775,6 +7955,19 @@
         box-decoration-break: clone;
         color: #101820;
         padding: 0.04em 0.2em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-font-mono) {
+        font-family: Consolas, "Courier New", monospace;
+        white-space: break-spaces;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-font-serif) {
+        font-family: Georgia, "Times New Roman", serif;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-font-sans) {
+        font-family: Arial, "Segoe UI", sans-serif;
     }
 
     .nexus-rich-text :global(.nexus-rich-abbr) {

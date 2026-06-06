@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy, onMount, tick } from "svelte";
+    import { createEventDispatcher, onDestroy, onMount, tick } from "svelte";
     import { isPathValid } from "../lib/store";
     import ModCard from "../lib/ModCard.svelte";
     import type { Mod, ModCategory } from "../lib/mods";
@@ -9,8 +9,15 @@
     import SvgSpinnersBlocksWave from '~icons/svg-spinners/blocks-wave'
     import LucideRefreshCw from "~icons/lucide/refresh-cw";
 
+    export let sharedSearchTerm = "";
+    export let sharedSearchVersion = 0;
+    export let showEmbeddedSearch = true;
+
+    const dispatch = createEventDispatcher<{ searchChange: string }>();
+
     let filtered: Mod[] = [];
     let filterTerm: string = "";
+    let lastAppliedSharedSearchVersion = 0;
     let selectedCategory = "all";
     let selectedType = "all";
     let selectedCompatibility = "all";
@@ -40,6 +47,10 @@
         selectedType;
         selectedCompatibility;
         visibleMods = filtered.filter(matchesClientFilters);
+    }
+    $: if (sharedSearchVersion > 0 && sharedSearchVersion !== lastAppliedSharedSearchVersion) {
+        lastAppliedSharedSearchVersion = sharedSearchVersion;
+        applySharedSearch(sharedSearchTerm);
     }
     $: hasActiveModFilters = filterTerm.trim().length > 0
         || selectedCategory !== "all"
@@ -234,8 +245,19 @@
         }
     }, 600);
 
-    function handleSearchInput(value: string) {
+    function applySharedSearch(value: string) {
+        if (value === filterTerm) {
+            return;
+        }
+
+        handleSearchInput(value, false);
+    }
+
+    function handleSearchInput(value: string, emit = true) {
         filterTerm = value;
+        if (emit) {
+            dispatch("searchChange", value);
+        }
         if (onlineSelected) {
             debouncedReloadOnline();
         }
@@ -271,6 +293,7 @@
         selectedCategory = "all";
         selectedType = "all";
         selectedCompatibility = "all";
+        dispatch("searchChange", "");
 
         if (onlineSelected) {
             await reloadOnline();
@@ -366,7 +389,9 @@
 <div class="column mods-page" bind:this={modsPageElement}>
     {#if $isPathValid}
         <div class="row-center mods-toolbar">
-            <input class="generic-input search-input" placeholder="Search" type="text" value={filterTerm} on:input={(event) => handleSearchInput((event.currentTarget as HTMLInputElement).value)} />
+            {#if showEmbeddedSearch}
+                <input class="generic-input search-input" placeholder="Search" type="text" value={filterTerm} on:input={(event) => handleSearchInput((event.currentTarget as HTMLInputElement).value)} />
+            {/if}
             <div class="mode-buttons">
                 <button class="btn-left cat-btn" class:cat-btn-selected={onlineSelected} on:click={toggleOnline}>Online</button>
                 <button class="btn-right cat-btn" class:cat-btn-selected={installedSelected} on:click={toggleInstalled}>Installed</button>
