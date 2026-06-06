@@ -78,6 +78,7 @@ export type NexusModDependency = {
     mod_name: string;
     file_name?: string;
     version?: string;
+    version_requirement?: string;
     group_name?: string;
 };
 
@@ -845,41 +846,218 @@ function normalizeNexusFile(raw: NexusModFile & Record<string, unknown>): NexusM
     };
 }
 
-function normalizeDependencies(raw: unknown): NexusModDependency[] {
-    const root = objectField(raw);
-    const data = objectField(root?.data);
-    const dependencies = Array.isArray(raw)
-        ? raw
-        : Array.isArray(root?.dependencies)
-            ? root.dependencies
-            : Array.isArray(data?.dependencies)
-                ? data.dependencies
-                : [];
+export function normalizeDependencies(raw: unknown): NexusModDependency[] {
     const flattened: NexusModDependency[] = [];
+    const seen = new Set<string>();
 
-    for (const dependency of dependencies as Array<Record<string, unknown>>) {
-        const groups = Array.isArray(dependency.candidate_groups) ? dependency.candidate_groups as Array<Record<string, unknown>> : [];
-        for (const group of groups) {
-            const mod = group.mod as Record<string, unknown> | undefined;
-            const versions = Array.isArray(group.candidate_versions) ? group.candidate_versions as Array<Record<string, unknown>> : [];
-            const version = versions[0];
-            const file = version?.file as Record<string, unknown> | undefined;
-            const modId = numberField(mod?.game_scoped_id) ?? numberField(mod?.id);
-            const fileId = numberField(file?.game_scoped_id) ?? numberField(file?.id);
+    for (const dependency of dependencySourceRecords(raw)) {
+        for (const normalized of normalizeDependencyRecord(dependency)) {
+            const key = [
+                normalized.mod_id ?? "",
+                normalized.file_id ?? "",
+                normalized.mod_name,
+                normalized.file_name ?? "",
+                normalized.version ?? "",
+                normalized.version_requirement ?? "",
+                normalized.group_name ?? ""
+            ].join("|");
+            if (seen.has(key)) {
+                continue;
+            }
 
-            flattened.push({
-                id: stringField(dependency.id) ?? `${modId ?? "mod"}:${fileId ?? "file"}`,
-                mod_id: modId,
-                file_id: fileId,
-                mod_name: stringField(mod?.name) ?? "Unknown dependency",
-                file_name: stringField(file?.name) ?? stringField(file?.file_name),
-                version: stringField(file?.version) ?? stringField(version?.version),
-                group_name: stringField(group.name)
-            });
+            seen.add(key);
+            flattened.push(normalized);
         }
     }
 
     return flattened;
+}
+
+function dependencySourceRecords(raw: unknown): Array<Record<string, unknown>> {
+    const root = objectField(raw);
+    const data = objectField(root?.data);
+
+    return [
+        ...(Array.isArray(raw) ? raw : []),
+        ...(Array.isArray(root?.data) ? root.data : []),
+        ...(Array.isArray(root?.dependencies) ? root.dependencies : []),
+        ...(Array.isArray(data?.dependencies) ? data.dependencies : []),
+        ...(Array.isArray(root?.dependency_definitions) ? root.dependency_definitions : []),
+        ...(Array.isArray(data?.dependency_definitions) ? data.dependency_definitions : [])
+    ].map(record => objectField(record)).filter((record): record is Record<string, unknown> => Boolean(record));
+}
+
+function normalizeDependencyRecord(dependency: Record<string, unknown>): NexusModDependency[] {
+    const rows: NexusModDependency[] = [];
+    const candidateGroups = Array.isArray(dependency.candidate_groups)
+        ? dependency.candidate_groups.map(group => objectField(group)).filter((group): group is Record<string, unknown> => Boolean(group))
+        : [];
+
+    for (const group of candidateGroups) {
+        const row = dependencyFromCandidateGroup(dependency, group);
+        if (row) {
+            rows.push(row);
+        }
+    }
+
+    const ranges = Array.isArray(dependency.ranges)
+        ? dependency.ranges.map(range => objectField(range)).filter((range): range is Record<string, unknown> => Boolean(range))
+        : [];
+    for (const range of ranges) {
+        const row = dependencyFromRange(dependency, range);
+        if (row) {
+            rows.push(row);
+        }
+    }
+
+    if (rows.length > 0) {
+        return rows;
+    }
+
+    const directRange = objectField(dependency.target_group) && objectField(dependency.min_version)
+        ? dependencyFromRange(dependency, dependency)
+        : null;
+    if (directRange) {
+        return [directRange];
+    }
+
+    const flat = dependencyFromFlatRecord(dependency);
+    return flat ? [flat] : [];
+}
+
+function dependencyFromCandidateGroup(dependency: Record<string, unknown>, group: Record<string, unknown>): NexusModDependency | null {
+    const mod = objectField(group.mod);
+    const versions = Array.isArray(group.candidate_versions)
+        ? group.candidate_versions.map(version => objectField(version)).filter((version): version is Record<string, unknown> => Boolean(version))
+        : [];
+    const version = versions[0];
+    const file = objectField(version?.file);
+    const modId = numberField(mod?.game_scoped_id) ?? numberField(mod?.mod_id) ?? numberField(mod?.id);
+    const fileId = numberField(file?.game_scoped_id) ?? numberField(file?.file_id) ?? numberField(file?.id);
+    const modName = stringField(mod?.name) ?? stringField(group.name);
+
+    if (!modName && !modId) {
+        return null;
+    }
+
+    return {
+        id: stringField(dependency.id) ?? stringField(group.id) ?? `${modId ?? "mod"}:${fileId ?? "file"}`,
+        mod_id: modId,
+        file_id: fileId,
+        mod_name: modName ?? "Unknown dependency",
+        file_name: stringField(file?.name) ?? stringField(file?.file_name),
+        version: stringField(file?.version) ?? stringField(version?.version),
+        group_name: stringField(group.name)
+    };
+}
+
+function dependencyFromRange(dependency: Record<string, unknown>, range: Record<string, unknown>): NexusModDependency | null {
+    const targetGroup = objectField(range.target_group) ?? objectField(range.group);
+    const mod = objectField(targetGroup?.mod);
+    const minVersion = objectField(range.min_version);
+    const maxVersion = objectField(range.max_version);
+    const minFile = objectField(minVersion?.file);
+    const maxFile = objectField(maxVersion?.file);
+    const representativeFile = maxFile ?? minFile;
+    const modId = numberField(mod?.game_scoped_id) ?? numberField(mod?.mod_id) ?? numberField(mod?.id);
+    const fileId = numberField(representativeFile?.game_scoped_id) ?? numberField(representativeFile?.file_id) ?? numberField(representativeFile?.id);
+    const modName = stringField(mod?.name) ?? stringField(targetGroup?.name);
+    const minLabel = dependencyVersionLabel(minVersion, minFile);
+    const maxLabel = dependencyVersionLabel(maxVersion, maxFile);
+    const exactVersion = minLabel && maxLabel && normalizedDependencyVersion(minLabel) === normalizedDependencyVersion(maxLabel)
+        ? minLabel
+        : undefined;
+
+    if (!modName && !modId) {
+        return null;
+    }
+
+    return {
+        id: stringField(range.id) ?? stringField(dependency.id) ?? `${modId ?? "mod"}:${fileId ?? "file"}`,
+        mod_id: modId,
+        file_id: fileId,
+        mod_name: modName ?? "Unknown dependency",
+        file_name: stringField(representativeFile?.name) ?? stringField(representativeFile?.file_name),
+        version: exactVersion,
+        version_requirement: dependencyRequirementLabel(minLabel, maxLabel),
+        group_name: stringField(targetGroup?.name)
+    };
+}
+
+function dependencyFromFlatRecord(dependency: Record<string, unknown>): NexusModDependency | null {
+    const mod = objectField(dependency.mod);
+    const file = objectField(dependency.file);
+    const group = objectField(dependency.group) ?? objectField(dependency.target_group);
+    const groupMod = objectField(group?.mod);
+    const modId = numberField(dependency.mod_id)
+        ?? numberField(dependency.game_scoped_mod_id)
+        ?? numberField(mod?.game_scoped_id)
+        ?? numberField(mod?.mod_id)
+        ?? numberField(mod?.id)
+        ?? numberField(groupMod?.game_scoped_id)
+        ?? numberField(groupMod?.mod_id)
+        ?? numberField(groupMod?.id);
+    const fileId = numberField(dependency.file_id)
+        ?? numberField(dependency.game_scoped_file_id)
+        ?? numberField(file?.game_scoped_id)
+        ?? numberField(file?.file_id)
+        ?? numberField(file?.id);
+    const modName = stringField(dependency.mod_name)
+        ?? stringField(dependency.name)
+        ?? stringField(mod?.name)
+        ?? stringField(groupMod?.name)
+        ?? stringField(group?.name);
+
+    if (!modName && !modId) {
+        return null;
+    }
+
+    return {
+        id: stringField(dependency.id) ?? `${modId ?? "mod"}:${fileId ?? "file"}`,
+        mod_id: modId,
+        file_id: fileId,
+        mod_name: modName ?? "Unknown dependency",
+        file_name: stringField(dependency.file_name)
+            ?? stringField(dependency.logical_filename)
+            ?? stringField(file?.name)
+            ?? stringField(file?.file_name),
+        version: stringField(dependency.version)
+            ?? stringField(dependency.file_version)
+            ?? stringField(dependency.required_version)
+            ?? stringField(file?.version),
+        version_requirement: stringField(dependency.version_requirement)
+            ?? stringField(dependency.requirement)
+            ?? stringField(dependency.version_range),
+        group_name: stringField(dependency.group_name) ?? stringField(group?.name)
+    };
+}
+
+function dependencyVersionLabel(version: Record<string, unknown> | undefined, file: Record<string, unknown> | undefined): string | undefined {
+    return stringField(file?.version)
+        ?? stringField(version?.version)
+        ?? stringField(version?.name);
+}
+
+function dependencyRequirementLabel(minVersion?: string, maxVersion?: string): string | undefined {
+    if (minVersion && maxVersion) {
+        return normalizedDependencyVersion(minVersion) === normalizedDependencyVersion(maxVersion)
+            ? `Requires ${minVersion}`
+            : `Requires ${minVersion} - ${maxVersion}`;
+    }
+
+    if (minVersion) {
+        return `Requires ${minVersion} or newer`;
+    }
+
+    if (maxVersion) {
+        return `Requires ${maxVersion} or older`;
+    }
+
+    return undefined;
+}
+
+function normalizedDependencyVersion(value?: string): string {
+    return value?.trim().toLowerCase().replace(/^v\s*/, "") ?? "";
 }
 
 function normalizeChangelogs(raw: unknown): NexusModChangelog[] {

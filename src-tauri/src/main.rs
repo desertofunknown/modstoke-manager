@@ -340,16 +340,28 @@ async fn nexus_fetch_file_dependencies(
         _ => file_id.to_string(),
     };
 
-    let dependency_result =
-        nexus_request_materialized_dependencies(&client, &dependency_file_id).await;
+    let fallback_file_id = file_id.to_string();
+    let dependency_result = nexus_request_materialized_dependencies_with_fallback(
+        &client,
+        &dependency_file_id,
+        &fallback_file_id,
+    )
+    .await;
     let (value, rate_limit) = match dependency_result {
-        Ok(result) => result,
-        Err(error) if dependency_file_id != file_id.to_string() => {
-            nexus_request_materialized_dependencies(&client, &file_id.to_string())
+        Ok(result) => {
+            if nexus_dependency_payload_has_rows(&result.0) {
+                result
+            } else {
+                nexus_request_dependency_ranges_with_fallback(
+                    &client,
+                    &dependency_file_id,
+                    &fallback_file_id,
+                )
                 .await
-                .map_err(|fallback_error| {
-                    format!("{error}; fallback dependency request failed: {fallback_error}")
-                })?
+                .ok()
+                .filter(|range_result| nexus_dependency_payload_has_rows(&range_result.0))
+                .unwrap_or(result)
+            }
         }
         Err(error) => return Err(error),
     };
@@ -360,18 +372,67 @@ async fn nexus_fetch_file_dependencies(
     })
 }
 
+async fn nexus_request_materialized_dependencies_with_fallback(
+    client: &reqwest::Client,
+    primary_file_id: &str,
+    fallback_file_id: &str,
+) -> Result<(serde_json::Value, NexusRateLimit), String> {
+    match nexus_request_materialized_dependencies(client, primary_file_id).await {
+        Ok(result) => Ok(result),
+        Err(error) if primary_file_id != fallback_file_id => {
+            nexus_request_materialized_dependencies(client, fallback_file_id)
+                .await
+                .map_err(|fallback_error| {
+                    format!("{error}; fallback dependency request failed: {fallback_error}")
+                })
+        }
+        Err(error) => Err(error),
+    }
+}
+
+async fn nexus_request_dependency_ranges_with_fallback(
+    client: &reqwest::Client,
+    primary_file_id: &str,
+    fallback_file_id: &str,
+) -> Result<(serde_json::Value, NexusRateLimit), String> {
+    match nexus_request_dependency_ranges(client, primary_file_id).await {
+        Ok(result) => Ok(result),
+        Err(error) if primary_file_id != fallback_file_id => {
+            nexus_request_dependency_ranges(client, fallback_file_id)
+                .await
+                .map_err(|fallback_error| {
+                    format!("{error}; fallback dependency request failed: {fallback_error}")
+                })
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn nexus_dependency_payload_has_rows(value: &serde_json::Value) -> bool {
+    let has_rows = |key: &str, source: &serde_json::Value| {
+        source
+            .get(key)
+            .and_then(|rows| rows.as_array())
+            .is_some_and(|rows| !rows.is_empty())
+    };
+
+    value.as_array().is_some_and(|rows| !rows.is_empty())
+        || has_rows("dependencies", value)
+        || has_rows("dependency_definitions", value)
+        || value.get("data").is_some_and(|data| {
+            data.as_array().is_some_and(|rows| !rows.is_empty())
+                || has_rows("dependencies", data)
+                || has_rows("dependency_definitions", data)
+        })
+}
+
 async fn nexus_resolve_v3_mod_file_id(
     client: &reqwest::Client,
     game_scoped_file_id: u64,
 ) -> Result<Option<String>, String> {
-    let url = format!(
-        "{NEXUS_API_BASE}/v3/games/{NEXUS_GAME_DOMAIN}/mod-files/{game_scoped_file_id}"
-    );
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    let url =
+        format!("{NEXUS_API_BASE}/v3/games/{NEXUS_GAME_DOMAIN}/mod-files/{game_scoped_file_id}");
+    let response = client.get(url).send().await.map_err(|e| e.to_string())?;
 
     if !response.status().is_success() {
         return Ok(None);
@@ -391,7 +452,10 @@ async fn nexus_resolve_v3_mod_file_id(
         return Ok(Some(id.to_string()));
     }
 
-    Ok(data.get("id").and_then(|id| id.as_u64()).map(|id| id.to_string()))
+    Ok(data
+        .get("id")
+        .and_then(|id| id.as_u64())
+        .map(|id| id.to_string()))
 }
 
 async fn nexus_request_materialized_dependencies(
@@ -399,16 +463,35 @@ async fn nexus_request_materialized_dependencies(
     file_id: &str,
 ) -> Result<(serde_json::Value, NexusRateLimit), String> {
     let url = format!("{NEXUS_API_BASE}/v3/mod-files/{file_id}/dependencies/materialized");
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    let response = client.get(url).send().await.map_err(|e| e.to_string())?;
     let rate_limit = read_rate_limit(response.headers());
 
     if !response.status().is_success() {
         return Err(format!(
             "Nexus dependency request failed: {}",
+            response.status()
+        ));
+    }
+
+    let value = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok((value, rate_limit))
+}
+
+async fn nexus_request_dependency_ranges(
+    client: &reqwest::Client,
+    file_id: &str,
+) -> Result<(serde_json::Value, NexusRateLimit), String> {
+    let url = format!("{NEXUS_API_BASE}/v3/mod-files/{file_id}/dependencies/ranges");
+    let response = client.get(url).send().await.map_err(|e| e.to_string())?;
+    let rate_limit = read_rate_limit(response.headers());
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Nexus dependency range request failed: {}",
             response.status()
         ));
     }

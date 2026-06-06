@@ -7,7 +7,8 @@
   - Merged the SOTF Mods and Nexus/Vortex storefronts into one top-level Mods workspace with a local source switch.
   - Compacted SOTF Mods list rows with measured scroller sizing so more mods stay visible in the unified Mods workspace, and retired the unstable SOTF grid toggle.
   - Improved compact Nexus detail drawers so the mod name, preview image, and formatted author description stay first, with deployment actions collected in a bottom footer.
-  - Preserved safe Nexus BBCode/HTML formatting for descriptions and changelogs, including headings, emphasis, lists, quotes, spoilers, alignment, code blocks, rules, links, bounded inline images, and media-link/table fallbacks.
+  - Preserved safe Nexus BBCode/HTML formatting for descriptions and changelogs, including heading levels, emphasis, ordered and unordered lists, quotes, spoilers, alignment, indentation, code blocks, rules, links, bounded inline images, generated tables, and media-link fallbacks.
+  - Broadened Nexus dependency handling so selected-file checks fall back from materialized dependency candidates to range definitions and preserve version-range requirements as review metadata.
   - Rebuilt and signed portable/setup EXEs as `0.2.0`.
 
 - 0.1.2
