@@ -23,6 +23,7 @@
   - Added a compact thumbnail rail in Nexus detail drawers when the API provides multiple preview images.
   - Enriched Nexus detail preview rails with safe image URLs found in API-provided descriptions, selected-file notes, and changelogs, so author-supplied screenshots can appear in the drawer without extra Nexus requests.
   - Added selected-file notes in Nexus detail drawers so file-specific descriptions and changelog HTML are shown with the same safe formatting before Vortex handoff.
+  - Improved Nexus description formatting fidelity with monospaced column-style line blocks, codebox/plain/fixed preformatted BBCode aliases, hidden/spoilerblock aliases, legacy horizontal-rule tags, and relative/point size hints.
   - Rebuilt and signed portable/setup EXEs as `0.2.0`.
 
 - 0.1.2

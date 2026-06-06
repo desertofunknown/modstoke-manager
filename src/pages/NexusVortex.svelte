@@ -3489,7 +3489,7 @@
         | { kind: "tag"; name: string; attr?: string; rawAttrs?: string; children: NexusRichNode[] };
     type NexusBlockChunk =
         | { kind: "block"; value: string }
-        | { kind: "line"; value: string }
+        | { kind: "line"; value: string; mono?: boolean }
         | { kind: "list"; value: string; ordered: boolean; style?: string }
         | { kind: "table"; value: string };
     type NexusPlainListLine = {
@@ -3524,7 +3524,7 @@
             .replace(/\[(?:rule|divider|separator)\s*\/?\]/gi, "\n---\n")
             .replace(/\[(youtube|video|media|embed)[^\]]*\]([\s\S]*?)\[\/\1\]/gi, (_match, tag: string, body: string) => `${tag === "youtube" ? "YouTube" : "Media"}: ${body}`)
             .replace(/\[(?:nextcol|nextcolumn)\s*\/?\]/gi, "\n")
-            .replace(/\[\/?(?:columns|cols|column|col|tabs|tab|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error|collapse|details|accordion|accordionitem|caption|dl|dt|dd)[^\]]*\]/gi, "\n")
+            .replace(/\[\/?(?:columns|cols|column|col|tabs|tab|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error|collapse|details|accordion|accordionitem|hidden|spoilerblock|caption|dl|dt|dd)[^\]]*\]/gi, "\n")
             .replace(/\[\/?\s*(?:list|ul|ol|olist)[^\]]*\]/gi, "")
             .replace(/\[\/?(?:b|i|u|s|strike|del|sub|sup|small|big|mark|abbr|acronym|cite|q|size|color|background|bgcolor|highlight|font|center|left|right|justify|align|indent|quote|spoiler|code|pre|tt|kbd|samp|var|heading|h|header|title|subtitle|h[1-6]|float|clear|div|p|paragraph|span)[^\]]*\]/gi, "")
             .replace(/\[\/?[a-z0-9_-]+[^\]]*\]/gi, "")
@@ -3656,8 +3656,8 @@
         return decodeHtmlEntities(text)
             .replace(/\[\/\*\]/g, "")
             .replace(/\[(?:br|break)\s*\/?\]/gi, "\n")
-            .replace(/\[(?:pre|raw|noparse)\]/gi, "[code]")
-            .replace(/\[\/(?:pre|raw|noparse)\]/gi, "[/code]")
+            .replace(/\[(?:pre|raw|noparse|codebox|plaintext|plain|fixed)(?:=[^\]]+|[ \t][^\]]*)?\]/gi, "[code]")
+            .replace(/\[\/(?:pre|raw|noparse|codebox|plaintext|plain|fixed)\]/gi, "[/code]")
             .replace(/\[(?:p|paragraph)\]/gi, "\n\n")
             .replace(/\[\/(?:p|paragraph)\]/gi, "\n\n")
             .replace(/\[(?:imgleft|imageleft)([^\]]*)\]/gi, (_match, attrs: string) => nexusImageAliasOpeningTag("left", attrs))
@@ -3719,6 +3719,8 @@
             .replace(/\[\/(box|panel|fieldset|notice|success|danger|error)\]/gi, (_match, tag: string) => `\n[/${tag.toLowerCase()}]\n\n`)
             .replace(/\[(collapse|details|accordion|accordionitem)([^\]]*)\]/gi, (_match, tag: string, attrs: string) => `\n\n[${tag.toLowerCase()}${attrs ?? ""}]\n`)
             .replace(/\[\/(collapse|details|accordion|accordionitem)\]/gi, (_match, tag: string) => `\n[/${tag.toLowerCase()}]\n\n`)
+            .replace(/\[(?:hidden|spoilerblock)([^\]]*)\]/gi, (_match, attrs: string) => `\n\n[spoiler${attrs ?? ""}]\n`)
+            .replace(/\[\/(?:hidden|spoilerblock)\]/gi, "\n[/spoiler]\n\n")
             .replace(/\[caption([^\]]*)\]/gi, (_match, attrs: string) => `\n[caption${attrs ?? ""}]`)
             .replace(/\[\/caption\]/gi, "[/caption]\n")
             .replace(/\[(?:row)\]/gi, "[tr]")
@@ -3734,8 +3736,8 @@
             .replace(/\[\/(td|th)\]/gi, (_match, cell: string) => `[/${cell.toLowerCase()}]`)
             .replace(/\[hr\s*\/?\]/gi, "\n\n[hr]\n\n")
             .replace(/\[line\s*\/?\]/gi, "\n\n[hr]\n\n")
-            .replace(/\[(?:rule|divider|separator)\s*\/?\]/gi, "\n\n[hr]\n\n")
-            .replace(/\[\/(?:hr|line|rule|divider|separator)\]/gi, "\n")
+            .replace(/\[(?:rule|divider|separator|hrule|horizontalrule)\s*\/?\]/gi, "\n\n[hr]\n\n")
+            .replace(/\[\/(?:hr|line|rule|divider|separator|hrule|horizontalrule)\]/gi, "\n")
             .replace(/\[clear\s*\/?\]/gi, "\n[clear/]\n")
             .replace(/(^|\n)[ \t]*(?:-{3,}|={3,}|_{3,}|\*{3,})[ \t]*(?=\n|$)/g, "$1\n\n[hr]\n\n")
             .replace(/\[(list|olist)([^\]]*)\]\n{2,}/gi, (_match, tag: string, attr: string) => `[${tag.toLowerCase()}${attr ?? ""}]\n`)
@@ -3843,12 +3845,21 @@
                 }
 
                 const listChunk = nexusPlainListChunk(trimmed);
-                chunks.push(listChunk ?? {
-                    kind: shouldPreserveNexusLineLayout(trimmed) ? "line" : "block",
-                    value: trimmed
-                });
+                chunks.push(listChunk ?? nexusTextBlockChunk(trimmed));
             }
         }
+    }
+
+    function nexusTextBlockChunk(value: string): NexusBlockChunk {
+        if (!shouldPreserveNexusLineLayout(value)) {
+            return { kind: "block", value };
+        }
+
+        return {
+            kind: "line",
+            value,
+            mono: shouldUseNexusMonospaceLineLayout(value)
+        };
     }
 
     function nexusPlainListChunk(value: string): NexusBlockChunk | null {
@@ -3927,10 +3938,7 @@
                 return;
             }
 
-            chunks.push({
-                kind: shouldPreserveNexusLineLayout(text) ? "line" : "block",
-                value: text
-            });
+            chunks.push(nexusTextBlockChunk(text));
         };
 
         const pushListLines = () => {
@@ -4065,6 +4073,23 @@
         return nonEmpty.length >= 4 && averageLength <= 64 && !/[.!?]\s+[A-Z]/.test(nonEmpty.join(" "));
     }
 
+    function shouldUseNexusMonospaceLineLayout(value: string): boolean {
+        const lines = value.split("\n").filter(line => line.trim());
+        if (lines.length < 2) {
+            return false;
+        }
+
+        const tabbedLines = lines.filter(line => /\S\t+\S/.test(line)).length;
+        const spacedColumnLines = lines.filter(line => /\S[ \t]{2,}\S/.test(line)).length;
+        const fileOrPathLines = lines.filter(line => /(?:[A-Za-z]:\\|\.{0,2}\/|\\)[^\s]+|(?:\.dll|\.json|\.cfg|\.ini|\.zip|\.rar|\.7z)\b/i.test(line)).length;
+        const keyValueGridLines = lines.filter(line => /^[A-Za-z0-9][A-Za-z0-9 /&+_.()'-]{1,32}:\s{2,}\S/.test(line.trim())).length;
+
+        return tabbedLines > 0
+            || spacedColumnLines >= 2
+            || fileOrPathLines >= 2
+            || keyValueGridLines >= 2;
+    }
+
     function findNexusStructureClose(text: string, startIndex: number, tag: string): { start: number; end: number } | null {
         const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const pattern = tag === "list" || tag === "olist"
@@ -4111,7 +4136,10 @@
         }
 
         if (chunk.kind === "line") {
-            return `<div class="nexus-rich-line-block">${renderNexusInline(block)}</div>`;
+            const classes = ["nexus-rich-line-block", chunk.mono ? "nexus-rich-line-block-mono" : ""]
+                .filter(Boolean)
+                .join(" ");
+            return `<div class="${classes}">${renderNexusInline(block)}</div>`;
         }
 
         const columns = block.match(/^\[(columns|cols)(?:=([^\]]+))?\]([\s\S]*?)\[\/\1\]$/i);
@@ -5514,7 +5542,12 @@
     }
 
     function nexusSizeClass(value?: string): string {
-        const raw = decodeHtmlEntities(value ?? "").trim().toLowerCase();
+        const raw = decodeHtmlEntities(value ?? "")
+            .trim()
+            .toLowerCase()
+            .replace(/;+\s*$/g, "")
+            .replace(/\s*!important\s*$/i, "")
+            .replace(/^['"]|['"]$/g, "");
         if (raw === "xx-small" || raw === "x-small" || raw === "tiny") {
             return "nexus-rich-size-tiny";
         }
@@ -5531,9 +5564,19 @@
             return "nexus-rich-size-xlarge";
         }
 
+        const relative = raw.match(/^([+-])\s*(\d+(?:\.\d+)?)$/);
+        if (relative) {
+            const delta = Number.parseFloat(relative[2]);
+            if (relative[1] === "-") {
+                return delta >= 2 ? "nexus-rich-size-tiny" : "nexus-rich-size-small";
+            }
+
+            return delta >= 2 ? "nexus-rich-size-xlarge" : "nexus-rich-size-large";
+        }
+
         const numeric = Number.parseFloat(raw);
         if (Number.isFinite(numeric)) {
-            const looksLikePixels = raw.includes("px") || numeric > 7;
+            const looksLikePixels = raw.includes("px") || raw.includes("pt") || numeric > 7;
             const looksLikePercent = raw.includes("%");
             const looksLikeRelative = raw.includes("em") || raw.includes("rem");
             if (!looksLikePixels && !looksLikePercent && !looksLikeRelative) {
@@ -8064,6 +8107,13 @@
         max-width: 100%;
         overflow-wrap: anywhere;
         padding-left: 0.7em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-line-block-mono) {
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 0.95em;
+        overflow-x: auto;
+        white-space: normal;
     }
 
     .nexus-rich-text :global(p:first-child),
