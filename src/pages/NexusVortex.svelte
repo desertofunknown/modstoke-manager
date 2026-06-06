@@ -927,6 +927,13 @@
         await openExternalTarget(target);
     }
 
+    async function openInstalledEntryDetails(entry: InstalledInventoryEntry) {
+        const mod = nexusModForInstalledEntry(entry);
+        if (mod) {
+            await openModDetails(mod);
+        }
+    }
+
     async function openModDetails(mod: NexusMod) {
         selectedMod = mod;
         selectedModDetails = mod;
@@ -1830,6 +1837,23 @@
         ) ?? null;
     }
 
+    function nexusModForInstalledEntry(entry: InstalledInventoryEntry): NexusMod | null {
+        const modId = numericNexusId(entry.nexusModId);
+        if (!modId) {
+            return null;
+        }
+
+        return findOnlineModForEntry(entry) ?? {
+            mod_id: modId,
+            name: entry.name,
+            version: entry.version,
+            author: entry.author,
+            category_name: "Installed",
+            loader_type: loaderTypeLabel(entry),
+            summary: `${describeInstallSource(entry)} package detected in ${entry.expectedLocation}.`
+        };
+    }
+
     function updateTone(label: string): "update" | "current" | "tracked" | "neutral" {
         if (label === "Update available") {
             return "update";
@@ -2271,6 +2295,7 @@
                                                     {activeNexusEndorseId === entryNexusModId ? "Endorsing..." : "Endorse"}
                                                 </button>
                                             {/if}
+                                            <button on:click={() => openInstalledEntryDetails(entry)}>Details</button>
                                             <button on:click={() => shell.open(`https://www.nexusmods.com/sonsoftheforest/mods/${entryNexusModId}`)}>Nexus Page</button>
                                         {/if}
                                     </div>
