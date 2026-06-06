@@ -287,6 +287,11 @@
     $: selectedInstallFileLabel = selectedNexusFile
         ? `${fileChoiceCategoryLabel(selectedNexusFile)} - ${selectedNexusFile.name}`
         : "No file selected";
+    $: selectedFileVersionLabel = selectedNexusFile ? fileVersionLabel(selectedNexusFile) : "-";
+    $: selectedFileUploadedLabel = selectedNexusFile
+        ? formatTimestamp(selectedNexusFile.uploaded_timestamp, selectedNexusFile.uploaded_time)
+        : "-";
+    $: selectedFileSizeLabel = selectedNexusFile ? formatSizeKb(selectedNexusFile.size) : "-";
     $: selectedNxmUrl = selectedMod && selectedNexusFile ? getNexusNxmUrl(selectedMod, selectedNexusFile) : "";
     $: if (selectedNxmUrl !== lastSelectedNxmUrl) {
         lastSelectedNxmUrl = selectedNxmUrl;
@@ -1127,6 +1132,10 @@
     function preferredNexusFileVersion(files: NexusModFile[]): string | undefined {
         const recommended = pickRecommendedNexusFile(files) ?? files[0];
         return recommended?.mod_version ?? recommended?.version;
+    }
+
+    function fileVersionLabel(file: NexusModFile): string {
+        return file.mod_version ?? file.version ?? "-";
     }
 
     function closeModDetails() {
@@ -2961,6 +2970,10 @@
                             <span>Action <b>{selectedInstallPlan.action}</b></span>
                             <span>Target <b>{selectedInstallPlan.target}</b></span>
                             <span class="install-plan-file-fact">File <b>{selectedInstallFileLabel}</b></span>
+                            <span>File ID <b>{selectedNexusFile?.file_id ?? "-"}</b></span>
+                            <span>File version <b>{selectedFileVersionLabel}</b></span>
+                            <span>Uploaded <b>{selectedFileUploadedLabel}</b></span>
+                            <span>Size <b>{selectedFileSizeLabel}</b></span>
                         </div>
                         <div class="install-plan-notes">
                             {#each selectedInstallPlan.notes as note}
@@ -3035,7 +3048,7 @@
                                         <b>{fileChoiceBadge(file, recommendedNexusFileId)}</b>
                                     {/if}
                                 </span>
-                                <span class="file-meta">{fileChoiceCategoryLabel(file)} · v{file.version ?? file.mod_version ?? "-"} · {formatSizeKb(file.size)}</span>
+                                <span class="file-meta">{fileChoiceCategoryLabel(file)} · v{fileVersionLabel(file)} · {formatSizeKb(file.size)}</span>
                             </button>
                         {/each}
                     </div>
