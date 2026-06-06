@@ -109,7 +109,7 @@
         notes: string[];
     };
     type AuthorRequirementKind = "link" | "runtime";
-    type AuthorRequirementStatus = "detected" | "review";
+    type AuthorRequirementStatus = "detected" | "review" | "warning";
     type AuthorRequirementLink = {
         key: string;
         label: string;
@@ -182,6 +182,7 @@
     let selectedAuthorRequirements: AuthorRequirementLink[] = [];
     let authorRequirementReviewCount = 0;
     let authorRequirementDetectedCount = 0;
+    let authorRequirementWarningCount = 0;
     let nestedDependencySources: NestedDependencySource[] = [];
     let resolvedNestedDependencies: ResolvedNestedDependency[] = [];
     let isResolvingNestedDependencies = false;
@@ -406,8 +407,9 @@
     $: nestedDependencyMismatchCount = resolvedNestedDependencies.filter(source => source.dependency.status === "version-mismatch").length;
     $: authorRequirementReviewCount = selectedAuthorRequirements.filter(requirement => requirement.status === "review").length;
     $: authorRequirementDetectedCount = selectedAuthorRequirements.filter(requirement => requirement.status === "detected").length;
+    $: authorRequirementWarningCount = selectedAuthorRequirements.filter(requirement => requirement.status === "warning").length;
     $: totalDependencyIssueCount = dependencyIssueCount + nestedDependencyIssueCount;
-    $: totalDependencyReviewCount = dependencyReviewCount + nestedDependencyReviewCount + authorRequirementReviewCount;
+    $: totalDependencyReviewCount = dependencyReviewCount + nestedDependencyReviewCount + authorRequirementReviewCount + authorRequirementWarningCount;
     $: detailDependencyNavText = describeDetailDependencyNav(
         totalDependencyIssueCount,
         totalDependencyReviewCount,
@@ -1598,18 +1600,22 @@
             }
 
             seen.add(key);
+            const context = authorRequirementMatchContext(text, matched);
+            const warningDetail = authorRequirementCompatibilityWarningDetail(label, sourceLocation, context.excerpt);
             const match = entries.find(matchPredicate) ?? null;
             hints.push({
                 key: `runtime:${key}`,
                 label,
                 source: kindLabel,
                 kind: "runtime",
-                status: match ? "detected" : "review",
+                status: warningDetail ? "warning" : match ? "detected" : "review",
                 match,
-                detail: match
+                detail: warningDetail
+                    ? `${warningDetail}${match ? ` Local match detected as ${describeInstallSource(match)} in ${match.expectedLocation}.` : ""}`
+                    : match
                     ? `Found in ${sourceLocation}. Detected locally as ${describeInstallSource(match)} in ${match.expectedLocation}.`
                     : `Found in ${sourceLocation}. ${reviewDetail}`,
-                excerpt: authorRequirementExcerpt(text, matched)
+                excerpt: context.excerpt
             });
         };
 
@@ -1665,21 +1671,37 @@
         return hints;
     }
 
-    function authorRequirementExcerpt(text: string, match: RegExpMatchArray): string | undefined {
+    function authorRequirementMatchContext(text: string, match: RegExpMatchArray): { excerpt?: string; warning: boolean } {
         const index = match.index ?? -1;
         const phrase = match[0]?.trim();
         if (index < 0 || !phrase) {
-            return phrase;
+            return { excerpt: phrase, warning: false };
         }
 
         const start = Math.max(0, index - 70);
         const end = Math.min(text.length, index + phrase.length + 70);
         const compact = text.slice(start, end).replace(/\s+/g, " ").trim();
         if (!compact) {
-            return undefined;
+            return { warning: false };
         }
 
-        return `${start > 0 ? "... " : ""}${compact}${end < text.length ? " ..." : ""}`.slice(0, 220);
+        const excerpt = `${start > 0 ? "... " : ""}${compact}${end < text.length ? " ..." : ""}`.slice(0, 220);
+        return {
+            excerpt,
+            warning: authorRequirementContextLooksLikeWarning(compact)
+        };
+    }
+
+    function authorRequirementContextLooksLikeWarning(value: string): boolean {
+        return /\b(?:cannot|can't|cant|must\s+not|should\s+not|do\s+not|don't|dont|not\s+compatible|incompatible|conflicts?|conflicting|cannot\s+coexist|can't\s+coexist|will\s+not\s+work|won't\s+work|does\s+not\s+work|remove|delete|uninstall|disable|only\s+one|not\s+supported|must\s+first\s+delete|must\s+first\s+remove)\b|(?:不能|不可|不兼容|冲突|删除|移除|卸载|禁用|无法|不会|只允许|必须先删除|必须先移除)/i.test(value);
+    }
+
+    function authorRequirementCompatibilityWarningDetail(label: string, sourceLocation: string, excerpt?: string): string | null {
+        if (!excerpt || !authorRequirementContextLooksLikeWarning(excerpt)) {
+            return null;
+        }
+
+        return `Found in ${sourceLocation}. Author text mentions ${label} in an incompatibility, removal, or conflict context; review before deployment.`;
     }
 
     function authorRequirementEntryText(entry: InstalledInventoryEntry): string {
@@ -2384,6 +2406,10 @@
 
     function authorRequirementSummaryLabel(): string {
         const parts: string[] = [];
+        if (authorRequirementWarningCount > 0) {
+            parts.push(`${authorRequirementWarningCount} warning`);
+        }
+
         if (authorRequirementReviewCount > 0) {
             parts.push(`${authorRequirementReviewCount} review`);
         }
@@ -2557,8 +2583,13 @@
             infoNotes.push(`${nestedDependencies.length} nested dependency ${nestedDependencies.length === 1 ? "row looks" : "rows look"} clear locally.`);
         }
 
+        const authorWarningCount = authorRequirements.filter(requirement => requirement.status === "warning").length;
         const authorReviewCount = authorRequirements.filter(requirement => requirement.status === "review").length;
         const authorDetectedCount = authorRequirements.filter(requirement => requirement.status === "detected").length;
+        if (authorWarningCount > 0) {
+            reviewNotes.push(`${authorWarningCount} author compatibility ${authorWarningCount === 1 ? "warning needs" : "warnings need"} review.`);
+        }
+
         if (authorReviewCount > 0) {
             reviewNotes.push(`${authorReviewCount} author requirement ${authorReviewCount === 1 ? "needs" : "need"} manual review.`);
         }
@@ -6832,8 +6863,9 @@
                             </span>
                             <span
                                 class="dependency-readiness-chip"
-                                class:dependency-readiness-ok={selectedAuthorRequirements.length > 0 && authorRequirementReviewCount === 0}
-                                class:dependency-readiness-review={authorRequirementReviewCount > 0}
+                                class:dependency-readiness-ok={selectedAuthorRequirements.length > 0 && authorRequirementWarningCount === 0 && authorRequirementReviewCount === 0}
+                                class:dependency-readiness-warn={authorRequirementWarningCount > 0}
+                                class:dependency-readiness-review={authorRequirementReviewCount > 0 && authorRequirementWarningCount === 0}
                                 title={authorRequirementReadinessLabel()}
                             >
                                 <small>Author</small>
@@ -6895,10 +6927,11 @@
                                     <div
                                         class="author-requirement-row"
                                         class:author-requirement-detected={requirement.status === "detected"}
+                                        class:author-requirement-warning={requirement.status === "warning"}
                                     >
                                         <div class="author-requirement-main">
                                             <span>{requirement.label}</span>
-                                            <small>{requirement.source}{requirement.mod_id ? ` · Mod ${requirement.mod_id}` : ""} · {requirement.status === "detected" ? "Detected locally" : "Review manually"}</small>
+                                            <small>{requirement.source}{requirement.mod_id ? ` · Mod ${requirement.mod_id}` : ""} · {requirement.status === "detected" ? "Detected locally" : requirement.status === "warning" ? "Compatibility warning" : "Review manually"}</small>
                                             {#if requirement.detail}
                                                 <small>{requirement.detail}</small>
                                             {/if}
@@ -9614,6 +9647,11 @@
         border-color: rgba(98, 240, 155, 0.2);
     }
 
+    .author-requirement-warning {
+        background: rgba(253, 198, 109, 0.06);
+        border-color: rgba(253, 198, 109, 0.24);
+    }
+
     .author-requirement-main {
         display: flex;
         flex: 1 1 auto;
@@ -9647,6 +9685,11 @@
     .author-requirement-detected .author-requirement-main span,
     .author-requirement-detected .author-requirement-main small {
         color: #9edeb9;
+    }
+
+    .author-requirement-warning .author-requirement-main span,
+    .author-requirement-warning .author-requirement-main small {
+        color: #f1cf92;
     }
 
     .author-requirement-row button {
