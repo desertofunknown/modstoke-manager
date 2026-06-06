@@ -48,6 +48,7 @@ struct NexusUser {
     user_id: Option<u64>,
     name: Option<String>,
     profile_url: Option<String>,
+    membership_tier: Option<String>,
     is_premium: Option<bool>,
     is_supporter: Option<bool>,
 }
@@ -97,6 +98,18 @@ struct NexusModDetailsResponse {
 #[derive(Serialize)]
 struct NexusModDependenciesResponse {
     dependencies: serde_json::Value,
+    rate_limit: NexusRateLimit,
+}
+
+#[derive(Serialize)]
+struct NexusEndorsementsResponse {
+    endorsements: serde_json::Value,
+    rate_limit: NexusRateLimit,
+}
+
+#[derive(Serialize)]
+struct NexusActionResponse {
+    result: serde_json::Value,
     rate_limit: NexusRateLimit,
 }
 
@@ -335,6 +348,66 @@ async fn nexus_fetch_file_dependencies(
     })
 }
 
+#[tauri::command]
+async fn nexus_fetch_user_endorsements() -> Result<NexusEndorsementsResponse, String> {
+    let key =
+        read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
+    let response = nexus_client(&key)
+        .get(format!("{NEXUS_API_BASE}/v1/user/endorsements.json"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let rate_limit = read_rate_limit(response.headers());
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Nexus endorsements request failed: {}",
+            response.status()
+        ));
+    }
+
+    let endorsements = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(NexusEndorsementsResponse {
+        endorsements,
+        rate_limit,
+    })
+}
+
+#[tauri::command]
+async fn nexus_endorse_sotf_mod(
+    mod_id: u64,
+    version: Option<String>,
+) -> Result<NexusActionResponse, String> {
+    let key =
+        read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
+    let url = format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/{mod_id}/endorse.json");
+    let mut form: Vec<(&str, String)> = Vec::new();
+    if let Some(version) = version
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        form.push(("version", version));
+    }
+
+    let response = nexus_client(&key)
+        .post(url)
+        .form(&form)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let rate_limit = read_rate_limit(response.headers());
+
+    if !response.status().is_success() {
+        return Err(format!("Nexus endorse request failed: {}", response.status()));
+    }
+
+    let result = read_json_or_empty(response).await?;
+    Ok(NexusActionResponse { result, rate_limit })
+}
+
 async fn validate_nexus_key(api_key: &str) -> Result<(NexusUser, NexusRateLimit), String> {
     let response = nexus_client(api_key)
         .get(format!("{NEXUS_API_BASE}/v1/users/validate.json"))
@@ -362,6 +435,12 @@ async fn validate_nexus_key(api_key: &str) -> Result<(NexusUser, NexusRateLimit)
             .map(|v| v.to_string()),
         profile_url: value
             .get("profile_url")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string()),
+        membership_tier: value
+            .get("membership_tier")
+            .or_else(|| value.get("premium_tier"))
+            .or_else(|| value.get("account_type"))
             .and_then(|v| v.as_str())
             .map(|v| v.to_string()),
         is_premium: value.get("is_premium").and_then(|v| v.as_bool()),
@@ -409,6 +488,15 @@ fn read_header(headers: &HeaderMap, name: &str) -> Option<String> {
         .get(name)
         .and_then(|value| value.to_str().ok())
         .map(|value| value.to_string())
+}
+
+async fn read_json_or_empty(response: reqwest::Response) -> Result<serde_json::Value, String> {
+    let text = response.text().await.map_err(|e| e.to_string())?;
+    if text.trim().is_empty() {
+        return Ok(serde_json::json!({}));
+    }
+
+    serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
 fn nexus_credential_entry() -> Result<keyring::Entry, String> {
@@ -699,6 +787,8 @@ fn main() {
             nexus_fetch_mod_details,
             nexus_fetch_mod_files,
             nexus_fetch_file_dependencies,
+            nexus_fetch_user_endorsements,
+            nexus_endorse_sotf_mod,
             sha256_file
         ])
         .plugin(tauri_plugin_upload::init())

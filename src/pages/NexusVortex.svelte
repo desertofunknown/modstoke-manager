@@ -3,10 +3,12 @@
     import SvgSpinnersBlocksWave from "~icons/svg-spinners/blocks-wave";
     import {
         clearNexusApiKey,
+        endorseNexusSotfMod,
         fetchNexusFileDependencies,
         fetchNexusModDetails,
         fetchNexusModFiles,
         fetchNexusSotfMods,
+        fetchNexusUserEndorsements,
         getNexusNxmUrl,
         getNexusModDownloadUrl,
         getNexusModPageUrl,
@@ -15,6 +17,7 @@
         pickRecommendedNexusFile,
         saveNexusApiKey,
         type NexusCategory,
+        type NexusEndorsement,
         type NexusModDependency,
         type NexusModFile,
         type NexusMod,
@@ -40,6 +43,8 @@
     let apiKey = "";
     let mods: NexusMod[] = [];
     let nexusCategories: NexusCategory[] = [];
+    let endorsements: NexusEndorsement[] = [];
+    let endorsementsLoaded = false;
     let inventory: InstalledInventoryEntry[] = [];
     let selectedView: NexusView = "all";
     let catalogMode: CatalogMode = "online";
@@ -56,6 +61,9 @@
     let selectedFileId: number | null = null;
     let selectedDependencies: NexusModDependency[] = [];
     let activeNexusActionId: number | null = null;
+    let activeNexusEndorseId: number | null = null;
+    let autoEndorseDownloadedMods = false;
+    let autoEndorseAttemptedIds: number[] = [];
     let ssoSocket: WebSocket | null = null;
     let ssoTimeout: number | null = null;
 
@@ -64,6 +72,9 @@
     const NEXUS_SSO_PROTOCOL = 2;
     const NEXUS_SSO_UUID_KEY = "openacai-nexus-sso-request-id";
     const NEXUS_SSO_TOKEN_KEY = "openacai-nexus-sso-connection-token";
+    const NEXUS_AUTO_ENDORSE_KEY = "openacai-nexus-auto-endorse-downloaded";
+    const NEXUS_AUTO_ENDORSE_ATTEMPTED_KEY = "openacai-nexus-auto-endorse-attempted";
+    const MAX_AUTO_ENDORSE_PER_REFRESH = 3;
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
     let nextManualRefreshAt = 0;
 
@@ -80,6 +91,7 @@
     $: selectedNexusFile = selectedModFiles.find(file => file.file_id === selectedFileId) ?? null;
 
     onMount(async () => {
+        loadEndorsementPreferences();
         await refreshInventory();
         await refreshSession();
 
@@ -269,6 +281,8 @@
         session = { is_connected: false };
         mods = [];
         nexusCategories = [];
+        endorsements = [];
+        endorsementsLoaded = false;
     }
 
     async function loadMods(view: NexusView = selectedView, forceRefresh = false) {
@@ -300,6 +314,8 @@
                 ...session,
                 rate_limit: response.rate_limit
             };
+            await refreshEndorsements(forceRefresh);
+            await maybeAutoEndorseInstalledVortexMods();
         } catch (error) {
             await dialog.message(`${error}`, {
                 title: "Nexus Mods error",
@@ -309,6 +325,209 @@
             status = "";
             isLoading = false;
         }
+    }
+
+    async function refreshEndorsements(forceRefresh = false) {
+        if (!session.is_connected) {
+            endorsements = [];
+            endorsementsLoaded = false;
+            return;
+        }
+
+        try {
+            const response = await fetchNexusUserEndorsements({ force: forceRefresh });
+            endorsements = response.endorsements.filter(endorsement =>
+                !endorsement.game_domain_name || endorsement.game_domain_name.toLowerCase() === "sonsoftheforest"
+            );
+            endorsementsLoaded = true;
+            session = {
+                ...session,
+                rate_limit: response.rate_limit
+            };
+        } catch (error) {
+            console.log("Failed to refresh Nexus endorsements", error);
+            endorsementsLoaded = false;
+        }
+    }
+
+    async function endorseNexusMod(mod: NexusMod) {
+        const match = installedMatch(mod);
+        if (!match) {
+            await dialog.message("Nexus generally only accepts endorsements for mods your account downloaded. Install or deploy the mod before endorsing it.", {
+                title: "Nexus endorsement",
+                kind: "info"
+            });
+            return;
+        }
+
+        await endorseKnownNexusMod(mod.mod_id, match.version ?? mod.version, mod.name);
+    }
+
+    async function endorseSelectedMod() {
+        if (selectedMod) {
+            await endorseNexusMod(selectedMod);
+        }
+    }
+
+    async function endorseInstalledEntry(entry: InstalledInventoryEntry) {
+        const modId = numericNexusId(entry.nexusModId);
+        if (!modId) {
+            return;
+        }
+
+        await endorseKnownNexusMod(modId, entry.version, entry.name);
+    }
+
+    async function endorseKnownNexusMod(modId: number, version: string | undefined, label: string) {
+        activeNexusEndorseId = modId;
+        status = `Endorsing ${label}...`;
+        let keepStatus = false;
+
+        try {
+            const response = await endorseNexusSotfMod(modId, version);
+            session = {
+                ...session,
+                rate_limit: response.rate_limit
+            };
+            markNexusModEndorsed(modId);
+            status = `Endorsed ${label}.`;
+            keepStatus = true;
+            window.setTimeout(() => {
+                if (status === `Endorsed ${label}.`) {
+                    status = "";
+                }
+            }, 4500);
+        } catch (error) {
+            await dialog.message(`Nexus did not accept this endorsement yet. Nexus may require the mod to be downloaded through your account, may enforce a waiting period, or may reject already-endorsed mods.\n\n${error}`, {
+                title: "Nexus endorsement",
+                kind: "error"
+            });
+        } finally {
+            activeNexusEndorseId = null;
+            if (!keepStatus) {
+                status = "";
+            }
+        }
+    }
+
+    async function maybeAutoEndorseInstalledVortexMods() {
+        if (!autoEndorseDownloadedMods || !session.is_connected || !endorsementsLoaded) {
+            return;
+        }
+
+        const candidates = inventory
+            .map(entry => ({ entry, modId: numericNexusId(entry.nexusModId) }))
+            .filter((candidate): candidate is { entry: InstalledInventoryEntry; modId: number } =>
+                candidate.entry.installSource === "vortex"
+                && !!candidate.modId
+                && !isNexusModEndorsed(candidate.modId)
+                && !autoEndorseAttemptedIds.includes(candidate.modId)
+            )
+            .slice(0, MAX_AUTO_ENDORSE_PER_REFRESH);
+
+        for (const candidate of candidates) {
+            markAutoEndorseAttempted(candidate.modId);
+            try {
+                const response = await endorseNexusSotfMod(candidate.modId, candidate.entry.version);
+                session = {
+                    ...session,
+                    rate_limit: response.rate_limit
+                };
+                markNexusModEndorsed(candidate.modId);
+            } catch (error) {
+                console.log(`Auto-endorse skipped for Nexus mod ${candidate.modId}`, error);
+            }
+        }
+    }
+
+    function loadEndorsementPreferences() {
+        autoEndorseDownloadedMods = localStorage.getItem(NEXUS_AUTO_ENDORSE_KEY) === "true";
+        autoEndorseAttemptedIds = readAutoEndorseAttemptedIds();
+    }
+
+    function toggleAutoEndorse(event: Event) {
+        autoEndorseDownloadedMods = (event.currentTarget as HTMLInputElement).checked;
+        localStorage.setItem(NEXUS_AUTO_ENDORSE_KEY, autoEndorseDownloadedMods ? "true" : "false");
+
+        if (autoEndorseDownloadedMods) {
+            void maybeAutoEndorseInstalledVortexMods();
+        }
+    }
+
+    function readAutoEndorseAttemptedIds(): number[] {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(NEXUS_AUTO_ENDORSE_ATTEMPTED_KEY) ?? "[]");
+            if (!Array.isArray(parsed)) {
+                return [];
+            }
+
+            return parsed
+                .map(numericNexusId)
+                .filter((value): value is number => !!value);
+        } catch {
+            return [];
+        }
+    }
+
+    function saveAutoEndorseAttemptedIds() {
+        localStorage.setItem(NEXUS_AUTO_ENDORSE_ATTEMPTED_KEY, JSON.stringify(autoEndorseAttemptedIds));
+    }
+
+    function markAutoEndorseAttempted(modId: number) {
+        if (!autoEndorseAttemptedIds.includes(modId)) {
+            autoEndorseAttemptedIds = [...autoEndorseAttemptedIds, modId].slice(-500);
+            saveAutoEndorseAttemptedIds();
+        }
+    }
+
+    function markNexusModEndorsed(modId: number) {
+        const wasEndorsed = isNexusModEndorsed(modId);
+        endorsements = [
+            ...endorsements.filter(endorsement => endorsement.mod_id !== modId),
+            { mod_id: modId, game_domain_name: "sonsoftheforest", status: "endorsed", endorsed_at: new Date().toISOString() }
+        ];
+
+        if (!wasEndorsed) {
+            mods = mods.map(mod => mod.mod_id === modId
+                ? {
+                    ...mod,
+                    endorsement_count: typeof mod.endorsement_count === "number" ? mod.endorsement_count + 1 : mod.endorsement_count
+                }
+                : mod
+            );
+
+            if (selectedModDetails?.mod_id === modId && typeof selectedModDetails.endorsement_count === "number") {
+                selectedModDetails = {
+                    ...selectedModDetails,
+                    endorsement_count: selectedModDetails.endorsement_count + 1
+                };
+            }
+        }
+    }
+
+    function isNexusModEndorsed(modIdValue?: number | string | null): boolean {
+        const modId = numericNexusId(modIdValue);
+        if (!modId) {
+            return false;
+        }
+
+        return endorsements.some(endorsement => {
+            const endorsementStatus = endorsement.status?.toLowerCase() ?? "";
+            return endorsement.mod_id === modId && !/abstain|unendors/.test(endorsementStatus);
+        });
+    }
+
+    function numericNexusId(value?: number | string | null): number | null {
+        if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+            return value;
+        }
+
+        if (typeof value === "string") {
+            const parsed = Number(value.trim());
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+        }
+
+        return null;
     }
 
     async function openApiKeys() {
@@ -602,6 +821,50 @@
         }
     }
 
+    function nexusMembershipLabel(): string {
+        if (session.user?.is_premium) {
+            return session.user.membership_tier
+                ? `Premium ${titleCase(session.user.membership_tier)}`
+                : "Premium";
+        }
+
+        if (session.user?.is_supporter) {
+            return session.user.membership_tier
+                ? `Supporter ${titleCase(session.user.membership_tier)}`
+                : "Supporter";
+        }
+
+        if (session.user?.membership_tier) {
+            return titleCase(session.user.membership_tier);
+        }
+
+        return session.user?.name ? "Member" : "Nexus user";
+    }
+
+    function nexusMembershipNote(): string {
+        if (session.user?.is_premium) {
+            return "Premium benefits detected where the Nexus API permits them.";
+        }
+
+        if (session.user?.is_supporter) {
+            return "Supporter status detected.";
+        }
+
+        if (session.user?.membership_tier) {
+            return "Nexus membership tier returned by the API.";
+        }
+
+        return "Standard Nexus account.";
+    }
+
+    function titleCase(value: string): string {
+        return value
+            .replace(/[_-]+/g, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .replace(/\b\w/g, letter => letter.toUpperCase());
+    }
+
     function vortexActionLabel(mod: NexusMod): string {
         const match = installedMatch(mod);
         if (!match) {
@@ -690,7 +953,7 @@
         <div class="account-copy">
             <span class="panel-title">Vortex / Nexus Mods</span>
             {#if session.is_connected}
-                <span class="panel-subtitle">Connected as {session.user?.name ?? "Nexus user"}</span>
+                <span class="panel-subtitle">Connected as {session.user?.name ?? "Nexus user"} · {nexusMembershipLabel()}</span>
             {:else}
                 <span class="panel-subtitle">Login through Nexus to inspect Nexus-hosted Sons Of The Forest mods and Vortex deployments. Browser SSO requires Nexus app approval; manual tokens are for development testing only.</span>
             {/if}
@@ -698,6 +961,10 @@
 
         {#if session.is_connected}
             <div class="account-actions">
+                <label class="auto-endorse-control">
+                    <input type="checkbox" checked={autoEndorseDownloadedMods} on:change={toggleAutoEndorse} />
+                    <span>Auto-endorse Vortex downloads</span>
+                </label>
                 <button on:click={openNexusGame}>Open Nexus</button>
                 {#if vortexStagingPath}
                     <button on:click={openVortexStaging}>Open Vortex Staging</button>
@@ -741,7 +1008,8 @@
         <div class="vortex-summary">
             <div class="summary-card">
                 <span class="summary-label">Nexus Account</span>
-                <span class="summary-value">{session.user?.name ?? "Connected"}</span>
+                <span class="summary-value">{nexusMembershipLabel()}</span>
+                <span class="summary-note">{nexusMembershipNote()}</span>
             </div>
             <div class="summary-card" class:active-summary={!!vortexStagingPath}>
                 <span class="summary-label">Vortex Deployment</span>
@@ -849,6 +1117,15 @@
                                     {/if}
 
                                     <div class="button-row">
+                                        {#if match}
+                                            {#if isNexusModEndorsed(mod.mod_id)}
+                                                <button class="endorsed-btn" disabled>Endorsed</button>
+                                            {:else}
+                                                <button class="endorse-btn" disabled={activeNexusEndorseId === mod.mod_id} on:click={() => endorseNexusMod(mod)}>
+                                                    {activeNexusEndorseId === mod.mod_id ? "Endorsing..." : "Endorse"}
+                                                </button>
+                                            {/if}
+                                        {/if}
                                         <button class="vortex-install-btn" disabled={activeNexusActionId === mod.mod_id} on:click={() => installRecommendedWithVortex(mod)}>
                                             {activeNexusActionId === mod.mod_id ? "Preparing..." : vortexActionLabel(mod)}
                                         </button>
@@ -861,6 +1138,7 @@
                     {/each}
                 {:else}
                     {#each visibleInstalledEntries as entry}
+                        {@const entryNexusModId = numericNexusId(entry.nexusModId)}
                         <article class="nexus-card inventory-card" class:nexus-installed={entry.enabled}>
                             <div class="inventory-icon">
                                 <span>{entry.loaderType === "bepinex-plugin" ? "BEP" : "RED"}</span>
@@ -906,8 +1184,15 @@
 
                                     <div class="button-row">
                                         <button on:click={() => openInventoryLocation(entry)}>Open Folder</button>
-                                        {#if entry.nexusModId}
-                                            <button on:click={() => shell.open(`https://www.nexusmods.com/sonsoftheforest/mods/${entry.nexusModId}`)}>Nexus Page</button>
+                                        {#if entryNexusModId}
+                                            {#if isNexusModEndorsed(entryNexusModId)}
+                                                <button class="endorsed-btn" disabled>Endorsed</button>
+                                            {:else}
+                                                <button class="endorse-btn" disabled={activeNexusEndorseId === entryNexusModId} on:click={() => endorseInstalledEntry(entry)}>
+                                                    {activeNexusEndorseId === entryNexusModId ? "Endorsing..." : "Endorse"}
+                                                </button>
+                                            {/if}
+                                            <button on:click={() => shell.open(`https://www.nexusmods.com/sonsoftheforest/mods/${entryNexusModId}`)}>Nexus Page</button>
                                         {/if}
                                     </div>
                                 </div>
@@ -1008,6 +1293,15 @@
 
                     <div class="detail-actions">
                         <button class="install" disabled={!selectedNexusFile} on:click={installSelectedFileWithVortex}>Install Selected With Vortex</button>
+                        {#if installedMatch(selectedMod)}
+                            {#if isNexusModEndorsed(selectedMod.mod_id)}
+                                <button class="endorsed-btn" disabled>Endorsed</button>
+                            {:else}
+                                <button class="endorse-btn" disabled={activeNexusEndorseId === selectedMod.mod_id} on:click={endorseSelectedMod}>
+                                    {activeNexusEndorseId === selectedMod.mod_id ? "Endorsing..." : "Endorse"}
+                                </button>
+                            {/if}
+                        {/if}
                         <button on:click={openSelectedModPage}>Open Nexus Page</button>
                         <button on:click={openSelectedDownloadPage}>Open Files Page</button>
                     </div>
@@ -1075,6 +1369,48 @@
     .account-actions {
         flex-wrap: wrap;
         justify-content: flex-end;
+    }
+
+    .auto-endorse-control {
+        align-items: center;
+        background: rgba(12, 12, 12, 0.74);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: #b8c8d8;
+        display: inline-flex;
+        font-size: 0.75em;
+        font-weight: 900;
+        gap: 0.5em;
+        min-height: 2.5em;
+        padding: 0 0.7em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .auto-endorse-control input[type="checkbox"] {
+        appearance: none;
+        background: rgba(8, 8, 8, 0.96);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        display: grid;
+        float: none;
+        height: 1.05em;
+        margin: 0;
+        padding: 0;
+        place-content: center;
+        transform: none;
+        width: 1.05em;
+    }
+
+    .auto-endorse-control input[type="checkbox"]::before {
+        box-shadow: inset 1em 1em #78d9f4;
+        content: "";
+        height: 0.58em;
+        transform: scale(0);
+        transition: transform 120ms ease-in-out;
+        width: 0.58em;
+    }
+
+    .auto-endorse-control input[type="checkbox"]:checked::before {
+        transform: scale(1);
     }
 
     .connect-row {
@@ -1188,6 +1524,15 @@
         font-size: 0.9em;
         font-weight: 800;
         min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .summary-note {
+        color: #8fa3b5;
+        font-size: 0.68em;
+        font-weight: 700;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -1552,6 +1897,19 @@
     .button-row .vortex-install-btn {
         color: #62f09b;
         min-width: 10.5em;
+    }
+
+    .button-row .endorse-btn,
+    .detail-actions .endorse-btn {
+        color: #78d9f4;
+        min-width: 7.6em;
+    }
+
+    .button-row .endorsed-btn,
+    .detail-actions .endorsed-btn {
+        color: #62f09b;
+        min-width: 7.6em;
+        opacity: 0.76;
     }
 
     .inventory-card {

@@ -4,6 +4,7 @@ export type NexusUser = {
     user_id?: number;
     name?: string;
     profile_url?: string;
+    membership_tier?: string;
     is_premium?: boolean;
     is_supporter?: boolean;
 };
@@ -79,6 +80,13 @@ export type NexusModDependency = {
     group_name?: string;
 };
 
+export type NexusEndorsement = {
+    mod_id: number;
+    game_domain_name?: string;
+    status?: string;
+    endorsed_at?: string;
+};
+
 type RawNexusModsResponse = {
     mods: Array<NexusMod & Record<string, unknown>> | { data?: Array<NexusMod & Record<string, unknown>> };
     rate_limit: NexusRateLimit;
@@ -120,6 +128,21 @@ type NexusModDependenciesResponse = {
     rate_limit: NexusRateLimit;
 };
 
+type RawNexusEndorsementsResponse = {
+    endorsements: unknown;
+    rate_limit: NexusRateLimit;
+};
+
+type NexusEndorsementsResponse = {
+    endorsements: NexusEndorsement[];
+    rate_limit: NexusRateLimit;
+};
+
+type NexusActionResponse = {
+    result: unknown;
+    rate_limit: NexusRateLimit;
+};
+
 export type NexusView = "all" | "trending" | "latest_added" | "latest_updated";
 
 export const NEXUS_CACHE_TTL_MINUTES = 10;
@@ -144,6 +167,8 @@ const filesCache = new Map<number, { value: NexusModFilesResponse; cachedAt: num
 const filesRequests = new Map<number, Promise<NexusModFilesResponse>>();
 const dependencyCache = new Map<number, { value: NexusModDependenciesResponse; cachedAt: number }>();
 const dependencyRequests = new Map<number, Promise<NexusModDependenciesResponse>>();
+let endorsementCache: { value: NexusEndorsementsResponse; cachedAt: number } | null = null;
+let endorsementRequest: Promise<NexusEndorsementsResponse> | null = null;
 
 function cacheFresh(cachedAt: number): boolean {
     return Date.now() - cachedAt < NEXUS_CACHE_TTL_MS;
@@ -162,6 +187,8 @@ export function clearNexusClientCache(): void {
     filesRequests.clear();
     dependencyCache.clear();
     dependencyRequests.clear();
+    endorsementCache = null;
+    endorsementRequest = null;
 }
 
 export async function getNexusSession(options: { force?: boolean } = {}): Promise<NexusSession> {
@@ -385,6 +412,41 @@ export async function fetchNexusFileDependencies(fileId: number, options: { forc
 
     dependencyRequests.set(fileId, request);
     return await request;
+}
+
+export async function fetchNexusUserEndorsements(options: { force?: boolean } = {}): Promise<NexusEndorsementsResponse> {
+    if (!options.force && endorsementCache && cacheFresh(endorsementCache.cachedAt)) {
+        return endorsementCache.value;
+    }
+
+    if (!options.force && endorsementRequest) {
+        return await endorsementRequest;
+    }
+
+    endorsementRequest = invoke<RawNexusEndorsementsResponse>("nexus_fetch_user_endorsements")
+        .then((response) => {
+            const normalized = {
+                endorsements: normalizeEndorsements(response.endorsements),
+                rate_limit: response.rate_limit
+            };
+            endorsementCache = { value: normalized, cachedAt: Date.now() };
+            return normalized;
+        })
+        .finally(() => {
+            endorsementRequest = null;
+        });
+
+    return await endorsementRequest;
+}
+
+export async function endorseNexusSotfMod(modId: number, version?: string): Promise<NexusActionResponse> {
+    const response = await invoke<NexusActionResponse>("nexus_endorse_sotf_mod", {
+        modId,
+        version: version?.trim() || undefined
+    });
+    endorsementCache = null;
+    endorsementRequest = null;
+    return response;
 }
 
 export function getNexusModPageUrl(mod: NexusMod): string {
@@ -685,6 +747,42 @@ function normalizeDependencies(raw: unknown): NexusModDependency[] {
     }
 
     return flattened;
+}
+
+function normalizeEndorsements(raw: unknown): NexusEndorsement[] {
+    const root = objectField(raw);
+    const source = Array.isArray(raw)
+        ? raw
+        : Array.isArray(root?.data)
+            ? root.data
+            : Array.isArray(root?.endorsements)
+                ? root.endorsements
+                : [];
+
+    return source
+        .map((record) => {
+            const endorsement = objectField(record);
+            const mod = objectField(endorsement?.mod);
+            const game = objectField(endorsement?.game);
+            const modId = numberField(endorsement?.mod_id)
+                ?? numberField(endorsement?.id)
+                ?? numberField(mod?.mod_id)
+                ?? numberField(mod?.id)
+                ?? 0;
+
+            return {
+                mod_id: modId,
+                game_domain_name: stringField(endorsement?.game_domain_name)
+                    ?? stringField(endorsement?.domain_name)
+                    ?? stringField(game?.domain_name),
+                status: stringField(endorsement?.status)
+                    ?? stringField(endorsement?.endorsement_status),
+                endorsed_at: stringField(endorsement?.endorsed_at)
+                    ?? stringField(endorsement?.date)
+                    ?? stringField(endorsement?.created_at)
+            };
+        })
+        .filter(endorsement => endorsement.mod_id > 0);
 }
 
 function inferNexusCategory(raw: Record<string, unknown>): string {
