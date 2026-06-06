@@ -224,7 +224,7 @@
     const NEXUS_PLACEHOLDER_IMAGE = nexusFallbackImage;
     const NEXUS_DETAIL_PLACEHOLDER_IMAGE = nexusFallbackImage;
     const NEXUS_DESCRIPTION_FALLBACK = "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing.";
-    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "del", "sub", "sup", "small", "big", "mark", "url", "img", "color", "background", "bgcolor", "highlight", "size", "center", "left", "right", "justify", "align", "indent", "code", "pre", "tt", "kbd", "samp", "var", "quote", "spoiler", "collapse", "details", "accordion", "accordionitem", "font", "heading", "h", "header", "title", "subtitle", "caption", "h1", "h2", "h3", "h4", "h5", "h6", "float", "clear", "youtube", "video", "columns", "cols", "column", "col", "nextcol", "tabs", "tab", "note", "info", "warning", "important", "tip", "box", "panel", "fieldset", "notice", "success", "danger", "error"]);
+    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "del", "sub", "sup", "small", "big", "mark", "abbr", "acronym", "cite", "q", "url", "img", "color", "background", "bgcolor", "highlight", "size", "center", "left", "right", "justify", "align", "indent", "code", "pre", "tt", "kbd", "samp", "var", "quote", "spoiler", "collapse", "details", "accordion", "accordionitem", "font", "heading", "h", "header", "title", "subtitle", "caption", "h1", "h2", "h3", "h4", "h5", "h6", "float", "clear", "youtube", "video", "media", "embed", "columns", "cols", "column", "col", "nextcol", "tabs", "tab", "note", "info", "warning", "important", "tip", "box", "panel", "fieldset", "notice", "success", "danger", "error"]);
     const NEXUS_SAFE_COLOR_NAMES = new Set(["black", "white", "gray", "grey", "silver", "red", "maroon", "orange", "yellow", "olive", "lime", "green", "aqua", "cyan", "teal", "blue", "navy", "fuchsia", "magenta", "purple", "pink"]);
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
     const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
@@ -3446,12 +3446,11 @@
             .replace(/\[hr\s*\/?\]/gi, "\n---\n")
             .replace(/\[line\s*\/?\]/gi, "\n---\n")
             .replace(/\[(?:rule|divider|separator)\s*\/?\]/gi, "\n---\n")
-            .replace(/\[youtube[^\]]*\]([\s\S]*?)\[\/youtube\]/gi, "YouTube: $1")
-            .replace(/\[video[^\]]*\]([\s\S]*?)\[\/video\]/gi, "Video: $1")
+            .replace(/\[(youtube|video|media|embed)[^\]]*\]([\s\S]*?)\[\/\1\]/gi, (_match, tag: string, body: string) => `${tag === "youtube" ? "YouTube" : "Media"}: ${body}`)
             .replace(/\[(?:nextcol|nextcolumn)\s*\/?\]/gi, "\n")
             .replace(/\[\/?(?:columns|cols|column|col|tabs|tab|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error|collapse|details|accordion|accordionitem|caption|dl|dt|dd)[^\]]*\]/gi, "\n")
             .replace(/\[\/?\s*(?:list|ul|ol|olist)[^\]]*\]/gi, "")
-            .replace(/\[\/?(?:b|i|u|s|strike|del|sub|sup|small|big|mark|size|color|background|bgcolor|highlight|font|center|left|right|justify|align|indent|quote|spoiler|code|pre|tt|kbd|samp|var|heading|h|header|title|subtitle|h[1-6]|float|clear|div|p|paragraph|span)[^\]]*\]/gi, "")
+            .replace(/\[\/?(?:b|i|u|s|strike|del|sub|sup|small|big|mark|abbr|acronym|cite|q|size|color|background|bgcolor|highlight|font|center|left|right|justify|align|indent|quote|spoiler|code|pre|tt|kbd|samp|var|heading|h|header|title|subtitle|h[1-6]|float|clear|div|p|paragraph|span)[^\]]*\]/gi, "")
             .replace(/\[\/?[a-z0-9_-]+[^\]]*\]/gi, "")
             .replace(/[ \t]+/g, " ")
             .replace(/\n\s+/g, "\n")
@@ -3478,12 +3477,17 @@
             .replace(/\r\n?/g, "\n")
             .replace(/<br\s*\/?>/gi, "\n")
             .replace(/<details\b[^>]*>\s*<summary\b[^>]*>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/gi, (_match, label: string, body: string) => `\n\n[spoiler=${plainText(label)}]${body}[/spoiler]\n\n`)
-            .replace(/<iframe\b([^>]*)>(?:[\s\S]*?<\/iframe>)?/gi, (_match, attrs: string) => {
-                const src = htmlAttribute(attrs, "src");
-                return src ? `\n\n[video]${src}[/video]\n\n` : "";
+            .replace(/<(iframe|embed|object|video|audio)\b([^>]*)>([\s\S]*?)<\/\1>/gi, (_match, tag: string, attrs: string, body: string) => {
+                return nexusHtmlMediaMarkup(tag, attrs, body);
+            })
+            .replace(/<(iframe|embed)\b([^>]*)\/?>/gi, (_match, tag: string, attrs: string) => {
+                return nexusHtmlMediaMarkup(tag, attrs);
             })
             .replace(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi, "\n\n[heading=$1]$2[/heading]\n\n")
-            .replace(/<blockquote\b[^>]*>/gi, "\n\n[quote]")
+            .replace(/<blockquote\b([^>]*)>/gi, (_match, attrs: string) => {
+                const cite = safeNexusLabel(htmlAttribute(attrs, "cite") ?? "");
+                return cite ? `\n\n[quote=${cite}]` : "\n\n[quote]";
+            })
             .replace(/<\/blockquote>/gi, "[/quote]\n\n")
             .replace(/<hr\b[^>]*\/?>/gi, "\n\n[hr]\n\n")
             .replace(/<pre\b[^>]*>/gi, "\n\n[code]")
@@ -3510,6 +3514,12 @@
             })
             .replace(/<small\b[^>]*>([\s\S]*?)<\/small>/gi, "[small]$1[/small]")
             .replace(/<big\b[^>]*>([\s\S]*?)<\/big>/gi, "[big]$1[/big]")
+            .replace(/<(abbr|acronym)\b([^>]*)>([\s\S]*?)<\/\1>/gi, (_match, _tag: string, attrs: string, body: string) => {
+                const title = safeNexusLabel(htmlAttribute(attrs, "title") ?? "");
+                return title ? `[abbr=${title}]${body}[/abbr]` : body;
+            })
+            .replace(/<cite\b[^>]*>([\s\S]*?)<\/cite>/gi, "[cite]$1[/cite]")
+            .replace(/<q\b[^>]*>([\s\S]*?)<\/q>/gi, "[q]$1[/q]")
             .replace(/<mark\b([^>]*)>([\s\S]*?)<\/mark>/gi, (_match, attrs: string, body: string) => {
                 const background = htmlBackgroundColorAttribute(attrs) ?? "yellow";
                 return `[highlight=${background}]${body}[/highlight]`;
@@ -3580,7 +3590,7 @@
             .replace(/\[\/(?:imgright|imageright)\]/gi, "[/img]")
             .replace(/\[(?:imgcenter|imagecenter)([^\]]*)\]/gi, (_match, attrs: string) => nexusImageAliasOpeningTag("center", attrs))
             .replace(/\[\/(?:imgcenter|imagecenter)\]/gi, "[/img]")
-            .replace(/\[\s*li([^\]]*)\]/gi, (_match, attrs: string) => {
+            .replace(/\[\s*li(?=[\s=\]/])([^\]]*)\]/gi, (_match, attrs: string) => {
                 const label = safeNexusListItemLabel(nexusBbTagAttribute("li", attrs));
                 return label ? `\n[*][b]${label}[/b] ` : "\n[*]";
             })
@@ -3595,7 +3605,7 @@
             .replace(/\[\/h[1-6]\]/gi, "[/heading]")
             .replace(/\[(?:headline|subhead|subheading)(?:=([^\]]+))?\]/gi, (_match, level: string | undefined) => `[heading=${safeNexusHeadingLevel(level ?? "3")}]`)
             .replace(/\[\/(?:headline|subhead|subheading)\]/gi, "[/heading]")
-            .replace(/\[(url|img|color|background|bgcolor|highlight|size|align|indent|quote|spoiler|collapse|details|accordion|accordionitem|heading|h|header|title|subtitle|caption|float|youtube|video|list|olist|ol|ul|columns|cols|column|col|tabs|tab|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error|small|big|mark)([ \t][^\]]+)\]/gi, (_match, tag: string, attrs: string) => normalizeNexusBbOpeningTag(tag, attrs))
+            .replace(/\[(url|img|color|background|bgcolor|highlight|size|align|indent|quote|spoiler|collapse|details|accordion|accordionitem|heading|h|header|title|subtitle|caption|float|youtube|video|media|embed|list|olist|ol|ul|columns|cols|column|col|tabs|tab|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error|small|big|mark|abbr|acronym)([ \t][^\]]+)\]/gi, (_match, tag: string, attrs: string) => normalizeNexusBbOpeningTag(tag, attrs))
             .replace(/\[(?:h|header|title)(?:=([^\]]+))?\]/gi, (_match, level: string | undefined) => `[heading=${safeNexusHeadingLevel(level ?? "2")}]`)
             .replace(/\[\/(?:h|header|title)\]/gi, "[/heading]")
             .replace(/\[subtitle(?:=[^\]]+)?\]/gi, "[heading=4]")
@@ -3674,7 +3684,7 @@
 
     function nexusBlockChunks(text: string): NexusBlockChunk[] {
         const chunks: NexusBlockChunk[] = [];
-        const structuralPattern = /\[(table|list|olist|quote|spoiler|collapse|details|accordion|accordionitem|indent|center|left|right|align|justify|code|heading|float|columns|cols|tabs|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error)([^\]]*)\]/gi;
+        const structuralPattern = /\[(table|list|olist|quote|spoiler|collapse|details|accordion|accordionitem|indent|center|left|right|align|justify|code|heading|float|youtube|video|media|embed|columns|cols|tabs|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error)([^\]]*)\]/gi;
         let cursor = 0;
         let match: RegExpExecArray | null;
 
@@ -3794,6 +3804,14 @@
         const tabs = block.match(/^\[tabs(?:=([^\]]+))?\]([\s\S]*?)\[\/tabs\]$/i);
         if (tabs) {
             return renderNexusTabs(tabs[2], depth);
+        }
+
+        const media = block.match(/^\[(youtube|video|media|embed)([^\]]*)\]([\s\S]*?)\[\/\1\]$/i);
+        if (media) {
+            const rendered = renderNexusMediaBlock(media[1], media[2], media[3]);
+            if (rendered) {
+                return rendered;
+            }
         }
 
         const callout = block.match(/^\[(note|info|warning|important|tip)(?:=([^\]]+))?\]([\s\S]*?)\[\/\1\]$/i);
@@ -3941,8 +3959,17 @@
         return tabs;
     }
 
+    function renderNexusMediaBlock(tag: string, rawAttrs: string, body: string): string {
+        const media = nexusMediaRenderData(tag, rawAttrs, nexusBbTagAttribute(tag, rawAttrs), collectNexusNodeText(parseNexusRichNodes(body)));
+        if (!media) {
+            return "";
+        }
+
+        return `<div class="nexus-rich-media-block"><span>${escapeHtml(media.label)}</span><a href="${escapeAttribute(media.url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(media.urlLabel)}</a></div>`;
+    }
+
     function hasNexusBlockStructure(value: string): boolean {
-        return /\[(?:table|list|olist|quote|spoiler|collapse|details|accordion|accordionitem|indent|center|left|right|align|justify|code|heading|float|columns|cols|tabs|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error)(?:=[^\]]+)?\]/i.test(value);
+        return /\[(?:table|list|olist|quote|spoiler|collapse|details|accordion|accordionitem|indent|center|left|right|align|justify|code|heading|float|youtube|video|media|embed|columns|cols|tabs|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error)(?:=[^\]]+)?\]/i.test(value);
     }
 
     function nexusStandaloneSectionHeading(block: string): string | null {
@@ -4184,6 +4211,15 @@
                 const color = safeNexusColor(node.attr) ?? "yellow";
                 return `<span class="nexus-rich-highlight" style="background-color: ${escapeAttribute(color)}">${inner}</span>`;
             }
+            case "abbr":
+            case "acronym": {
+                const title = safeNexusLabel(node.attr);
+                return title ? `<abbr class="nexus-rich-abbr" title="${escapeAttribute(title)}">${inner}</abbr>` : `<abbr class="nexus-rich-abbr">${inner}</abbr>`;
+            }
+            case "cite":
+                return `<cite class="nexus-rich-cite">${inner}</cite>`;
+            case "q":
+                return `<q>${inner}</q>`;
             case "url": {
                 const url = safeNexusUrl(node.attr ?? collectNexusNodeText(node.children));
                 return url ? `<a href="${escapeAttribute(url)}" target="_blank" rel="noreferrer noopener">${inner || escapeHtml(url)}</a>` : inner;
@@ -4196,7 +4232,8 @@
                 const alignment = nexusImageAlignment(node.rawAttrs, node.attr);
                 const style = nexusImageStyleAttribute(node.rawAttrs);
                 const imageClass = ["nexus-rich-image", alignment ? `nexus-rich-image-${alignment}` : ""].filter(Boolean).join(" ");
-                return url ? `<img class="${imageClass}" src="${escapeAttribute(url)}" alt=""${style} />${attrUrl && inner ? inner : ""}` : inner;
+                const alt = safeNexusImageAlt(nexusBbAttribute(node.rawAttrs, "alt") ?? nexusBbAttribute(node.rawAttrs, "title"));
+                return url ? `<img class="${imageClass}" src="${escapeAttribute(url)}" alt="${escapeAttribute(alt)}"${alt ? ` title="${escapeAttribute(alt)}"` : ""}${style} />${attrUrl && inner ? inner : ""}` : inner;
             }
             case "color": {
                 const color = safeNexusColor(node.attr);
@@ -4278,9 +4315,11 @@
             case "h6":
                 return `<span class="nexus-rich-heading nexus-rich-heading-${node.name.slice(1)}">${inner}</span>`;
             case "youtube":
-            case "video": {
-                const mediaUrl = safeNexusMediaUrl(node.name, node.attr, collectNexusNodeText(node.children));
-                return mediaUrl ? `<a class="nexus-rich-media-link" href="${escapeAttribute(mediaUrl)}" target="_blank" rel="noreferrer noopener">${node.name === "youtube" ? "Open YouTube video" : "Open video"}</a>` : inner;
+            case "video":
+            case "media":
+            case "embed": {
+                const media = nexusMediaRenderData(node.name, node.rawAttrs, node.attr, collectNexusNodeText(node.children));
+                return media ? `<a class="nexus-rich-media-link" href="${escapeAttribute(media.url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(media.inlineLabel)}</a>` : inner;
             }
             case "font": {
                 const color = safeNexusColor(nexusBbAttribute(node.rawAttrs, "color"));
@@ -4449,7 +4488,13 @@
             case "size":
             case "youtube":
             case "video":
+            case "media":
+            case "embed":
                 return nexusBbAttribute(rawAttrs, "type")
+                    ?? nexusBbAttribute(rawAttrs, "src")
+                    ?? nexusBbAttribute(rawAttrs, "url")
+                    ?? nexusBbAttribute(rawAttrs, "href")
+                    ?? nexusBbAttribute(rawAttrs, "data")
                     ?? nexusBbAttribute(rawAttrs, "style")
                     ?? nexusBbAttribute(rawAttrs, "color")
                     ?? nexusBbAttribute(rawAttrs, "background")
@@ -4515,6 +4560,41 @@
         const pattern = new RegExp(`${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i");
         const match = attrs.match(pattern);
         return match ? decodeHtmlEntities(match[1] ?? match[2] ?? match[3] ?? "") : null;
+    }
+
+    function nexusHtmlMediaMarkup(tag: string, attrs: string, body = ""): string {
+        const source = htmlMediaSource(attrs, body);
+        if (!source) {
+            return "";
+        }
+
+        const title = cleanNexusBbAttributeValue(
+            htmlAttribute(attrs, "title")
+            ?? htmlAttribute(attrs, "aria-label")
+            ?? htmlAttribute(attrs, "alt")
+            ?? ""
+        );
+        const normalizedTag = tag.toLowerCase() === "youtube" ? "youtube" : "media";
+        const titleAttribute = title ? ` title="${title}"` : "";
+        return `\n\n[${normalizedTag}${titleAttribute}]${source}[/${normalizedTag}]\n\n`;
+    }
+
+    function htmlMediaSource(attrs: string, body = ""): string | null {
+        const direct = htmlAttribute(attrs, "src")
+            ?? htmlAttribute(attrs, "data")
+            ?? htmlAttribute(attrs, "href");
+        if (direct) {
+            return direct;
+        }
+
+        const source = body.match(/<(?:source|param)\b([^>]*)>/i);
+        if (!source) {
+            return null;
+        }
+
+        return htmlAttribute(source[1], "src")
+            ?? htmlAttribute(source[1], "value")
+            ?? htmlAttribute(source[1], "data");
     }
 
     function htmlAlignmentAttribute(attrs: string): "left" | "center" | "right" | "justify" | null {
@@ -4827,6 +4907,13 @@
             .slice(0, 60);
     }
 
+    function safeNexusImageAlt(value?: string): string {
+        return safeNexusLabel(value)
+            .replace(/[\[\]\r\n]/g, "")
+            .trim()
+            .slice(0, 120);
+    }
+
     function isOrderedNexusListAttr(value?: string): boolean {
         const attr = decodeHtmlEntities(value ?? "").trim().replace(/^['"]|['"]$/g, "");
         if (!attr) {
@@ -4903,6 +4990,36 @@
         }
 
         return null;
+    }
+
+    function nexusMediaRenderData(kind: string, rawAttrs?: string, attr?: string, text?: string): { url: string; label: string; inlineLabel: string; urlLabel: string } | null {
+        const tag = kind.toLowerCase();
+        const rawUrl = nexusBbAttribute(rawAttrs, "src")
+            ?? nexusBbAttribute(rawAttrs, "url")
+            ?? nexusBbAttribute(rawAttrs, "href")
+            ?? nexusBbAttribute(rawAttrs, "data")
+            ?? (safeNexusUrl(attr) || (tag === "youtube" && /^[a-z0-9_-]{6,32}$/i.test(attr ?? "")) ? attr : undefined);
+        const url = safeNexusMediaUrl(tag, rawUrl, text);
+        if (!url) {
+            return null;
+        }
+
+        const label = safeNexusLabel(
+            nexusBbAttribute(rawAttrs, "title")
+            ?? nexusBbAttribute(rawAttrs, "label")
+            ?? nexusBbAttribute(rawAttrs, "name")
+            ?? ""
+        ) || (tag === "youtube" ? "YouTube Video" : tag === "video" ? "Video" : "Media");
+        const inlineLabel = tag === "youtube" ? `Open ${label}` : `Open ${label}`;
+        let urlLabel = url;
+        try {
+            const parsed = new URL(url);
+            urlLabel = parsed.hostname.replace(/^www\./i, "") + parsed.pathname;
+        } catch {
+            urlLabel = url;
+        }
+
+        return { url, label, inlineLabel, urlLabel };
     }
 
     function safeNexusColor(value?: string): string | null {
@@ -7660,6 +7777,17 @@
         padding: 0.04em 0.2em;
     }
 
+    .nexus-rich-text :global(.nexus-rich-abbr) {
+        border-bottom: 1px dotted rgba(198, 208, 217, 0.55);
+        cursor: help;
+        text-decoration: none;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-cite) {
+        color: #9fb1bf;
+        font-style: italic;
+    }
+
     .nexus-rich-text :global(.nexus-rich-float) {
         box-sizing: border-box;
         display: block;
@@ -7866,6 +7994,32 @@
     .nexus-rich-text :global(.nexus-rich-media-link) {
         display: inline-flex;
         margin-top: 0.2em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-media-block) {
+        align-items: flex-start;
+        background: rgba(120, 217, 244, 0.055);
+        border: 1px solid rgba(120, 217, 244, 0.18);
+        border-left-width: 3px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25em 0.65em;
+        margin: 0.8em 0 0;
+        min-width: 0;
+        padding: 0.6em 0.7em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-media-block > span) {
+        color: #eefcff;
+        flex: 0 0 auto;
+        font-size: 0.82em;
+        font-weight: 900;
+        text-transform: uppercase;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-media-block > a) {
+        min-width: 0;
+        overflow-wrap: anywhere;
     }
 
     .nexus-rich-text :global(.nexus-rich-table-wrap) {
