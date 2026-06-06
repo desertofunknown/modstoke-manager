@@ -12,6 +12,7 @@
   - Added a compact Nexus dependency readiness strip that summarizes API dependencies, author-linked requirement hints, and nested dependency checks before Vortex handoff.
   - Added compact Nexus file-choice summary chips that show total files, selected file readiness, and archived/old-file review state before Vortex handoff.
   - Added a compact in-drawer Nexus detail section rail for jumping to Description, Files, Dependencies, Install Plan, Changelog, and Deployment without hunting through split scroll panes.
+  - Made Nexus catalog previews more resilient by accepting protocol-relative and common nested media URL fields, replacing the remote placeholder with a bundled local fallback image, and using clearer compact preview count/cycle controls.
   - Added author-linked requirement hints from Nexus description links when structured dependency rows are missing or incomplete, without extra Nexus requests.
   - Added a compact thumbnail rail in Nexus detail drawers when the API provides multiple preview images.
   - Added selected-file notes in Nexus detail drawers so file-specific descriptions and changelog HTML are shown with the same safe formatting before Vortex handoff.

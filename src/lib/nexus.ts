@@ -748,10 +748,11 @@ function normalizeNexusMod(raw: NexusMod & Record<string, unknown>, categories: 
         ?? stringField(raw.short_description);
     const resolvedCategory = resolveNexusCategory(raw, categories);
     const imageUrls = imageUrlsFrom(raw);
-    const pictureUrl = stringField(raw.picture_url)
-        ?? stringField(raw.picture)
-        ?? stringField(raw.thumbnail_url)
-        ?? stringField(raw.screenshot_url)
+    const pictureUrl = normalizeImageUrl(stringField(raw.picture_url))
+        ?? normalizeImageUrl(stringField(raw.picture))
+        ?? normalizeImageUrl(stringField(raw.thumbnail_url))
+        ?? normalizeImageUrl(stringField(raw.screenshot_url))
+        ?? normalizeImageUrl(stringField(raw.image_url))
         ?? imageUrls[0];
 
     return {
@@ -1255,7 +1256,7 @@ function collectImageUrls(value: unknown, urls: Array<string | undefined>) {
         return;
     }
 
-    for (const key of ["url", "image_url", "picture_url", "thumbnail_url", "screenshot_url", "full", "original", "large", "medium", "small", "src"]) {
+    for (const key of ["url", "uri", "image_url", "imageUrl", "picture_url", "pictureUrl", "thumbnail_url", "thumbnailUrl", "screenshot_url", "screenshotUrl", "full", "original", "large", "medium", "small", "src"]) {
         urls.push(stringField(object[key]));
     }
 
@@ -1269,15 +1270,36 @@ function uniqueImageUrls(values: Array<string | undefined>): string[] {
     const urls: string[] = [];
 
     for (const value of values) {
-        if (!value || !/^https?:\/\//i.test(value) || seen.has(value)) {
+        const url = normalizeImageUrl(value);
+        if (!url || seen.has(url)) {
             continue;
         }
 
-        seen.add(value);
-        urls.push(value);
+        seen.add(url);
+        urls.push(url);
     }
 
     return urls.slice(0, 12);
+}
+
+function normalizeImageUrl(value?: string): string | undefined {
+    const trimmed = (value ?? "")
+        .replace(/&amp;/gi, "&")
+        .replace(/&quot;/gi, "\"")
+        .replace(/&#39;/g, "'")
+        .trim();
+    const candidate = trimmed.startsWith("//")
+        ? `https:${trimmed}`
+        : /^www\./i.test(trimmed)
+            ? `https://${trimmed}`
+            : trimmed;
+
+    try {
+        const url = new URL(candidate);
+        return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 function stringField(value: unknown): string | undefined {

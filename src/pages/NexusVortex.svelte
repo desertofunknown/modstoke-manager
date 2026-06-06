@@ -2,6 +2,10 @@
     import { onDestroy, onMount, tick } from "svelte";
     import semver from "semver";
     import SvgSpinnersBlocksWave from "~icons/svg-spinners/blocks-wave";
+    import LucideChevronLeft from "~icons/lucide/chevron-left";
+    import LucideChevronRight from "~icons/lucide/chevron-right";
+    import LucideImages from "~icons/lucide/images";
+    import nexusFallbackImage from "../assets/sons-ui/blurred-title-screen-texture2d-14.png";
     import {
         clearNexusApiKey,
         endorseNexusSotfMod,
@@ -217,8 +221,8 @@
     const MAX_NESTED_DEPENDENCY_DEPTH = 2;
     const MAX_AUTHOR_REQUIREMENT_LINKS = 6;
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
-    const NEXUS_PLACEHOLDER_IMAGE = "https://placehold.co/320x180/252525/FFF?text=Nexus";
-    const NEXUS_DETAIL_PLACEHOLDER_IMAGE = "https://placehold.co/640x360/252525/FFF?text=Nexus";
+    const NEXUS_PLACEHOLDER_IMAGE = nexusFallbackImage;
+    const NEXUS_DETAIL_PLACEHOLDER_IMAGE = nexusFallbackImage;
     const NEXUS_DESCRIPTION_FALLBACK = "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing.";
     const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "del", "sub", "sup", "url", "img", "color", "background", "bgcolor", "highlight", "size", "center", "left", "right", "justify", "align", "indent", "code", "pre", "quote", "spoiler", "font", "heading", "h1", "h2", "h3", "h4", "h5", "h6", "float", "youtube", "video"]);
     const NEXUS_SAFE_COLOR_NAMES = new Set(["black", "white", "gray", "grey", "silver", "red", "maroon", "orange", "yellow", "olive", "lime", "green", "aqua", "cyan", "teal", "blue", "navy", "fuchsia", "magenta", "purple", "pink"]);
@@ -1545,15 +1549,36 @@
         const urls: string[] = [];
 
         for (const value of values) {
-            if (!value || !/^https?:\/\//i.test(value) || seen.has(value)) {
+            const url = normalizePreviewUrl(value);
+            if (!url || seen.has(url)) {
                 continue;
             }
 
-            seen.add(value);
-            urls.push(value);
+            seen.add(url);
+            urls.push(url);
         }
 
         return urls;
+    }
+
+    function normalizePreviewUrl(value?: string): string | undefined {
+        const trimmed = (value ?? "")
+            .replace(/&amp;/gi, "&")
+            .replace(/&quot;/gi, "\"")
+            .replace(/&#39;/g, "'")
+            .trim();
+        const candidate = trimmed.startsWith("//")
+            ? `https:${trimmed}`
+            : /^www\./i.test(trimmed)
+                ? `https://${trimmed}`
+                : trimmed;
+
+        try {
+            const url = new URL(candidate);
+            return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : undefined;
+        } catch {
+            return undefined;
+        }
     }
 
     async function openInventoryLocation(entry: InstalledInventoryEntry) {
@@ -4769,9 +4794,23 @@
                                 </button>
                                 {#if previewUrls.length > 1}
                                     <div class="thumbnail-nav" aria-label={`${mod.name} preview images`}>
-                                        <button type="button" aria-label="Previous preview image" on:click={(event) => cycleCatalogPreview(mod, previewUrls, -1, event)}>&lt;</button>
-                                        <span>{previewIndex + 1}/{previewUrls.length}</span>
-                                        <button type="button" aria-label="Next preview image" on:click={(event) => cycleCatalogPreview(mod, previewUrls, 1, event)}>&gt;</button>
+                                        <button type="button" aria-label="Previous preview image" title="Previous preview image" on:click={(event) => cycleCatalogPreview(mod, previewUrls, -1, event)}>
+                                            <LucideChevronLeft class="thumbnail-icon" aria-hidden="true" />
+                                        </button>
+                                        <span><LucideImages class="thumbnail-icon" aria-hidden="true" />{previewIndex + 1}/{previewUrls.length}</span>
+                                        <button type="button" aria-label="Next preview image" title="Next preview image" on:click={(event) => cycleCatalogPreview(mod, previewUrls, 1, event)}>
+                                            <LucideChevronRight class="thumbnail-icon" aria-hidden="true" />
+                                        </button>
+                                    </div>
+                                {:else}
+                                    <div
+                                        class="thumbnail-count"
+                                        class:thumbnail-count-fallback={previewUrls.length === 0}
+                                        aria-label={previewUrls.length === 1 ? `${mod.name} has one preview image` : `${mod.name} uses the local fallback preview image`}
+                                        title={previewUrls.length === 1 ? "1 preview image" : "Local fallback preview"}
+                                    >
+                                        <LucideImages class="thumbnail-icon" aria-hidden="true" />
+                                        <span>{previewUrls.length === 1 ? "1" : "Local"}</span>
                                     </div>
                                 {/if}
                             </div>
@@ -6481,13 +6520,50 @@
     }
 
     .thumbnail-nav span {
+        align-items: center;
         color: #d6dde5;
+        display: flex;
         flex: 1 1 auto;
         font-size: 0.68em;
         font-weight: 900;
+        gap: 0.25em;
+        justify-content: center;
         min-width: 0;
         text-align: center;
         white-space: nowrap;
+    }
+
+    .thumbnail-nav :global(.thumbnail-icon),
+    .thumbnail-count :global(.thumbnail-icon) {
+        display: block;
+        flex: 0 0 auto;
+        height: 1em;
+        width: 1em;
+    }
+
+    .thumbnail-count {
+        align-items: center;
+        background: rgba(0, 0, 0, 0.56);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-sizing: border-box;
+        color: #d6dde5;
+        display: inline-flex;
+        font-size: 0.68em;
+        font-weight: 900;
+        gap: 0.28em;
+        left: 0.45em;
+        max-width: calc(100% - 0.9em);
+        min-height: 1.85em;
+        overflow: hidden;
+        padding: 0.2em 0.45em;
+        position: absolute;
+        text-overflow: ellipsis;
+        top: 0.45em;
+        white-space: nowrap;
+    }
+
+    .thumbnail-count-fallback {
+        color: #aab3bd;
     }
 
     .detail-header {
@@ -8075,6 +8151,11 @@
             bottom: 0.3em;
             left: 0.3em;
             right: 0.3em;
+        }
+
+        .thumbnail-count {
+            left: 0.3em;
+            top: 0.3em;
         }
 
         .nexus-body {
