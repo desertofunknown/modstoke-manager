@@ -33,6 +33,7 @@
     import {
         describeInstallSource,
         findMatchingInstall,
+        normalizeMatchKey,
         readVortexDeployment,
         scanInstalledInventory,
         setInventoryEntryEnabled,
@@ -44,6 +45,17 @@
     import { Command } from "@tauri-apps/plugin-shell";
 
     type CatalogMode = "online" | "installed";
+    type InstallFilter = "all" | "installed" | "missing" | "vortex" | "native" | "manual" | "tracked" | "conflicts";
+    type DependencyStatus = "installed" | "missing" | "version-mismatch" | "review";
+    type ResolvedDependency = NexusModDependency & {
+        match: InstalledInventoryEntry | null;
+        status: DependencyStatus;
+    };
+    type LocalConflict = {
+        key: string;
+        label: string;
+        entries: InstalledInventoryEntry[];
+    };
 
     let session: NexusSession = { is_connected: false };
     let apiKey = "";
@@ -58,7 +70,7 @@
     let catalogMode: CatalogMode = "online";
     let nexusSearchTerm = "";
     let selectedNexusCategory = "all";
-    let selectedInstallFilter = "all";
+    let selectedInstallFilter: InstallFilter = "all";
     let isLoading = false;
     let isDetailLoading = false;
     let status = "";
@@ -100,6 +112,14 @@
     $: manualCount = inventory.filter(entry => entry.installSource === "manual").length;
     $: trackedCount = trackedMods.length;
     $: selectedNexusFile = selectedModFiles.find(file => file.file_id === selectedFileId) ?? null;
+    $: localConflicts = findLocalConflicts(inventory);
+    $: localConflictEntryKeys = new Set(localConflicts.flatMap(conflict => conflict.entries.map(inventoryEntryKey)));
+    $: conflictCount = localConflictEntryKeys.size;
+    $: resolvedDependencies = selectedDependencies.map(resolveDependencyStatus);
+    $: dependencyIssueCount = resolvedDependencies.filter(dependency =>
+        dependency.status === "missing" || dependency.status === "version-mismatch"
+    ).length;
+    $: dependencyReviewCount = resolvedDependencies.filter(dependency => dependency.status === "review").length;
 
     onMount(async () => {
         loadEndorsementPreferences();
@@ -840,6 +860,198 @@
         ]);
     }
 
+    function resolveDependencyStatus(dependency: NexusModDependency): ResolvedDependency {
+        const match = findMatchingInstall(inventory, dependency.mod_name, dependency.mod_id, [
+            dependency.file_name ?? "",
+            dependency.group_name ?? "",
+            dependency.id ?? ""
+        ]);
+
+        if (!match) {
+            return { ...dependency, match: null, status: "missing" };
+        }
+
+        if (dependency.version && !match.version) {
+            return { ...dependency, match, status: "review" };
+        }
+
+        if (dependency.version && versionsDiffer(match.version, dependency.version)) {
+            return { ...dependency, match, status: "version-mismatch" };
+        }
+
+        return { ...dependency, match, status: "installed" };
+    }
+
+    function dependencySummaryLabel(): string {
+        if (resolvedDependencies.length === 0) {
+            return "None listed";
+        }
+
+        if (dependencyIssueCount > 0) {
+            return `${dependencyIssueCount} need attention`;
+        }
+
+        if (dependencyReviewCount > 0) {
+            return `${dependencyReviewCount} review`;
+        }
+
+        return "Ready";
+    }
+
+    function dependencyStatusLabel(dependency: ResolvedDependency): string {
+        switch (dependency.status) {
+            case "installed":
+                return dependency.match ? `Installed: ${describeInstallSource(dependency.match)}` : "Installed";
+            case "version-mismatch":
+                return `Version mismatch: installed ${dependency.match?.version ?? "unknown"}; wants ${dependency.version}`;
+            case "review":
+                return `Installed: ${describeInstallSource(dependency.match)}; version unknown`;
+            default:
+                return "Missing from this game folder";
+        }
+    }
+
+    async function openDependencyPage(dependency: ResolvedDependency) {
+        if (!dependency.mod_id) {
+            return;
+        }
+
+        await shell.open(`https://www.nexusmods.com/sonsoftheforest/mods/${dependency.mod_id}`);
+    }
+
+    async function openDependencyLocation(dependency: ResolvedDependency) {
+        if (!dependency.match) {
+            return;
+        }
+
+        await openInventoryLocation(dependency.match);
+    }
+
+    function findLocalConflicts(entries: InstalledInventoryEntry[]): LocalConflict[] {
+        const groups = new Map<string, InstalledInventoryEntry[]>();
+
+        for (const entry of entries) {
+            for (const key of conflictCandidateKeys(entry)) {
+                groups.set(key, [...(groups.get(key) ?? []), entry]);
+            }
+        }
+
+        const seenGroups = new Set<string>();
+        const conflicts: LocalConflict[] = [];
+
+        for (const [key, groupedEntries] of groups) {
+            const uniqueEntries = uniqueInventoryEntries(groupedEntries);
+            if (uniqueEntries.length < 2) {
+                continue;
+            }
+
+            const distinctInstallTargets = new Set(uniqueEntries.map(conflictInstallTarget));
+            if (distinctInstallTargets.size < 2) {
+                continue;
+            }
+
+            const signature = uniqueEntries.map(inventoryEntryKey).sort().join("||");
+            if (seenGroups.has(signature)) {
+                continue;
+            }
+
+            seenGroups.add(signature);
+            conflicts.push({
+                key,
+                label: conflictLabel(key, uniqueEntries),
+                entries: uniqueEntries
+            });
+        }
+
+        return conflicts.sort((left, right) => left.label.localeCompare(right.label));
+    }
+
+    function conflictCandidateKeys(entry: InstalledInventoryEntry): string[] {
+        const keys: string[] = [];
+        const nexusId = numericNexusId(entry.nexusModId);
+        if (nexusId) {
+            keys.push(`nexus:${nexusId}`);
+        }
+
+        const nameKey = normalizeMatchKey(entry.name);
+        if (nameKey.length >= 4) {
+            keys.push(`name:${nameKey}`);
+        }
+
+        const idKey = normalizeMatchKey(entry.id);
+        if (idKey.length >= 4 && idKey !== nameKey) {
+            keys.push(`id:${idKey}`);
+        }
+
+        const packageKey = normalizeMatchKey(entry.vortexPackage);
+        if (packageKey.length >= 4 && packageKey !== nameKey && packageKey !== idKey) {
+            keys.push(`package:${packageKey}`);
+        }
+
+        return keys;
+    }
+
+    function uniqueInventoryEntries(entries: InstalledInventoryEntry[]): InstalledInventoryEntry[] {
+        const seen = new Set<string>();
+        return entries.filter(entry => {
+            const key = inventoryEntryKey(entry);
+            if (seen.has(key)) {
+                return false;
+            }
+
+            seen.add(key);
+            return true;
+        });
+    }
+
+    function inventoryEntryKey(entry: InstalledInventoryEntry): string {
+        return [
+            entry.installSource,
+            entry.expectedLocation,
+            entry.nexusModId ?? "",
+            entry.packagePath ?? "",
+            entry.assemblyPath ?? "",
+            entry.vortexPackage ?? "",
+            entry.id,
+            entry.name
+        ].join("|");
+    }
+
+    function conflictInstallTarget(entry: InstalledInventoryEntry): string {
+        return [
+            entry.installSource,
+            entry.expectedLocation,
+            entry.packagePath ?? entry.assemblyPath ?? entry.vortexPackage ?? entry.id
+        ].join("|");
+    }
+
+    function conflictLabel(key: string, entries: InstalledInventoryEntry[]): string {
+        const displayName = entries
+            .map(entry => entry.name)
+            .sort((left, right) => left.length - right.length || left.localeCompare(right))[0] ?? "Duplicate mod";
+
+        if (key.startsWith("nexus:")) {
+            return `${displayName} (${key.replace("nexus:", "Nexus #")})`;
+        }
+
+        return displayName;
+    }
+
+    function isConflictedEntry(entry: InstalledInventoryEntry | null | undefined): boolean {
+        return !!entry && localConflictEntryKeys.has(inventoryEntryKey(entry));
+    }
+
+    function conflictForEntry(entry: InstalledInventoryEntry | null | undefined): LocalConflict | null {
+        if (!entry) {
+            return null;
+        }
+
+        const key = inventoryEntryKey(entry);
+        return localConflicts.find(conflict =>
+            conflict.entries.some(conflictEntry => inventoryEntryKey(conflictEntry) === key)
+        ) ?? null;
+    }
+
     function buildNexusCategoryOptions(categories: NexusCategory[], loadedMods: NexusMod[]): string[] {
         const ordered = categories
             .map(category => category.name)
@@ -894,6 +1106,10 @@
             return false;
         }
 
+        if (selectedInstallFilter === "conflicts" && !isConflictedEntry(match)) {
+            return false;
+        }
+
         return true;
     }
 
@@ -928,6 +1144,10 @@
         }
 
         if (selectedInstallFilter === "tracked" && !isNexusModTracked(entry.nexusModId)) {
+            return false;
+        }
+
+        if (selectedInstallFilter === "conflicts" && !isConflictedEntry(entry)) {
             return false;
         }
 
@@ -1208,6 +1428,11 @@
                 <span class="summary-label">Vortex / Native / Manual</span>
                 <span class="summary-value">{vortexCount} / {nativeCount} / {manualCount}</span>
             </div>
+            <div class="summary-card" class:conflict-summary={conflictCount > 0}>
+                <span class="summary-label">Local Conflicts</span>
+                <span class="summary-value">{conflictCount}</span>
+                <span class="summary-note">{conflictCount > 0 ? "Review duplicate deployments" : "No duplicate installs"}</span>
+            </div>
         </div>
 
         <section class="catalog-panel">
@@ -1228,9 +1453,9 @@
             <div class="notice api-note">
                 <span>Nexus requests are cached locally for {NEXUS_CACHE_TTL_MINUTES} minutes.</span>
                 {#if catalogMode === "online"}
-                    <span>{visibleNexusMods.length} shown from {mods.length} loaded. {trackedModsLoaded ? `${trackedCount} tracked.` : ""}</span>
+                    <span>{visibleNexusMods.length} shown from {mods.length} loaded. {trackedModsLoaded ? `${trackedCount} tracked.` : ""} {conflictCount > 0 ? `${conflictCount} in conflicts.` : ""}</span>
                 {:else}
-                    <span>{visibleInstalledEntries.length} shown from {installedCount} installed. {trackedModsLoaded ? `${trackedCount} tracked.` : ""}</span>
+                    <span>{visibleInstalledEntries.length} shown from {installedCount} installed. {trackedModsLoaded ? `${trackedCount} tracked.` : ""} {conflictCount > 0 ? `${conflictCount} in conflicts.` : ""}</span>
                 {/if}
             </div>
 
@@ -1250,6 +1475,7 @@
                     <option value="native">OpenACAI store</option>
                     <option value="manual">Manual</option>
                     <option value="tracked">Tracked</option>
+                    <option value="conflicts">Conflicts</option>
                 </select>
             </div>
 
@@ -1259,7 +1485,8 @@
                         {@const match = installedMatch(mod)}
                         {@const updateLabel = nexusUpdateLabel(mod)}
                         {@const updateToneValue = updateTone(updateLabel)}
-                        <article class="nexus-card" class:nexus-installed={!!match}>
+                        {@const conflict = conflictForEntry(match)}
+                        <article class="nexus-card" class:nexus-installed={!!match} class:nexus-conflict={!!conflict}>
                             <button class="thumbnail-button" aria-label={`Open ${mod.name} details`} on:click={() => openModDetails(mod)}>
                                 <img
                                     class="nexus-img"
@@ -1274,9 +1501,14 @@
                                         <span class="mod-title">{mod.name}</span>
                                         <span class="mod-byline">{mod.category_name ?? "Nexus"} · {mod.loader_type ?? "Unknown type"} · {mod.author ?? mod.uploaded_by ?? "Unknown author"}</span>
                                     </button>
-                                    <span class="source-pill" class:source-vortex={match?.installSource === "vortex"} class:source-native={match?.installSource === "native"} class:source-manual={match?.installSource === "manual"}>
-                                        {describeInstallSource(match)}
-                                    </span>
+                                    <div class="card-pills">
+                                        {#if conflict}
+                                            <span class="source-pill conflict-pill">Conflict</span>
+                                        {/if}
+                                        <span class="source-pill" class:source-vortex={match?.installSource === "vortex"} class:source-native={match?.installSource === "native"} class:source-manual={match?.installSource === "manual"}>
+                                            {describeInstallSource(match)}
+                                        </span>
+                                    </div>
                                 </div>
 
                                 <button class="description-content description-button" on:click={() => openModDetails(mod)}>{mod.summary ?? "No summary is available from Nexus for this mod."}</button>
@@ -1300,7 +1532,7 @@
                                             />
                                             <span>{match.enabled ? "Enabled" : "Disabled"}</span>
                                         </label>
-                                        <span class="match-detail">{loaderTypeLabel(match)} in {match.expectedLocation}</span>
+                                        <span class="match-detail" class:conflict-detail={!!conflict}>{conflict ? `Conflict: ${conflict.entries.length} matching installs` : `${loaderTypeLabel(match)} in ${match.expectedLocation}`}</span>
                                     {:else}
                                         <span class="match-detail missing-match">Not installed in this game folder.</span>
                                     {/if}
@@ -1333,7 +1565,8 @@
                         {@const entryNexusModId = numericNexusId(entry.nexusModId)}
                         {@const inventoryUpdate = inventoryUpdateLabel(entry)}
                         {@const inventoryTone = updateTone(inventoryUpdate)}
-                        <article class="nexus-card inventory-card" class:nexus-installed={entry.enabled}>
+                        {@const conflict = conflictForEntry(entry)}
+                        <article class="nexus-card inventory-card" class:nexus-installed={entry.enabled} class:nexus-conflict={!!conflict}>
                             <div class="inventory-icon">
                                 <span>{entry.loaderType === "bepinex-plugin" ? "BEP" : "RED"}</span>
                             </div>
@@ -1344,9 +1577,14 @@
                                         <span class="mod-title">{entry.name}</span>
                                         <span class="mod-byline">{loaderTypeLabel(entry)} · {entry.author ?? "Unknown author"}</span>
                                     </div>
-                                    <span class="source-pill" class:source-vortex={entry.installSource === "vortex"} class:source-native={entry.installSource === "native"} class:source-manual={entry.installSource === "manual"}>
-                                        {describeInstallSource(entry)}
-                                    </span>
+                                    <div class="card-pills">
+                                        {#if conflict}
+                                            <span class="source-pill conflict-pill">Conflict</span>
+                                        {/if}
+                                        <span class="source-pill" class:source-vortex={entry.installSource === "vortex"} class:source-native={entry.installSource === "native"} class:source-manual={entry.installSource === "manual"}>
+                                            {describeInstallSource(entry)}
+                                        </span>
+                                    </div>
                                 </div>
 
                                 <div class="facts inventory-facts">
@@ -1375,7 +1613,7 @@
                                         />
                                         <span>{entry.enabled ? "Enabled" : "Disabled"}</span>
                                     </label>
-                                    <span class="match-detail">{entry.installSource === "vortex" ? "Managed by Vortex deployment metadata" : "Managed by OpenACAI Mod Manager"}</span>
+                                    <span class="match-detail" class:conflict-detail={!!conflict}>{conflict ? `Conflict: ${conflict.entries.length} matching installs` : entry.installSource === "vortex" ? "Managed by Vortex deployment metadata" : "Managed by OpenACAI Mod Manager"}</span>
 
                                     <div class="button-row">
                                         <button on:click={() => openInventoryLocation(entry)}>Open Folder</button>
@@ -1475,6 +1713,7 @@
                         <span>Updated <b>{formatTimestamp(selectedModDetails?.updated_timestamp, selectedModDetails?.updated_time)}</b></span>
                         <span>Downloads <b>{formatNumber(selectedModDetails?.mod_downloads)}</b></span>
                         <span>Installed <b>{describeInstallSource(installedMatch(selectedMod))}</b></span>
+                        <span>Dependencies <b class:update-state-update={dependencyIssueCount > 0} class:update-state-tracked={dependencyReviewCount > 0 && dependencyIssueCount === 0} class:update-state-current={resolvedDependencies.length > 0 && dependencyIssueCount === 0 && dependencyReviewCount === 0}>{dependencySummaryLabel()}</b></span>
                     </div>
 
                     <div class="file-picker">
@@ -1493,13 +1732,31 @@
 
                     <div class="dependency-box">
                         <span class="detail-section-title">Dependencies</span>
-                        {#if selectedDependencies.length === 0}
+                        {#if resolvedDependencies.length === 0}
                             <span class="dependency-empty">No API-listed dependencies for the selected file. Still review the author directions for manual requirements.</span>
                         {:else}
-                            {#each selectedDependencies as dependency}
-                                <div class="dependency-row">
-                                    <span>{dependency.mod_name}</span>
+                            {#each resolvedDependencies as dependency}
+                                <div
+                                    class="dependency-row"
+                                    class:dependency-installed={dependency.status === "installed"}
+                                    class:dependency-missing={dependency.status === "missing"}
+                                    class:dependency-mismatch={dependency.status === "version-mismatch"}
+                                    class:dependency-review={dependency.status === "review"}
+                                >
+                                    <div class="dependency-head">
+                                        <span>{dependency.mod_name}</span>
+                                        <b>{dependency.status === "installed" ? "Installed" : dependency.status === "missing" ? "Missing" : dependency.status === "version-mismatch" ? "Version" : "Review"}</b>
+                                    </div>
                                     <small>{dependency.file_name ?? dependency.group_name ?? "Candidate file"} {dependency.version ? `· v${dependency.version}` : ""}</small>
+                                    <small>{dependencyStatusLabel(dependency)}</small>
+                                    <div class="dependency-actions">
+                                        {#if dependency.mod_id}
+                                            <button on:click={() => openDependencyPage(dependency)}>Nexus</button>
+                                        {/if}
+                                        {#if dependency.match}
+                                            <button on:click={() => openDependencyLocation(dependency)}>Open Folder</button>
+                                        {/if}
+                                    </div>
                                 </div>
                             {/each}
                         {/if}
@@ -1711,7 +1968,7 @@
         display: grid;
         flex: 0 0 auto;
         gap: 0.6em;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
     }
 
     .summary-card {
@@ -1757,6 +2014,10 @@
 
     .active-summary .summary-value {
         color: #62f09b;
+    }
+
+    .conflict-summary .summary-value {
+        color: #fdc66d;
     }
 
     .catalog-panel {
@@ -1869,6 +2130,10 @@
         border-left: 3px solid #62f09b;
     }
 
+    .nexus-conflict {
+        border-left: 3px solid #fdc66d;
+    }
+
     .thumbnail-button {
         background: rgba(8, 8, 8, 0.85);
         border: 0;
@@ -1911,6 +2176,16 @@
         display: flex;
         gap: 0.7em;
         justify-content: space-between;
+        min-width: 0;
+    }
+
+    .card-pills {
+        display: flex;
+        flex: 0 0 auto;
+        flex-wrap: wrap;
+        gap: 0.35em;
+        justify-content: flex-end;
+        max-width: min(32vw, 24em);
         min-width: 0;
     }
 
@@ -2096,6 +2371,15 @@
     }
 
     .source-manual {
+        color: #fdc66d;
+    }
+
+    .conflict-pill {
+        border-color: rgba(253, 198, 109, 0.42);
+        color: #fdc66d;
+    }
+
+    .conflict-detail {
         color: #fdc66d;
     }
 
@@ -2378,6 +2662,64 @@
     .dependency-row span {
         color: #fdc66d;
         font-weight: 900;
+    }
+
+    .dependency-head {
+        align-items: flex-start;
+        display: flex;
+        gap: 0.55em;
+        justify-content: space-between;
+        min-width: 0;
+    }
+
+    .dependency-head span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .dependency-head b {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #aab8c5;
+        flex: 0 0 auto;
+        font-size: 0.72em;
+        font-weight: 900;
+        padding: 0.18em 0.45em;
+        text-transform: uppercase;
+    }
+
+    .dependency-installed .dependency-head span,
+    .dependency-installed .dependency-head b {
+        color: #62f09b;
+    }
+
+    .dependency-missing .dependency-head span,
+    .dependency-missing .dependency-head b,
+    .dependency-mismatch .dependency-head span,
+    .dependency-mismatch .dependency-head b {
+        color: #fdc66d;
+    }
+
+    .dependency-review .dependency-head span,
+    .dependency-review .dependency-head b {
+        color: #78d9f4;
+    }
+
+    .dependency-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35em;
+        margin-top: 0.25em;
+    }
+
+    .dependency-actions button {
+        font-size: 0.72em;
+        margin: 0;
+        min-height: 2.15em;
+        min-width: 6em;
+        padding: 0.35em 0.55em;
     }
 
     .detail-actions {
