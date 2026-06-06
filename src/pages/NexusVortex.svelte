@@ -352,10 +352,16 @@
         dependency.status === "missing" || dependency.status === "version-mismatch"
     ).length;
     $: dependencyReviewCount = resolvedDependencies.filter(dependency => dependency.status === "review").length;
+    $: dependencyInstalledCount = resolvedDependencies.filter(dependency => dependency.status === "installed").length;
+    $: dependencyMissingCount = resolvedDependencies.filter(dependency => dependency.status === "missing").length;
+    $: dependencyMismatchCount = resolvedDependencies.filter(dependency => dependency.status === "version-mismatch").length;
     $: nestedDependencyIssueCount = resolvedNestedDependencies.filter(source =>
         source.dependency.status === "missing" || source.dependency.status === "version-mismatch"
     ).length;
     $: nestedDependencyReviewCount = resolvedNestedDependencies.filter(source => source.dependency.status === "review").length;
+    $: nestedDependencyInstalledCount = resolvedNestedDependencies.filter(source => source.dependency.status === "installed").length;
+    $: nestedDependencyMissingCount = resolvedNestedDependencies.filter(source => source.dependency.status === "missing").length;
+    $: nestedDependencyMismatchCount = resolvedNestedDependencies.filter(source => source.dependency.status === "version-mismatch").length;
     $: totalDependencyIssueCount = dependencyIssueCount + nestedDependencyIssueCount;
     $: totalDependencyReviewCount = dependencyReviewCount + nestedDependencyReviewCount;
     $: selectedInstallMatch = selectedMod
@@ -2014,6 +2020,76 @@
         }
 
         return "Ready";
+    }
+
+    function apiDependencyReadinessLabel(): string {
+        if (resolvedDependencies.length === 0) {
+            return selectedDependencyMessage ? "No API rows returned" : "No API rows listed";
+        }
+
+        const parts = dependencyReadinessParts(
+            dependencyInstalledCount,
+            dependencyMissingCount,
+            dependencyMismatchCount,
+            dependencyReviewCount
+        );
+        return parts.length > 0 ? parts.join(" · ") : "Ready";
+    }
+
+    function authorRequirementReadinessLabel(): string {
+        if (selectedAuthorRequirements.length === 0) {
+            return "No author-linked hints";
+        }
+
+        return `${selectedAuthorRequirements.length} requirement ${selectedAuthorRequirements.length === 1 ? "link" : "links"} to review`;
+    }
+
+    function nestedDependencyReadinessLabel(): string {
+        if (isResolvingNestedDependencies) {
+            return "Checking nested files";
+        }
+
+        if (resolvedNestedDependencies.length > 0) {
+            const parts = dependencyReadinessParts(
+                nestedDependencyInstalledCount,
+                nestedDependencyMissingCount,
+                nestedDependencyMismatchCount,
+                nestedDependencyReviewCount
+            );
+            return parts.length > 0 ? parts.join(" · ") : "Ready";
+        }
+
+        if (nestedDependencySummary) {
+            return nestedDependencySummary;
+        }
+
+        return nestedDependencyCheckAvailable() ? "Nested check available" : "No nested file IDs";
+    }
+
+    function dependencyReadinessParts(
+        installedCount: number,
+        missingCount: number,
+        mismatchCount: number,
+        reviewCount: number
+    ): string[] {
+        const parts: string[] = [];
+        if (installedCount > 0) {
+            parts.push(`${installedCount} installed`);
+        }
+
+        if (missingCount > 0) {
+            parts.push(`${missingCount} missing`);
+        }
+
+        if (mismatchCount > 0) {
+            parts.push(`${mismatchCount} version`);
+        }
+
+        if (reviewCount > 0) {
+            parts.push(`${reviewCount} review`);
+        }
+
+        return parts;
     }
 
     function dependencyStatusLabel(dependency: ResolvedDependency): string {
@@ -4808,6 +4884,39 @@
                                 {isResolvingNestedDependencies ? "Checking..." : "Check Nested"}
                             </button>
                         </div>
+                        <div class="dependency-readiness-grid" aria-label="Dependency readiness summary">
+                            <span
+                                class="dependency-readiness-chip"
+                                class:dependency-readiness-ok={resolvedDependencies.length > 0 && dependencyIssueCount === 0 && dependencyReviewCount === 0}
+                                class:dependency-readiness-warn={dependencyIssueCount > 0}
+                                class:dependency-readiness-review={dependencyReviewCount > 0 && dependencyIssueCount === 0}
+                                title={apiDependencyReadinessLabel()}
+                            >
+                                <small>API</small>
+                                <b>{resolvedDependencies.length}</b>
+                                <span>{apiDependencyReadinessLabel()}</span>
+                            </span>
+                            <span
+                                class="dependency-readiness-chip"
+                                class:dependency-readiness-review={selectedAuthorRequirements.length > 0}
+                                title={authorRequirementReadinessLabel()}
+                            >
+                                <small>Author</small>
+                                <b>{selectedAuthorRequirements.length}</b>
+                                <span>{authorRequirementReadinessLabel()}</span>
+                            </span>
+                            <span
+                                class="dependency-readiness-chip"
+                                class:dependency-readiness-ok={resolvedNestedDependencies.length > 0 && nestedDependencyIssueCount === 0 && nestedDependencyReviewCount === 0}
+                                class:dependency-readiness-warn={nestedDependencyIssueCount > 0}
+                                class:dependency-readiness-review={(isResolvingNestedDependencies || nestedDependencyReviewCount > 0 || (resolvedNestedDependencies.length === 0 && nestedDependencyCheckAvailable())) && nestedDependencyIssueCount === 0}
+                                title={nestedDependencyReadinessLabel()}
+                            >
+                                <small>Nested</small>
+                                <b>{resolvedNestedDependencies.length}</b>
+                                <span>{nestedDependencyReadinessLabel()}</span>
+                            </span>
+                        </div>
                         {#if nestedDependencySummary}
                             <span class="dependency-empty">{nestedDependencySummary}</span>
                         {/if}
@@ -6927,6 +7036,76 @@
     .dependency-box-head button:disabled {
         cursor: default;
         opacity: 0.52;
+    }
+
+    .dependency-readiness-grid {
+        display: grid;
+        gap: 0.45em;
+        grid-template-columns: repeat(auto-fit, minmax(8.4em, 1fr));
+    }
+
+    .dependency-readiness-chip {
+        background: rgba(255, 255, 255, 0.045);
+        border: 1px solid rgba(255, 255, 255, 0.11);
+        box-sizing: border-box;
+        display: grid;
+        gap: 0.16em;
+        grid-template-columns: auto minmax(0, 1fr);
+        min-width: 0;
+        padding: 0.45em 0.5em;
+    }
+
+    .dependency-readiness-chip small {
+        color: #88939e;
+        font-size: 0.68em;
+        font-weight: 900;
+        grid-column: 1 / -1;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+    }
+
+    .dependency-readiness-chip b {
+        color: #dce4ea;
+        font-size: 1.05em;
+        line-height: 1.05;
+    }
+
+    .dependency-readiness-chip span {
+        align-self: center;
+        color: #a8b2bc;
+        font-size: 0.72em;
+        font-weight: 800;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .dependency-readiness-ok {
+        border-color: rgba(98, 240, 155, 0.34);
+    }
+
+    .dependency-readiness-ok b,
+    .dependency-readiness-ok small {
+        color: #62f09b;
+    }
+
+    .dependency-readiness-warn {
+        border-color: rgba(253, 198, 109, 0.42);
+    }
+
+    .dependency-readiness-warn b,
+    .dependency-readiness-warn small {
+        color: #fdc66d;
+    }
+
+    .dependency-readiness-review {
+        border-color: rgba(120, 217, 244, 0.34);
+    }
+
+    .dependency-readiness-review b,
+    .dependency-readiness-review small {
+        color: #78d9f4;
     }
 
     .changelog-box {
