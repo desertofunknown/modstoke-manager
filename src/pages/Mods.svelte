@@ -7,6 +7,9 @@
     import InfiniteScroll from "../lib/InfiniteScroll.svelte";
     import { debounce } from "lodash";
     import SvgSpinnersBlocksWave from '~icons/svg-spinners/blocks-wave'
+    import LucideGrid2X2 from "~icons/lucide/grid-2x2";
+    import LucideList from "~icons/lucide/list";
+    import LucideRefreshCw from "~icons/lucide/refresh-cw";
 
     let filtered: Mod[] = [];
     let filterTerm: string = "";
@@ -21,6 +24,7 @@
     let installedSelected = false;
 
     let isGrid = false;
+    let layoutLocked = false;
 
     let page = 1;
 	let newBatch: Mod[] = [];
@@ -91,7 +95,7 @@
         }
         
 
-        isGrid = window.innerWidth > 1000;
+        syncResponsiveLayout();
     });
 
     // async function filter() {
@@ -213,6 +217,17 @@
         await toggleInstalled();
     }
 
+    function syncResponsiveLayout() {
+        if (!layoutLocked) {
+            isGrid = window.innerWidth > 1000;
+        }
+    }
+
+    function toggleLayout() {
+        layoutLocked = true;
+        isGrid = !isGrid;
+    }
+
     function matchesClientFilters(mod: Mod): boolean {
         const search = filterTerm.trim().toLowerCase();
         if (search && ![
@@ -254,14 +269,26 @@
 
 </script>
 
-<svelte:window on:resize={() => isGrid = window.innerWidth > 1000} />
+<svelte:window on:resize={syncResponsiveLayout} />
 <div class="column mods-page">
     {#if $isPathValid}
-        <div class="row-center">
+        <div class="row-center mods-toolbar">
             <input class="generic-input search-input" placeholder="Search" type="text" value={filterTerm} on:input={(event) => handleSearchInput((event.currentTarget as HTMLInputElement).value)} />
-            <button class="btn-left cat-btn" class:cat-btn-selected={onlineSelected} on:click={toggleOnline}>Online</button>
-            <button class="btn-right cat-btn" class:cat-btn-selected={installedSelected} on:click={toggleInstalled}>Installed</button>
-            <button class="refresh-small" disabled={isLoading} on:click={refreshMods}>Refresh</button>
+            <div class="mode-buttons">
+                <button class="btn-left cat-btn" class:cat-btn-selected={onlineSelected} on:click={toggleOnline}>Online</button>
+                <button class="btn-right cat-btn" class:cat-btn-selected={installedSelected} on:click={toggleInstalled}>Installed</button>
+            </div>
+            <button class="refresh-small icon-text-button" disabled={isLoading} on:click={refreshMods} title="Refresh mods">
+                <LucideRefreshCw aria-hidden="true" />
+                <span>Refresh</span>
+            </button>
+            <button class="layout-toggle" on:click={toggleLayout} aria-label={isGrid ? "Use list layout" : "Use grid layout"} title={isGrid ? "Use list layout" : "Use grid layout"}>
+                {#if isGrid}
+                    <LucideList aria-hidden="true" />
+                {:else}
+                    <LucideGrid2X2 aria-hidden="true" />
+                {/if}
+            </button>
         </div>
 
         <div class="filter-row">
@@ -297,6 +324,7 @@
 
         <div class="mods-note">
             <span>{visibleMods.length} shown from {filtered.length} {onlineSelected ? "loaded" : "installed"}.</span>
+            <span>{isGrid ? "Grid layout." : "List layout."}</span>
             {#if categories.length > 0}
                 <span>{categories.length} categories.</span>
             {/if}
@@ -365,9 +393,24 @@
         grid-gap: 1em;
     }
 
+    .mods-toolbar {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45em;
+        margin-bottom: 0.65em;
+        width: 100%;
+    }
+
     .search-input {
-        flex: 1;
-        margin-right: 0.5em;
+        flex: 1 1 18rem;
+        margin: 0;
+        min-width: 14rem;
+    }
+
+    .mode-buttons {
+        display: flex;
+        flex: 0 0 auto;
     }
 
     .filter-row {
@@ -435,20 +478,44 @@
     }
 
     .cat-btn {
-        padding: 0;
-        margin-top: -4px;
-        height: 2.7em;
-        width: 6em;
-        color: #a2a2a2;
-    }
-
-    .refresh-small {
         color: #a2a2a2;
         flex: 0 0 auto;
         height: 2.7em;
-        margin: -4px 0 0 0.45em;
+        margin: 0;
+        padding: 0;
+        width: 6em;
+    }
+
+    .refresh-small {
+        align-items: center;
+        color: #a2a2a2;
+        display: flex;
+        flex: 0 0 auto;
+        gap: 0.42em;
+        height: 2.7em;
+        justify-content: center;
+        margin: 0;
         min-width: 7em;
         padding: 0 0.8em;
+    }
+
+    .layout-toggle {
+        align-items: center;
+        color: #a2a2a2;
+        display: flex;
+        flex: 0 0 2.85em;
+        height: 2.7em;
+        justify-content: center;
+        margin: 0;
+        padding: 0;
+        width: 2.85em;
+    }
+
+    .icon-text-button :global(svg),
+    .layout-toggle :global(svg) {
+        display: block;
+        font-size: 1.05em;
+        stroke-width: 2.25;
     }
 
     .cat-btn-selected {
@@ -488,6 +555,11 @@
     }
 
     @media (max-width: 850px) {
+        .search-input {
+            flex-basis: 100%;
+            min-width: 0;
+        }
+
         .filter-row {
             grid-template-columns: 1fr;
         }

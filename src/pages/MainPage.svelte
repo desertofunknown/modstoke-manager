@@ -2,7 +2,7 @@
     import InstallFeature from "../lib/InstallationComponent.svelte";
     import PathSelector from "../lib/PathSelector.svelte";
     import { openAcaiLoaderFeature, melonFeature } from "../lib/featureInstaller";
-    import { isPathValid, isDotnetInstalled, getDirectoryPath, processProgress, processing } from "../lib/store";
+    import { gameExePath, isPathValid, isDotnetInstalled, getDirectoryPath, processProgress, processing } from "../lib/store";
     import {
         ensureLatestOpenAcaiLoader,
         getInstalledLoaderVersion,
@@ -18,11 +18,22 @@
     let loaderReport: LoaderIntegrityReport | null = null;
     let loaderStatus = "Not checked";
     let loaderStatusClass = "manual";
-    let checkedLoader = false;
+    let lastCheckedLoaderExePath = "";
+    let loaderStatusRequestId = 0;
+    let loaderProgressRequestId = 0;
 
-    $: if ($isPathValid && !checkedLoader) {
-        checkedLoader = true;
-        refreshLoaderStatus(false);
+    $: if ($isPathValid && $gameExePath && $gameExePath !== lastCheckedLoaderExePath) {
+        loaderReport = null;
+        loaderStatus = "Checking loader files...";
+        loaderStatusClass = "manual";
+        void refreshLoaderStatus(false);
+    }
+
+    $: if (!$isPathValid) {
+        lastCheckedLoaderExePath = "";
+        loaderReport = null;
+        loaderStatus = "Not checked";
+        loaderStatusClass = "manual";
     }
 
     async function openFolder() {
@@ -71,22 +82,40 @@
     }
 
     async function refreshLoaderStatus(showProgress = true) {
+        const requestId = ++loaderStatusRequestId;
+        const expectedExePath = $gameExePath;
+        lastCheckedLoaderExePath = expectedExePath;
+
         if (showProgress) {
+            loaderProgressRequestId = requestId;
             processing.set(true);
             processProgress.set(0);
         }
 
         try {
-            loaderReport = await verifyInstalledLoader();
-            updateLoaderStatus(loaderReport);
+            const report = await verifyInstalledLoader();
+            if (!isCurrentLoaderStatusRequest(requestId, expectedExePath)) {
+                return;
+            }
+
+            loaderReport = report;
+            updateLoaderStatus(report);
         } catch (error) {
+            if (!isCurrentLoaderStatusRequest(requestId, expectedExePath)) {
+                return;
+            }
+
             loaderStatus = `Loader update manifest unavailable: ${error}`;
             loaderStatusClass = "manual";
         } finally {
-            if (showProgress) {
+            if (showProgress && loaderProgressRequestId === requestId) {
                 processing.set(false);
             }
         }
+    }
+
+    function isCurrentLoaderStatusRequest(requestId: number, expectedExePath: string) {
+        return requestId === loaderStatusRequestId && expectedExePath === $gameExePath;
     }
 
     async function repairLoader() {

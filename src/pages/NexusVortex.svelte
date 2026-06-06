@@ -121,6 +121,8 @@
     let autoEndorseQueueLabel = "Loading endorsement state";
     let ssoSocket: WebSocket | null = null;
     let ssoTimeout: number | null = null;
+    let refreshCooldownSeconds = 0;
+    let refreshCooldownTimer: number | null = null;
 
     const NEXUS_SSO_URL = "wss://sso.nexusmods.com";
     const NEXUS_SSO_APPLICATION_SLUG = "openacai-mod-manager";
@@ -132,6 +134,10 @@
     const MAX_AUTO_ENDORSE_PER_REFRESH = 3;
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
     let nextManualRefreshAt = 0;
+    $: manualRefreshButtonLabel = refreshCooldownSeconds > 0 ? `Refresh ${refreshCooldownSeconds}s` : "Refresh";
+    $: manualRefreshButtonTitle = refreshCooldownSeconds > 0
+        ? `Manual Nexus refresh available in ${refreshCooldownSeconds}s`
+        : "Refresh Nexus data";
 
     $: nexusCategoryOptions = buildNexusCategoryOptions(nexusCategories, mods);
     $: if (selectedNexusCategory !== "all" && !nexusCategoryOptions.includes(selectedNexusCategory)) {
@@ -247,6 +253,7 @@
 
     onDestroy(() => {
         cleanupSso();
+        cleanupManualRefreshCooldown();
     });
 
     async function refreshSession() {
@@ -420,8 +427,57 @@
         }
     }
 
+    function beginManualRefreshCooldown(now = Date.now()) {
+        nextManualRefreshAt = now + NEXUS_MANUAL_REFRESH_COOLDOWN_MS;
+        refreshCooldownSeconds = secondsUntilManualRefresh(now);
+        ensureManualRefreshCooldownTimer();
+    }
+
+    function ensureManualRefreshCooldownTimer() {
+        if (refreshCooldownTimer !== null) {
+            return;
+        }
+
+        refreshCooldownTimer = window.setInterval(updateManualRefreshCooldown, 1000);
+    }
+
+    function updateManualRefreshCooldown() {
+        refreshCooldownSeconds = secondsUntilManualRefresh();
+
+        if (refreshCooldownSeconds > 0) {
+            if (status.startsWith("Nexus refresh available in ")) {
+                status = `Nexus refresh available in ${refreshCooldownSeconds}s.`;
+            }
+
+            return;
+        }
+
+        clearManualRefreshCooldownTimer();
+        if (status.startsWith("Nexus refresh available in ")) {
+            status = "";
+        }
+    }
+
+    function secondsUntilManualRefresh(now = Date.now()) {
+        return Math.max(0, Math.ceil((nextManualRefreshAt - now) / 1000));
+    }
+
+    function clearManualRefreshCooldownTimer() {
+        if (refreshCooldownTimer !== null) {
+            window.clearInterval(refreshCooldownTimer);
+            refreshCooldownTimer = null;
+        }
+    }
+
+    function cleanupManualRefreshCooldown() {
+        clearManualRefreshCooldownTimer();
+        refreshCooldownSeconds = 0;
+    }
+
     async function disconnect() {
         cleanupSso();
+        cleanupManualRefreshCooldown();
+        nextManualRefreshAt = 0;
         await clearNexusApiKey();
         session = { is_connected: false };
         mods = [];
@@ -440,13 +496,15 @@
 
         if (forceRefresh) {
             const now = Date.now();
-            if (now < nextManualRefreshAt) {
-                const seconds = Math.ceil((nextManualRefreshAt - now) / 1000);
-                status = `Nexus refresh available in ${seconds}s.`;
+            const cooldownSeconds = secondsUntilManualRefresh(now);
+            if (cooldownSeconds > 0) {
+                refreshCooldownSeconds = cooldownSeconds;
+                ensureManualRefreshCooldownTimer();
+                status = `Nexus refresh available in ${cooldownSeconds}s.`;
                 return;
             }
 
-            nextManualRefreshAt = now + NEXUS_MANUAL_REFRESH_COOLDOWN_MS;
+            beginManualRefreshCooldown(now);
         }
 
         isLoading = true;
@@ -1957,7 +2015,7 @@
                     <button class="cat-btn middle-btn" class:cat-btn-selected={selectedView === "latest_added"} on:click={() => loadMods("latest_added")}>{viewLabel("latest_added")}</button>
                     <button class="btn-right cat-btn" class:cat-btn-selected={selectedView === "latest_updated"} on:click={() => loadMods("latest_updated")}>{viewLabel("latest_updated")}</button>
                 </div>
-                <button class="cat-btn refresh-btn" disabled={isLoading} on:click={() => loadMods(selectedView, true)}>Refresh</button>
+                <button class="cat-btn refresh-btn" disabled={isLoading || refreshCooldownSeconds > 0} title={manualRefreshButtonTitle} on:click={() => loadMods(selectedView, true)}>{manualRefreshButtonLabel}</button>
             </div>
 
             <div class="notice api-note">
