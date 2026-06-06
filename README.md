@@ -15,6 +15,7 @@ It is based on Toni Macaroni's RedManager, but the main loader flow has been cha
 - Verify loader-owned files with SHA256 before launching the game, and keep a cached last-known release manifest for offline comparison.
 - Detect whether installed mods are RedLoader packages, RedLoader libraries, BepInEx plugins, native-store installs, manual installs, or Nexus/Vortex-managed packages.
 - Browse the live SOTF Mods storefront with category, type, compatibility, search, and installed/online filters that mirror the real store taxonomy.
+- Search and filter installed SOTF Mods entries locally without being bounced back to the online catalog.
 - Enable or disable installed native/manual mods from the manager with source-aware checkboxes; Vortex-managed packages are detected but left read-only so Vortex deployment metadata is not corrupted.
 - Connect a Nexus Mods account through the Nexus browser SSO flow where available, with a manual API token fallback for testing stored locally in the OS credential vault, and browse Nexus/Vortex-side Sons Of The Forest mods with cross-store install status.
 - Open Nexus mod detail pages inside the manager to read author directions, choose a specific file, inspect API-listed dependencies for that file, and hand the selected file to Vortex through the `nxm://` protocol.

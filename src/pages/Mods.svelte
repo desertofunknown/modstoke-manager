@@ -107,9 +107,11 @@
     //     });
     // }
 
-    const handleSearchInput = debounce(async e => {
-        filterTerm = e.target.value;
-        await reloadOnline();
+    const handleSearchInput = debounce(async (value: string) => {
+        filterTerm = value;
+        if (onlineSelected) {
+            await reloadOnline();
+        }
     }, 600);
 
     async function loadCategories() {
@@ -128,6 +130,12 @@
         newBatch = [];
         hasLoadedOnce = false;
         await fetchData();
+    }
+
+    async function handleFacetChange() {
+        if (onlineSelected) {
+            await reloadOnline();
+        }
     }
 
     async function toggleOnline() {
@@ -176,6 +184,29 @@
     }
 
     function matchesClientFilters(mod: Mod): boolean {
+        const search = filterTerm.trim().toLowerCase();
+        if (search && ![
+            mod.name,
+            mod.shortDescription ?? "",
+            mod.user?.name ?? "",
+            mod.latestVersion ?? "",
+            mod.type ?? "",
+            mod.category?.name ?? "",
+            mod.installedMod?.manifest?.id ?? "",
+            mod.installedMod?.vortexPackage ?? "",
+            mod.installedMod?.store ?? ""
+        ].some(value => value.toLowerCase().includes(search))) {
+            return false;
+        }
+
+        if (selectedCategory !== "all" && mod.category?.slug !== selectedCategory) {
+            return false;
+        }
+
+        if (selectedType !== "all" && mod.type !== selectedType && mod.installedMod?.manifest?.type !== selectedType) {
+            return false;
+        }
+
         if (selectedCompatibility === "mp-compatible" && !mod.isMultiplayerCompatible) {
             return false;
         }
@@ -197,15 +228,16 @@
 <div class="column mods-page">
     {#if $isPathValid}
         <div class="row-center">
-            <input class="generic-input search-input" placeholder="Search" type="text" on:input={handleSearchInput} />
+            <input class="generic-input search-input" placeholder="Search" type="text" value={filterTerm} on:input={(event) => handleSearchInput((event.currentTarget as HTMLInputElement).value)} />
             <button class="btn-left cat-btn" class:cat-btn-selected={onlineSelected} on:click={toggleOnline}>Online</button>
             <button class="btn-right cat-btn" class:cat-btn-selected={installedSelected} on:click={toggleInstalled}>Installed</button>
+            <button class="refresh-small" disabled={isLoading} on:click={refreshMods}>Refresh</button>
         </div>
 
         <div class="filter-row">
             <label>
                 <span>Category</span>
-                <select bind:value={selectedCategory} on:change={reloadOnline}>
+                <select bind:value={selectedCategory} on:change={handleFacetChange}>
                     <option value="all">All categories</option>
                     {#each categories as category}
                         <option value={category.slug}>{category.name}</option>
@@ -214,7 +246,7 @@
             </label>
             <label>
                 <span>Type</span>
-                <select bind:value={selectedType} on:change={reloadOnline}>
+                <select bind:value={selectedType} on:change={handleFacetChange}>
                     <option value="all">All types</option>
                     <option value="Mod">Mods</option>
                     <option value="Library">Libraries</option>
@@ -339,6 +371,15 @@
         height: 2.7em;
         width: 6em;
         color: #a2a2a2;
+    }
+
+    .refresh-small {
+        color: #a2a2a2;
+        flex: 0 0 auto;
+        height: 2.7em;
+        margin: -4px 0 0 0.45em;
+        min-width: 7em;
+        padding: 0 0.8em;
     }
 
     .cat-btn-selected {
