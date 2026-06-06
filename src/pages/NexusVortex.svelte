@@ -3906,7 +3906,10 @@
         let text = (value ?? "")
             .replace(/\r\n?/g, "\n")
             .replace(/<br\s*\/?>/gi, "\n")
-            .replace(/<details\b[^>]*>\s*<summary\b[^>]*>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/gi, (_match, label: string, body: string) => `\n\n[spoiler=${plainText(label)}]${body}[/spoiler]\n\n`)
+            .replace(/<details\b[^>]*>\s*<summary\b[^>]*>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/gi, (_match, label: string, body: string) => {
+                const safeLabel = safeNexusBbLabel(plainText(label));
+                return `\n\n[details${safeLabel ? `=${safeLabel}` : ""}]${body}[/details]\n\n`;
+            })
             .replace(/<(iframe|embed|object|video|audio)\b([^>]*)>([\s\S]*?)<\/\1>/gi, (_match, tag: string, attrs: string, body: string) => {
                 return nexusHtmlMediaMarkup(tag, attrs, body);
             })
@@ -4600,7 +4603,7 @@
         const collapsible = block.match(/^\[(collapse|details|accordion|accordionitem)(?:=([^\]]+))?\]([\s\S]*?)\[\/\1\]$/i);
         if (collapsible) {
             const label = safeNexusLabel(collapsible[2]) || "Details";
-            return `<div class="nexus-rich-spoiler-block nexus-rich-details-block"><span>${escapeHtml(label)}</span>${renderNexusBlocks(collapsible[3], depth + 1)}</div>`;
+            return renderNexusDisclosure(label, collapsible[3], depth + 1, "details");
         }
 
         if (/^\[hr\]$/i.test(block)) {
@@ -4638,7 +4641,7 @@
         const spoiler = block.match(/^\[spoiler(?:=([^\]]+))?\]([\s\S]*?)\[\/spoiler\]$/i);
         if (spoiler) {
             const label = safeNexusLabel(spoiler[1]) || "Spoiler";
-            return `<div class="nexus-rich-spoiler-block"><span>${escapeHtml(label)}</span>${renderNexusBlocks(spoiler[2], depth + 1)}</div>`;
+            return renderNexusDisclosure(label, spoiler[2], depth + 1, "spoiler");
         }
 
         const indented = block.match(/^\[indent(?:=([^\]]+))?\]([\s\S]*?)\[\/indent\]$/i);
@@ -4658,6 +4661,11 @@
         }
 
         return `<p>${renderNexusInline(block)}</p>`;
+    }
+
+    function renderNexusDisclosure(label: string, body: string, depth: number, kind: "details" | "spoiler"): string {
+        const bodyHtml = renderNexusBlocks(body, depth);
+        return `<details class="nexus-rich-spoiler-block nexus-rich-disclosure nexus-rich-disclosure-${kind}"><summary>${escapeHtml(label)}</summary><div>${bodyHtml}</div></details>`;
     }
 
     function renderNexusListItem(item: string, depth: number): string {
@@ -5935,6 +5943,13 @@
             .replace(/\s+/g, " ")
             .trim()
             .slice(0, 80);
+    }
+
+    function safeNexusBbLabel(value?: string): string {
+        return safeNexusLabel(value)
+            .replace(/[\[\]\r\n]/g, "")
+            .trim()
+            .slice(0, 70);
     }
 
     function safeNexusListItemLabel(value?: string): string {
@@ -9142,8 +9157,62 @@
         padding: 0.65em 0.75em;
     }
 
-    .nexus-rich-text :global(.nexus-rich-details-block) {
+    .nexus-rich-text :global(.nexus-rich-disclosure-details) {
         border-left: 3px solid rgba(120, 217, 244, 0.3);
+    }
+
+    .nexus-rich-text :global(.nexus-rich-disclosure-spoiler) {
+        border-left: 3px solid rgba(253, 198, 109, 0.28);
+    }
+
+    .nexus-rich-text :global(.nexus-rich-disclosure) {
+        padding: 0;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-disclosure > summary) {
+        align-items: center;
+        color: #eefcff;
+        cursor: pointer;
+        display: flex;
+        font-size: 0.82em;
+        font-weight: 900;
+        gap: 0.45em;
+        list-style: none;
+        min-height: 2.35em;
+        padding: 0.55em 0.7em;
+        text-transform: uppercase;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-disclosure > summary::-webkit-details-marker) {
+        display: none;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-disclosure > summary::before) {
+        border-color: transparent transparent transparent currentColor;
+        border-style: solid;
+        border-width: 0.32em 0 0.32em 0.48em;
+        content: "";
+        flex: 0 0 auto;
+        transform-origin: 35% 50%;
+        transition: transform 120ms ease;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-disclosure[open] > summary::before) {
+        transform: rotate(90deg);
+    }
+
+    .nexus-rich-text :global(.nexus-rich-disclosure > summary:focus-visible) {
+        outline: 2px solid rgba(120, 217, 244, 0.55);
+        outline-offset: -2px;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-disclosure > div) {
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 0 0.75em 0.7em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-disclosure > div > :first-child) {
+        margin-top: 0.55em;
     }
 
     .nexus-rich-text :global(.nexus-rich-spoiler-block > span) {
