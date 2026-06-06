@@ -44,7 +44,7 @@ export type NexusMod = {
 };
 
 type RawNexusModsResponse = {
-    mods: NexusMod[] | { data?: NexusMod[] };
+    mods: Array<NexusMod & Record<string, unknown>> | { data?: Array<NexusMod & Record<string, unknown>> };
     rate_limit: NexusRateLimit;
 };
 
@@ -121,9 +121,10 @@ export async function fetchNexusSotfMods(view: NexusView, options: { force?: boo
 
     const request = invoke<RawNexusModsResponse>("nexus_fetch_sotf_mods", { view })
         .then((response) => {
+            const rawMods = Array.isArray(response.mods) ? response.mods : response.mods.data ?? [];
             const normalized = {
                 ...response,
-                mods: Array.isArray(response.mods) ? response.mods : response.mods.data ?? []
+                mods: rawMods.map(normalizeNexusMod).filter(mod => mod.mod_id > 0)
             };
             modsCache.set(view, { value: normalized, cachedAt: Date.now() });
             return normalized;
@@ -142,4 +143,64 @@ export function getNexusModPageUrl(mod: NexusMod): string {
 
 export function getNexusModDownloadUrl(mod: NexusMod): string {
     return `${getNexusModPageUrl(mod)}?tab=files`;
+}
+
+function normalizeNexusMod(raw: NexusMod & Record<string, unknown>): NexusMod {
+    const modId = numberField(raw.mod_id) ?? numberField(raw.id) ?? 0;
+    const rawSummary = stringField(raw.summary)
+        ?? stringField(raw.description)
+        ?? stringField(raw.short_description);
+
+    return {
+        ...raw,
+        mod_id: modId,
+        name: stringField(raw.name)
+            ?? stringField(raw.mod_name)
+            ?? stringField(raw.title)
+            ?? `Nexus Mod #${modId}`,
+        summary: cleanSummary(rawSummary),
+        version: stringField(raw.version) ?? stringField(raw.latest_version),
+        author: stringField(raw.author) ?? stringField(raw.uploaded_by),
+        uploaded_by: stringField(raw.uploaded_by),
+        picture_url: stringField(raw.picture_url)
+            ?? stringField(raw.picture)
+            ?? stringField(raw.thumbnail_url)
+            ?? stringField(raw.screenshot_url),
+        category_name: stringField(raw.category_name) ?? stringField(raw.category),
+        endorsement_count: numberField(raw.endorsement_count),
+        mod_downloads: numberField(raw.mod_downloads) ?? numberField(raw.downloads),
+        mod_unique_downloads: numberField(raw.mod_unique_downloads) ?? numberField(raw.unique_downloads),
+        created_timestamp: numberField(raw.created_timestamp),
+        updated_timestamp: numberField(raw.updated_timestamp) ?? numberField(raw.latest_file_update),
+        created_time: stringField(raw.created_time),
+        updated_time: stringField(raw.updated_time)
+    };
+}
+
+function stringField(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function numberField(value: unknown): number | undefined {
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+    }
+
+    if (typeof value === "string") {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : undefined;
+    }
+
+    return undefined;
+}
+
+function cleanSummary(value: string | undefined): string | undefined {
+    if (!value) {
+        return undefined;
+    }
+
+    return value
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
 }

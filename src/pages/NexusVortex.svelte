@@ -49,6 +49,10 @@
 
     $: nexusCategories = Array.from(new Set(mods.map(mod => mod.category_name).filter(Boolean) as string[])).sort();
     $: visibleNexusMods = mods.filter(matchesNexusFilters);
+    $: installedCount = inventory.length;
+    $: vortexCount = inventory.filter(entry => entry.installSource === "vortex").length;
+    $: nativeCount = inventory.filter(entry => entry.installSource === "native").length;
+    $: manualCount = inventory.filter(entry => entry.installSource === "manual").length;
 
     onMount(async () => {
         await refreshInventory();
@@ -380,6 +384,10 @@
 
         return fallback ? new Date(fallback).toLocaleDateString() : "-";
     }
+
+    function formatNumber(value?: number): string {
+        return typeof value === "number" ? value.toLocaleString() : "-";
+    }
 </script>
 
 <div class="column nexus-page">
@@ -435,91 +443,127 @@
     {/if}
 
     {#if session.is_connected}
-        <div class="row-center controls">
-            <button class="btn-left cat-btn" class:cat-btn-selected={selectedView === "trending"} on:click={() => loadMods("trending")}>{viewLabel("trending")}</button>
-            <button class="cat-btn middle-btn" class:cat-btn-selected={selectedView === "latest_added"} on:click={() => loadMods("latest_added")}>{viewLabel("latest_added")}</button>
-            <button class="btn-right cat-btn" class:cat-btn-selected={selectedView === "latest_updated"} on:click={() => loadMods("latest_updated")}>{viewLabel("latest_updated")}</button>
-            <button class="cat-btn refresh-btn" disabled={isLoading} on:click={() => loadMods(selectedView, true)}>Refresh</button>
+        <div class="vortex-summary">
+            <div class="summary-card">
+                <span class="summary-label">Nexus Account</span>
+                <span class="summary-value">{session.user?.name ?? "Connected"}</span>
+            </div>
+            <div class="summary-card" class:active-summary={!!vortexStagingPath}>
+                <span class="summary-label">Vortex Deployment</span>
+                <span class="summary-value">{vortexStagingPath ? "Detected" : "Not detected"}</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-label">Installed</span>
+                <span class="summary-value">{installedCount}</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-label">Vortex / Native / Manual</span>
+                <span class="summary-value">{vortexCount} / {nativeCount} / {manualCount}</span>
+            </div>
         </div>
 
-        <div class="notice api-note">
-            Nexus requests are cached locally for {NEXUS_CACHE_TTL_MINUTES} minutes. Refresh only when you need current Nexus data.
-        </div>
-
-        <div class="nexus-filter-row">
-            <input class="generic-input key-input" bind:value={nexusSearchTerm} placeholder="Search Nexus" />
-            <select bind:value={selectedNexusCategory}>
-                <option value="all">All categories</option>
-                {#each nexusCategories as category}
-                    <option value={category}>{category}</option>
-                {/each}
-            </select>
-            <select bind:value={selectedInstallFilter}>
-                <option value="all">All installs</option>
-                <option value="installed">Installed</option>
-                <option value="missing">Not installed</option>
-                <option value="vortex">Vortex</option>
-                <option value="native">OpenACAI store</option>
-                <option value="manual">Manual</option>
-            </select>
-        </div>
-
-        <div class="nexus-scroller">
-            {#each visibleNexusMods as mod}
-                {@const match = installedMatch(mod)}
-                <article class="nexus-card">
-                    <img
-                        class="nexus-img"
-                        src={mod.picture_url ?? "https://placehold.co/320x180/252525/FFF?text=Nexus"}
-                        alt={mod.name}
-                    />
-                    <div class="nexus-body">
-                        <div class="card-head">
-                            <span class="mod-title">{mod.name}</span>
-                            <span class="source-pill" class:source-vortex={match?.installSource === "vortex"} class:source-native={match?.installSource === "native"} class:source-manual={match?.installSource === "manual"}>
-                                {describeInstallSource(match)}
-                            </span>
-                        </div>
-                        {#if match}
-                            <label class="nexus-enable" class:vortex-disabled={match.installSource === "vortex"}>
-                                <input
-                                    type="checkbox"
-                                    checked={match.enabled}
-                                    disabled={match.installSource === "vortex"}
-                                    on:change={(event) => toggleMatchedMod(match, event)}
-                                />
-                                <span>{match.enabled ? "Enabled" : "Disabled"}</span>
-                            </label>
-                        {/if}
-                        <span class="description-content">{mod.summary ?? ""}</span>
-                        <div class="facts">
-                            <span>Author: <b>{mod.author ?? mod.uploaded_by ?? "-"}</b></span>
-                            <span>Version: <b>{mod.version ?? "-"}</b></span>
-                            <span>Updated: <b>{formatTimestamp(mod.updated_timestamp, mod.updated_time)}</b></span>
-                            <span>Downloads: <b>{mod.mod_downloads ?? "-"}</b></span>
-                        </div>
-                        {#if match}
-                            <span class="match-detail">{match.loaderType === "bepinex-plugin" ? "BepInEx plugin" : "RedLoader package"} in {match.expectedLocation}</span>
-                        {/if}
-                        <div class="button-row">
-                            <button on:click={() => openModPage(mod)}>Open Page</button>
-                            <button on:click={() => openDownloadPage(mod)}>Files</button>
-                        </div>
-                    </div>
-                </article>
-            {/each}
-
-            {#if isLoading}
-                <div class="loading-line">
-                    <SvgSpinnersBlocksWave />
-                    <span>{status}</span>
+        <section class="catalog-panel">
+            <div class="catalog-toolbar">
+                <div class="view-buttons">
+                    <button class="btn-left cat-btn" class:cat-btn-selected={selectedView === "trending"} on:click={() => loadMods("trending")}>{viewLabel("trending")}</button>
+                    <button class="cat-btn middle-btn" class:cat-btn-selected={selectedView === "latest_added"} on:click={() => loadMods("latest_added")}>{viewLabel("latest_added")}</button>
+                    <button class="btn-right cat-btn" class:cat-btn-selected={selectedView === "latest_updated"} on:click={() => loadMods("latest_updated")}>{viewLabel("latest_updated")}</button>
                 </div>
-            {/if}
+                <button class="cat-btn refresh-btn" disabled={isLoading} on:click={() => loadMods(selectedView, true)}>Refresh</button>
+            </div>
 
-            {#if !isLoading && visibleNexusMods.length === 0}
-                <div class="notice empty-nexus">No Nexus mods match the current filters.</div>
-            {/if}
-        </div>
+            <div class="notice api-note">
+                <span>Nexus requests are cached locally for {NEXUS_CACHE_TTL_MINUTES} minutes.</span>
+                <span>{visibleNexusMods.length} shown from {mods.length} loaded.</span>
+            </div>
+
+            <div class="nexus-filter-row">
+                <input class="generic-input key-input" bind:value={nexusSearchTerm} placeholder="Search Nexus" />
+                <select bind:value={selectedNexusCategory}>
+                    <option value="all">All categories</option>
+                    {#each nexusCategories as category}
+                        <option value={category}>{category}</option>
+                    {/each}
+                </select>
+                <select bind:value={selectedInstallFilter}>
+                    <option value="all">All installs</option>
+                    <option value="installed">Installed</option>
+                    <option value="missing">Not installed</option>
+                    <option value="vortex">Vortex</option>
+                    <option value="native">OpenACAI store</option>
+                    <option value="manual">Manual</option>
+                </select>
+            </div>
+
+            <div class="nexus-scroller" aria-live="polite">
+                {#each visibleNexusMods as mod}
+                    {@const match = installedMatch(mod)}
+                    <article class="nexus-card" class:nexus-installed={!!match}>
+                        <button class="thumbnail-button" aria-label={`Open ${mod.name} on Nexus`} on:click={() => openModPage(mod)}>
+                            <img
+                                class="nexus-img"
+                                src={mod.picture_url ?? "https://placehold.co/320x180/252525/FFF?text=Nexus"}
+                                alt=""
+                            />
+                        </button>
+
+                        <div class="nexus-body">
+                            <div class="card-head">
+                                <div class="title-stack">
+                                    <span class="mod-title">{mod.name}</span>
+                                    <span class="mod-byline">{mod.category_name ?? "Nexus"} · {mod.author ?? mod.uploaded_by ?? "Unknown author"}</span>
+                                </div>
+                                <span class="source-pill" class:source-vortex={match?.installSource === "vortex"} class:source-native={match?.installSource === "native"} class:source-manual={match?.installSource === "manual"}>
+                                    {describeInstallSource(match)}
+                                </span>
+                            </div>
+
+                            <span class="description-content">{mod.summary ?? "No summary is available from Nexus for this mod."}</span>
+
+                            <div class="facts">
+                                <span>Version <b>{mod.version ?? "-"}</b></span>
+                                <span>Updated <b>{formatTimestamp(mod.updated_timestamp, mod.updated_time)}</b></span>
+                                <span>Downloads <b>{formatNumber(mod.mod_downloads)}</b></span>
+                                <span>Endorsements <b>{formatNumber(mod.endorsement_count)}</b></span>
+                            </div>
+
+                            <div class="nexus-card-footer">
+                                {#if match}
+                                    <label class="nexus-enable" class:vortex-disabled={match.installSource === "vortex"}>
+                                        <input
+                                            type="checkbox"
+                                            checked={match.enabled}
+                                            disabled={match.installSource === "vortex"}
+                                            on:change={(event) => toggleMatchedMod(match, event)}
+                                        />
+                                        <span>{match.enabled ? "Enabled" : "Disabled"}</span>
+                                    </label>
+                                    <span class="match-detail">{match.loaderType === "bepinex-plugin" ? "BepInEx plugin" : "RedLoader package"} in {match.expectedLocation}</span>
+                                {:else}
+                                    <span class="match-detail missing-match">Not installed in this game folder.</span>
+                                {/if}
+
+                                <div class="button-row">
+                                    <button on:click={() => openModPage(mod)}>Open Page</button>
+                                    <button on:click={() => openDownloadPage(mod)}>Files</button>
+                                </div>
+                            </div>
+                        </div>
+                    </article>
+                {/each}
+
+                {#if isLoading}
+                    <div class="loading-line">
+                        <SvgSpinnersBlocksWave />
+                        <span>{status}</span>
+                    </div>
+                {/if}
+
+                {#if !isLoading && visibleNexusMods.length === 0}
+                    <div class="notice empty-nexus">No Nexus mods match the current filters.</div>
+                {/if}
+            </div>
+        </section>
     {:else}
         <div class="notice">Nexus login is required before this section can compare Vortex packages against native installs.</div>
     {/if}
@@ -527,21 +571,25 @@
 
 <style>
     .nexus-page {
-        gap: 1em;
+        gap: clamp(0.55em, 1vh, 0.9em);
         height: 100%;
         justify-content: flex-start;
         min-height: 0;
+        overflow: hidden;
     }
 
     .account-panel {
         align-items: center;
-        background: rgba(42, 42, 42, 0.78);
-        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: linear-gradient(90deg, rgba(42, 42, 42, 0.92), rgba(24, 24, 24, 0.82));
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        box-sizing: border-box;
         display: flex;
+        flex: 0 0 auto;
         gap: 1em;
         justify-content: space-between;
-        padding: 0.9em 1em;
+        padding: clamp(0.65em, 1.25vh, 0.9em) 1em;
         text-align: left;
+        width: 100%;
     }
 
     .account-copy {
@@ -552,22 +600,32 @@
 
     .panel-title {
         color: #eefcff;
-        font-size: 1.25em;
-        font-weight: 700;
+        font-size: clamp(1em, 1.8vh, 1.2em);
+        font-weight: 800;
+        letter-spacing: 0.02em;
     }
 
     .panel-subtitle {
         color: #9eb0bf;
-        font-size: 0.9em;
+        font-size: 0.85em;
+        line-height: 1.25;
     }
 
     .account-actions,
     .connect-row,
     .button-row,
-    .rate-row {
+    .rate-row,
+    .catalog-toolbar,
+    .view-buttons,
+    .nexus-card-footer {
         align-items: center;
         display: flex;
         gap: 0.5em;
+    }
+
+    .account-actions {
+        flex-wrap: wrap;
+        justify-content: flex-end;
     }
 
     .connect-row {
@@ -622,8 +680,11 @@
 
     .rate-row {
         color: #9eb0bf;
-        font-size: 0.85em;
+        flex: 0 0 auto;
+        font-size: 0.78em;
         justify-content: flex-end;
+        line-height: 1;
+        margin-top: -0.15em;
     }
 
     .notice {
@@ -644,20 +705,78 @@
         color: #fdc66d;
     }
 
-    .controls {
-        justify-content: flex-end;
+    .vortex-summary {
+        display: grid;
+        flex: 0 0 auto;
+        gap: 0.6em;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .summary-card {
+        background: rgba(18, 18, 18, 0.76);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 0.15em;
+        min-width: 0;
+        padding: 0.55em 0.75em;
+    }
+
+    .summary-label {
+        color: #8d99a5;
+        font-size: 0.68em;
+        font-weight: 900;
+        letter-spacing: 0.1em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .summary-value {
+        color: #e5e5e5;
+        font-size: 0.9em;
+        font-weight: 800;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .active-summary .summary-value {
+        color: #62f09b;
+    }
+
+    .catalog-panel {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: 0.65em;
+        min-height: 0;
+    }
+
+    .catalog-toolbar {
+        flex: 0 0 auto;
+        justify-content: space-between;
     }
 
     .api-note {
+        align-items: center;
         color: #8d99a5;
+        display: flex;
+        flex: 0 0 auto;
         font-size: 0.78em;
-        padding: 0.55em 0.8em;
+        justify-content: space-between;
+        line-height: 1.2;
+        padding: 0.5em 0.75em;
     }
 
     .nexus-filter-row {
         display: grid;
+        flex: 0 0 auto;
         gap: 0.6em;
-        grid-template-columns: minmax(16em, 1fr) minmax(10em, 0.6fr) minmax(10em, 0.6fr);
+        grid-template-columns: minmax(16em, 1fr) minmax(10em, 0.55fr) minmax(10em, 0.55fr);
         width: 100%;
     }
 
@@ -678,7 +797,7 @@
     }
 
     .cat-btn {
-        height: 2.7em;
+        height: 2.55em;
         margin: 0;
         padding: 0;
         width: 7em;
@@ -699,85 +818,162 @@
     }
 
     .nexus-scroller {
-        display: grid;
-        gap: 1em;
-        grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+        display: flex;
         flex: 1 1 auto;
+        flex-direction: column;
+        gap: 0.65em;
         min-height: 0;
         overflow-y: auto;
-        padding-right: 0.4em;
+        padding: 0 0.45em 0.15em 0;
+        scrollbar-gutter: stable;
     }
 
     .nexus-card {
-        background: #121212;
-        border-bottom: 2px solid #333;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
+        background: linear-gradient(90deg, rgba(24, 24, 24, 0.96), rgba(12, 12, 12, 0.88));
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-bottom-color: rgba(255, 255, 255, 0.22);
+        box-sizing: border-box;
+        display: grid;
+        flex: 0 0 auto;
+        gap: 0;
+        grid-template-columns: clamp(145px, 18vw, 230px) minmax(0, 1fr);
+        min-height: clamp(138px, 17vh, 178px);
         overflow: hidden;
     }
 
+    .nexus-installed {
+        border-left: 3px solid #62f09b;
+    }
+
+    .thumbnail-button {
+        background: rgba(8, 8, 8, 0.85);
+        border: 0;
+        box-shadow: none;
+        cursor: pointer;
+        display: block;
+        height: 100%;
+        margin: 0;
+        min-height: 100%;
+        min-width: 0;
+        overflow: hidden;
+        padding: 0;
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+
     .nexus-img {
-        aspect-ratio: 16 / 9;
         background: #252525;
+        display: block;
+        height: 100%;
+        min-height: clamp(138px, 17vh, 178px);
         object-fit: cover;
+        opacity: 0.9;
         width: 100%;
     }
 
     .nexus-body {
+        box-sizing: border-box;
         display: flex;
         flex: 1;
         flex-direction: column;
-        gap: 0.6em;
-        padding: 0.9em;
+        gap: 0.55em;
+        min-width: 0;
+        padding: 0.75em 0.85em;
         text-align: left;
     }
 
     .card-head {
         align-items: flex-start;
         display: flex;
-        gap: 0.6em;
+        gap: 0.7em;
         justify-content: space-between;
-    }
-
-    .mod-title {
-        color: #d8e4ec;
-        font-size: 1.05em;
-        font-weight: 700;
-        line-height: 1.25;
         min-width: 0;
     }
 
-    .description-content {
-        color: #8d99a5;
-        display: -webkit-box;
-        font-size: 0.9em;
-        line-clamp: 3;
-        line-height: 1.35;
-        margin: 0;
-        min-height: 3.6em;
+    .title-stack {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    .mod-title {
+        color: #eefcff;
+        font-size: clamp(0.98em, 1.6vh, 1.1em);
+        font-weight: 900;
+        line-height: 1.15;
+        min-width: 0;
         overflow: hidden;
-        -webkit-line-clamp: 3;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .mod-byline {
+        color: #8d99a5;
+        font-size: 0.76em;
+        font-weight: 800;
+        letter-spacing: 0.03em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .description-content {
+        color: #b2bdc8;
+        display: -webkit-box;
+        font-size: 0.84em;
+        line-height: 1.3;
+        margin: 0;
+        min-height: 2.55em;
+        overflow: hidden;
         -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
     }
 
     .facts {
         color: #87929d;
         display: grid;
-        font-size: 0.82em;
-        gap: 0.25em;
-        grid-template-columns: 1fr 1fr;
+        font-size: 0.76em;
+        gap: 0.25em 1em;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        min-width: 0;
+    }
+
+    .facts span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .facts b {
-        color: #b9c7d2;
-        font-weight: 600;
+        color: #d6dde5;
+        font-weight: 800;
+    }
+
+    .nexus-card-footer {
+        align-items: flex-end;
+        gap: 0.65em;
+        justify-content: space-between;
+        margin-top: auto;
+        min-width: 0;
     }
 
     .match-detail {
         color: #78d9f4;
-        font-size: 0.82em;
-        font-weight: 700;
+        flex: 1 1 auto;
+        font-size: 0.76em;
+        font-weight: 800;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .missing-match {
+        color: #87929d;
     }
 
     .nexus-enable {
@@ -786,10 +982,11 @@
         border: 1px solid rgba(255, 255, 255, 0.14);
         color: #62f09b;
         display: inline-flex;
-        font-size: 0.78em;
-        font-weight: 800;
-        gap: 0.55em;
-        padding: 0.38em 0.55em;
+        flex: 0 0 auto;
+        font-size: 0.72em;
+        font-weight: 900;
+        gap: 0.5em;
+        padding: 0.32em 0.5em;
         text-transform: uppercase;
         width: max-content;
     }
@@ -800,21 +997,21 @@
         border: 1px solid rgba(255, 255, 255, 0.35);
         display: grid;
         float: none;
-        height: 1.15em;
+        height: 1.05em;
         margin: 0;
         padding: 0;
         place-content: center;
         transform: none;
-        width: 1.15em;
+        width: 1.05em;
     }
 
     .nexus-enable input[type="checkbox"]::before {
         box-shadow: inset 1em 1em #62f09b;
         content: "";
-        height: 0.62em;
+        height: 0.58em;
         transform: scale(0);
         transition: transform 120ms ease-in-out;
-        width: 0.62em;
+        width: 0.58em;
     }
 
     .nexus-enable input[type="checkbox"]:checked::before {
@@ -833,16 +1030,17 @@
     .source-pill {
         background: #202832;
         border: 1px solid rgba(252, 252, 252, 0.08);
-        border-radius: 6px;
+        border-radius: 0;
         color: #bfc8d2;
         flex: 0 0 auto;
-        font-size: 0.72em;
-        font-weight: 700;
+        font-size: 0.68em;
+        font-weight: 800;
         line-height: 1.2;
-        max-width: 12em;
+        max-width: min(28vw, 18em);
         overflow: hidden;
         padding: 0.35em 0.55em;
         text-overflow: ellipsis;
+        text-transform: uppercase;
         white-space: nowrap;
     }
 
@@ -859,12 +1057,15 @@
     }
 
     .button-row {
-        margin-top: auto;
+        flex: 0 0 auto;
+        margin-left: auto;
     }
 
     .button-row button {
-        flex: 1;
+        font-size: 0.76em;
         margin: 0;
+        min-width: 7.2em;
+        padding: 0.55em 0.8em;
     }
 
     .loading-line {
@@ -878,23 +1079,64 @@
     }
 
     .empty-nexus {
-        grid-column: 1 / -1;
+        flex: 0 0 auto;
     }
 
-    @media (max-width: 780px) {
+    @media (max-width: 1120px) {
+        .vortex-summary {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .facts {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 860px) {
         .account-panel,
         .connect-row,
-        .account-actions {
+        .account-actions,
+        .catalog-toolbar,
+        .nexus-card-footer {
             align-items: stretch;
             flex-direction: column;
         }
 
-        .nexus-filter-row {
+        .catalog-toolbar {
+            gap: 0.45em;
+        }
+
+        .view-buttons {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            width: 100%;
+        }
+
+        .cat-btn,
+        .refresh-btn {
+            width: 100%;
+        }
+
+        .nexus-filter-row,
+        .vortex-summary {
             grid-template-columns: 1fr;
         }
 
-        .nexus-scroller {
+        .nexus-card {
             grid-template-columns: 1fr;
+        }
+
+        .nexus-img {
+            height: clamp(130px, 22vh, 190px);
+        }
+
+        .source-pill {
+            max-width: 100%;
+        }
+
+        .button-row {
+            margin-left: 0;
+            width: 100%;
         }
     }
 </style>
