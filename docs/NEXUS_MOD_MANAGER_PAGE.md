@@ -35,7 +35,7 @@ The goal is simple: give Sons Of The Forest players one focused tool that unders
 - Connects to Nexus Mods/Vortex flows where available, with local credential storage and cache/rate-limit behavior designed to respect the Nexus API acceptable use policy.
 - Shows Nexus account/profile status when the API exposes it.
 - Opens Nexus mod detail views inside the manager for author notes, file choices, dependency metadata, changelogs, tracking, and endorsement actions where supported by the public API.
-- Keeps Nexus catalog previews visible in compact layouts and cycles through multiple API-provided preview images when they are available.
+- Keeps Nexus catalog previews visible in compact layouts and cycles through multiple API-provided preview images in catalog rows and detail drawers when they are available.
 - Separates Nexus files, dependency checks, changelogs, and install-plan panels into responsive scroll regions so smaller windows remain usable.
 - Hands selected Nexus files to Vortex through `nxm://` links when Vortex is installed and registered.
 - Uses a Sons-style dark menu shell with rough edges, chromatic text highlights, and bundled UI assets instead of a plain Windows utility window.

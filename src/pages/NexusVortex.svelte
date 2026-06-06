@@ -103,6 +103,9 @@
     let mods: NexusMod[] = [];
     let knownNexusDetails: Record<number, NexusMod> = {};
     let catalogPreviewIndexes: Record<number, number> = {};
+    let selectedDetailPreviewIndex = 0;
+    let currentDetailPreviewUrls: string[] = [];
+    let currentDetailPreviewIndex = 0;
     let nexusCategories: NexusCategory[] = [];
     let endorsements: NexusEndorsement[] = [];
     let endorsementsLoaded = false;
@@ -193,6 +196,7 @@
     const MAX_NESTED_DEPENDENCY_DEPTH = 2;
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
     const NEXUS_PLACEHOLDER_IMAGE = "https://placehold.co/320x180/252525/FFF?text=Nexus";
+    const NEXUS_DETAIL_PLACEHOLDER_IMAGE = "https://placehold.co/640x360/252525/FFF?text=Nexus";
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
     const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
     const MOD_TYPE_FILTERS: ModTypeFilter[] = ["all", "bepinex-plugin", "redloader-mod", "redloader-library", "vortex", "native", "manual"];
@@ -218,6 +222,16 @@
     $: selectedNexusFile = selectedModFiles.find(file => file.file_id === selectedFileId) ?? null;
     $: recommendedNexusFileId = pickRecommendedNexusFile(selectedModFiles)?.file_id ?? null;
     $: displayedSelectedModFiles = sortNexusFilesForDisplay(selectedModFiles, recommendedNexusFileId);
+    $: {
+        selectedMod;
+        selectedModDetails;
+        currentDetailPreviewUrls = selectedDetailPreviewUrls();
+    }
+    $: {
+        selectedDetailPreviewIndex;
+        currentDetailPreviewUrls;
+        currentDetailPreviewIndex = selectedDetailPreviewIndexValue(currentDetailPreviewUrls);
+    }
     $: localConflicts = findLocalConflicts(inventory);
     $: localConflictEntryKeys = new Set(localConflicts.flatMap(conflict => conflict.entries.map(inventoryEntryKey)));
     $: conflictCount = localConflictEntryKeys.size;
@@ -1281,6 +1295,33 @@
         return urls[catalogPreviewIndex(mod, urls)] ?? NEXUS_PLACEHOLDER_IMAGE;
     }
 
+    function selectedDetailPreviewUrls(): string[] {
+        if (!selectedMod) {
+            return [];
+        }
+
+        return uniquePreviewUrls([
+            ...(selectedMod.image_urls ?? []),
+            selectedMod.picture_url,
+            ...(selectedModDetails?.image_urls ?? []),
+            selectedModDetails?.picture_url
+        ]);
+    }
+
+    function selectedDetailPreviewIndexValue(urls: string[]): number {
+        if (urls.length === 0) {
+            return 0;
+        }
+
+        return selectedDetailPreviewIndex >= 0 && selectedDetailPreviewIndex < urls.length
+            ? selectedDetailPreviewIndex
+            : 0;
+    }
+
+    function selectedDetailPreviewImage(urls: string[]): string {
+        return urls[selectedDetailPreviewIndexValue(urls)] ?? NEXUS_DETAIL_PLACEHOLDER_IMAGE;
+    }
+
     function cycleCatalogPreview(mod: NexusMod, urls: string[], step: number, event: MouseEvent) {
         event.stopPropagation();
         if (urls.length < 2) {
@@ -1292,6 +1333,25 @@
             ...catalogPreviewIndexes,
             [mod.mod_id]: (current + step + urls.length) % urls.length
         };
+    }
+
+    function cycleSelectedDetailPreview(urls: string[], step: number, event: MouseEvent) {
+        event.stopPropagation();
+        if (urls.length < 2) {
+            return;
+        }
+
+        const current = selectedDetailPreviewIndexValue(urls);
+        selectedDetailPreviewIndex = (current + step + urls.length) % urls.length;
+    }
+
+    function handleNexusImageError(event: Event, fallback = NEXUS_PLACEHOLDER_IMAGE) {
+        const image = event.currentTarget instanceof HTMLImageElement ? event.currentTarget : null;
+        if (!image || image.src === fallback) {
+            return;
+        }
+
+        image.src = fallback;
     }
 
     function uniquePreviewUrls(values: Array<string | undefined>): string[] {
@@ -1336,6 +1396,7 @@
 
         selectedMod = mod;
         selectedModDetails = mod;
+        selectedDetailPreviewIndex = 0;
         selectedModFiles = [];
         selectedFileId = null;
         selectedInstallPlacement = "auto";
@@ -1408,6 +1469,7 @@
     function closeModDetails() {
         selectedMod = null;
         selectedModDetails = null;
+        selectedDetailPreviewIndex = 0;
         selectedModFiles = [];
         selectedFileId = null;
         selectedDependencies = [];
@@ -3241,6 +3303,7 @@
                                     <img
                                         class="nexus-img"
                                         src={catalogPreviewImage(mod, previewUrls)}
+                                        on:error={handleNexusImageError}
                                         alt=""
                                     />
                                 </button>
@@ -3441,11 +3504,21 @@
 
             <div class="detail-grid">
                 <div class="detail-main">
-                    <img
-                        class="detail-img"
-                        src={selectedModDetails?.picture_url ?? selectedMod.picture_url ?? "https://placehold.co/640x360/252525/FFF?text=Nexus"}
-                        alt=""
-                    />
+                    <div class="detail-media-frame">
+                        <img
+                            class="detail-img"
+                            src={selectedDetailPreviewImage(currentDetailPreviewUrls)}
+                            on:error={(event) => handleNexusImageError(event, NEXUS_DETAIL_PLACEHOLDER_IMAGE)}
+                            alt=""
+                        />
+                        {#if currentDetailPreviewUrls.length > 1}
+                            <div class="detail-media-nav" aria-label={`${selectedMod.name} preview images`}>
+                                <button type="button" aria-label="Previous detail preview image" on:click={(event) => cycleSelectedDetailPreview(currentDetailPreviewUrls, -1, event)}>&lt;</button>
+                                <span>{currentDetailPreviewIndex + 1}/{currentDetailPreviewUrls.length}</span>
+                                <button type="button" aria-label="Next detail preview image" on:click={(event) => cycleSelectedDetailPreview(currentDetailPreviewUrls, 1, event)}>&gt;</button>
+                            </div>
+                        {/if}
+                    </div>
 
                     <div class="detail-text">
                         <span class="detail-section-title">Directions / Description</span>
@@ -4881,12 +4954,67 @@
         order: 8;
     }
 
-    .detail-img {
+    .detail-media-frame {
         background: #151515;
         border: 1px solid rgba(255, 255, 255, 0.12);
+        box-sizing: border-box;
+        flex: 0 0 auto;
+        min-height: clamp(170px, 28vh, 300px);
+        overflow: hidden;
+        position: relative;
+        width: 100%;
+    }
+
+    .detail-img {
+        background: #151515;
+        display: block;
         height: clamp(170px, 28vh, 300px);
         object-fit: cover;
         width: 100%;
+    }
+
+    .detail-media-nav {
+        align-items: center;
+        background: rgba(0, 0, 0, 0.58);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        bottom: 0.65em;
+        box-sizing: border-box;
+        display: flex;
+        gap: 0.35em;
+        left: 0.65em;
+        max-width: min(14em, calc(100% - 1.3em));
+        padding: 0.28em;
+        position: absolute;
+    }
+
+    .detail-media-nav button {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: none;
+        color: #eefcff;
+        display: flex;
+        flex: 0 0 2.15em;
+        font-size: 0.76em;
+        font-weight: 900;
+        height: 2.15em;
+        justify-content: center;
+        margin: 0;
+        min-height: 0;
+        min-width: 0;
+        padding: 0;
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+
+    .detail-media-nav span {
+        color: #d6dde5;
+        flex: 1 1 auto;
+        font-size: 0.72em;
+        font-weight: 900;
+        min-width: 4em;
+        text-align: center;
+        white-space: nowrap;
     }
 
     .detail-text,
@@ -5436,6 +5564,10 @@
         .detail-text {
             flex: 0 0 auto;
             max-height: clamp(220px, 36vh, 430px);
+        }
+
+        .detail-media-frame {
+            min-height: clamp(140px, 22vh, 230px);
         }
 
         .detail-img {
