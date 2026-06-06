@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onDestroy, onMount } from "svelte";
+    import semver from "semver";
     import SvgSpinnersBlocksWave from "~icons/svg-spinners/blocks-wave";
     import {
         clearNexusApiKey,
@@ -50,6 +51,15 @@
     type InstalledSortMode = "attention" | "name" | "source" | "location" | "state" | "version";
     type DependencyStatus = "installed" | "missing" | "version-mismatch" | "review";
     type InstallPlanTone = "ready" | "review" | "blocked";
+    type UpdateTone = "update" | "current" | "tracked" | "review" | "neutral";
+    type VersionComparison = "same" | "remote-newer" | "local-newer" | "different" | "unknown";
+    type UpdateVerdict = {
+        label: string;
+        tone: UpdateTone;
+        isUpdate: boolean;
+        needsReview: boolean;
+        reason: string;
+    };
     type NexusUiPreferences = {
         catalogMode: CatalogMode;
         nexusSearchTerm: string;
@@ -1420,7 +1430,7 @@
             return "Install with Vortex";
         }
 
-        if (versionsDiffer(match.version, mod.version)) {
+        if (updateVerdictForVersions(match.version, mod.version).isUpdate) {
             return "Update with Vortex";
         }
 
@@ -2048,44 +2058,87 @@
         }
 
         if (match.installSource === "vortex") {
-            return versionsDiffer(match.version, mod.version) ? "Update in Vortex" : "Reinstall in Vortex";
+            return nexusUpdateVerdict(mod, match).isUpdate ? "Update in Vortex" : "Reinstall in Vortex";
         }
 
         return "Get Vortex File";
     }
 
-    function nexusUpdateLabel(mod: NexusMod): string {
-        const match = installedMatch(mod);
+    function nexusUpdateVerdict(mod: NexusMod, match: InstalledInventoryEntry | null = installedMatch(mod)): UpdateVerdict {
         if (!match) {
-            return isNexusModTracked(mod.mod_id) ? "Tracked" : "Not installed";
+            return isNexusModTracked(mod.mod_id)
+                ? {
+                    label: "Tracked",
+                    tone: "tracked",
+                    isUpdate: false,
+                    needsReview: false,
+                    reason: "Tracked on Nexus but not installed in this game folder."
+                }
+                : {
+                    label: "Not installed",
+                    tone: "neutral",
+                    isUpdate: false,
+                    needsReview: false,
+                    reason: "No matching local install was detected."
+                };
         }
 
-        if (versionsDiffer(match.version, mod.version)) {
-            return "Update available";
-        }
+        return updateVerdictForVersions(match.version, mod.version);
+    }
 
-        return match.version && mod.version ? "Current" : "Installed";
+    function nexusUpdateLabel(mod: NexusMod): string {
+        return nexusUpdateVerdict(mod).label;
     }
 
     function selectedModUpdateLabel(): string {
-        return selectedMod ? nexusUpdateLabel(selectedMod) : "-";
+        return selectedMod ? selectedModUpdateVerdict().label : "-";
     }
 
-    function selectedModUpdateTone(): "update" | "current" | "tracked" | "neutral" {
-        return updateTone(selectedModUpdateLabel());
+    function selectedModUpdateTone(): UpdateTone {
+        return selectedModUpdateVerdict().tone;
+    }
+
+    function selectedModUpdateReason(): string {
+        return selectedModUpdateVerdict().reason;
+    }
+
+    function selectedModUpdateVerdict(): UpdateVerdict {
+        return selectedMod
+            ? nexusUpdateVerdict(selectedMod)
+            : {
+                label: "-",
+                tone: "neutral",
+                isUpdate: false,
+                needsReview: false,
+                reason: "No Nexus mod is selected."
+            };
+    }
+
+    function inventoryUpdateVerdict(entry: InstalledInventoryEntry): UpdateVerdict {
+        const onlineMod = findOnlineModForEntry(entry);
+        if (!onlineMod) {
+            return entry.installSource === "vortex"
+                ? {
+                    label: "Refresh Nexus",
+                    tone: "review",
+                    isUpdate: false,
+                    needsReview: true,
+                    reason: "This Vortex-managed install has no loaded Nexus catalog match yet."
+                }
+                : {
+                    label: "Local only",
+                    tone: "neutral",
+                    isUpdate: false,
+                    needsReview: false,
+                    reason: "No Nexus catalog match was found for this local package."
+                };
+        }
+
+        return updateVerdictForVersions(entry.version, onlineMod.version);
     }
 
     function inventoryUpdateLabel(entry: InstalledInventoryEntry): string {
-        const onlineMod = findOnlineModForEntry(entry);
-        if (!onlineMod) {
-            return entry.installSource === "vortex" ? "Refresh Nexus" : "Local only";
-        }
-
-        if (versionsDiffer(entry.version, onlineMod.version)) {
-            return "Update available";
-        }
-
-        return entry.version && onlineMod.version ? "Current" : "Installed";
+        return inventoryUpdateVerdict(entry).label;
     }
 
     function findOnlineModForEntry(entry: InstalledInventoryEntry): NexusMod | null {
@@ -2116,12 +2169,12 @@
         };
     }
 
-    function updateTone(label: string): "update" | "current" | "tracked" | "neutral" {
+    function updateTone(label: string): UpdateTone {
         if (label === "Update available") {
             return "update";
         }
 
-        if (label === "Current") {
+        if (label === "Current" || label === "Local newer") {
             return "current";
         }
 
@@ -2129,15 +2182,129 @@
             return "tracked";
         }
 
+        if (label === "Review version" || label === "Refresh Nexus") {
+            return "review";
+        }
+
         return "neutral";
     }
 
     function versionsDiffer(left?: string, right?: string): boolean {
-        if (!left || !right) {
-            return false;
+        const comparison = compareVersionValues(left, right);
+        return comparison !== "same" && comparison !== "unknown";
+    }
+
+    function updateVerdictForVersions(localVersion?: string, nexusVersion?: string): UpdateVerdict {
+        const comparison = compareVersionValues(localVersion, nexusVersion);
+
+        switch (comparison) {
+            case "remote-newer":
+                return {
+                    label: "Update available",
+                    tone: "update",
+                    isUpdate: true,
+                    needsReview: false,
+                    reason: `Nexus version ${nexusVersion} is newer than local ${localVersion}.`
+                };
+            case "local-newer":
+                return {
+                    label: "Local newer",
+                    tone: "current",
+                    isUpdate: false,
+                    needsReview: true,
+                    reason: `Local version ${localVersion} appears newer than Nexus ${nexusVersion}.`
+                };
+            case "different":
+                return {
+                    label: "Review version",
+                    tone: "review",
+                    isUpdate: false,
+                    needsReview: true,
+                    reason: `Local version ${localVersion ?? "-"} differs from Nexus ${nexusVersion ?? "-"} but could not be ordered safely.`
+                };
+            case "same":
+                return {
+                    label: "Current",
+                    tone: "current",
+                    isUpdate: false,
+                    needsReview: false,
+                    reason: `Local version ${localVersion} matches Nexus ${nexusVersion}.`
+                };
+            default:
+                if (nexusVersion && !localVersion) {
+                    return {
+                        label: "Review version",
+                        tone: "review",
+                        isUpdate: false,
+                        needsReview: true,
+                        reason: `Nexus reports ${nexusVersion}, but the local install does not expose a comparable version.`
+                    };
+                }
+
+                return {
+                    label: "Installed",
+                    tone: "neutral",
+                    isUpdate: false,
+                    needsReview: false,
+                    reason: localVersion
+                        ? "Nexus did not return a comparable version for this match."
+                        : "Neither local inventory nor Nexus exposed a comparable version."
+                };
+        }
+    }
+
+    function compareVersionValues(localVersion?: string, nexusVersion?: string): VersionComparison {
+        const local = normalizedSemver(localVersion);
+        const remote = normalizedSemver(nexusVersion);
+
+        if (local && remote) {
+            if (semver.eq(local, remote)) {
+                return "same";
+            }
+
+            if (semver.gt(remote, local)) {
+                return "remote-newer";
+            }
+
+            if (semver.lt(remote, local)) {
+                return "local-newer";
+            }
         }
 
-        return left.trim().toLowerCase() !== right.trim().toLowerCase();
+        const localToken = normalizedVersionToken(localVersion);
+        const remoteToken = normalizedVersionToken(nexusVersion);
+        if (!localToken || !remoteToken) {
+            return "unknown";
+        }
+
+        return localToken === remoteToken ? "same" : "different";
+    }
+
+    function normalizedSemver(value?: string): string | null {
+        const raw = value?.trim();
+        if (!raw) {
+            return null;
+        }
+
+        const cleaned = raw
+            .replace(/^[vV]\s*/, "")
+            .replace(/[_\s]+/g, "-")
+            .replace(/[^0-9A-Za-z.+-]/g, "");
+        const valid = semver.valid(cleaned);
+        if (valid) {
+            return valid;
+        }
+
+        return semver.coerce(cleaned)?.version ?? null;
+    }
+
+    function normalizedVersionToken(value?: string): string | null {
+        const normalized = value?.trim().toLowerCase()
+            .replace(/^[vV]\s*/, "")
+            .replace(/[_\s]+/g, "")
+            .replace(/[^a-z0-9.+-]/g, "");
+
+        return normalized || null;
     }
 
     function viewLabel(view: NexusView): string {
@@ -2505,8 +2672,7 @@
                 {#if catalogMode === "online"}
                     {#each visibleNexusMods as mod}
                         {@const match = installedMatch(mod)}
-                        {@const updateLabel = nexusUpdateLabel(mod)}
-                        {@const updateToneValue = updateTone(updateLabel)}
+                        {@const updateVerdict = nexusUpdateVerdict(mod, match)}
                         {@const conflict = conflictForEntry(match)}
                         <article class="nexus-card" class:nexus-installed={!!match} class:nexus-conflict={!!conflict}>
                             <button class="thumbnail-button" aria-label={`Open ${mod.name} details`} on:click={() => openModDetails(mod)}>
@@ -2537,7 +2703,7 @@
 
                                 <div class="facts">
                                     <span>Version <b>{mod.version ?? "-"}</b></span>
-                                    <span>State <b class:update-state-update={updateToneValue === "update"} class:update-state-current={updateToneValue === "current"} class:update-state-tracked={updateToneValue === "tracked"}>{updateLabel}</b></span>
+                                    <span>State <b title={updateVerdict.reason} class:update-state-update={updateVerdict.tone === "update"} class:update-state-current={updateVerdict.tone === "current"} class:update-state-tracked={updateVerdict.tone === "tracked"} class:update-state-review={updateVerdict.tone === "review"}>{updateVerdict.label}</b></span>
                                     <span>Updated <b>{formatTimestamp(mod.updated_timestamp, mod.updated_time)}</b></span>
                                     <span>Downloads <b>{formatNumber(mod.mod_downloads)}</b></span>
                                     <span>Endorsements <b>{formatNumber(mod.endorsement_count)}</b></span>
@@ -2585,8 +2751,7 @@
                 {:else}
                     {#each visibleInstalledEntries as entry}
                         {@const entryNexusModId = numericNexusId(entry.nexusModId)}
-                        {@const inventoryUpdate = inventoryUpdateLabel(entry)}
-                        {@const inventoryTone = updateTone(inventoryUpdate)}
+                        {@const inventoryVerdict = inventoryUpdateVerdict(entry)}
                         {@const conflict = conflictForEntry(entry)}
                         <article class="nexus-card inventory-card" class:nexus-installed={entry.enabled} class:nexus-conflict={!!conflict}>
                             <div class="inventory-icon">
@@ -2611,7 +2776,7 @@
 
                                 <div class="facts inventory-facts">
                                     <span>Version <b>{entry.version ?? "-"}</b></span>
-                                    <span>Update <b class:update-state-update={inventoryTone === "update"} class:update-state-current={inventoryTone === "current"}>{inventoryUpdate}</b></span>
+                                    <span>Update <b title={inventoryVerdict.reason} class:update-state-update={inventoryVerdict.tone === "update"} class:update-state-current={inventoryVerdict.tone === "current"} class:update-state-review={inventoryVerdict.tone === "review"}>{inventoryVerdict.label}</b></span>
                                     <span>Location <b>{entry.expectedLocation}</b></span>
                                     <span>State <b>{entry.enabled ? "Enabled" : "Disabled"}</b></span>
                                     <span>Store <b>{entry.store}</b></span>
@@ -2736,7 +2901,7 @@
                     <div class="detail-facts">
                         <span>Version <b>{selectedModDetails?.version ?? "-"}</b></span>
                         <span>Type <b>{selectedModDetails?.loader_type ?? "Unknown"}</b></span>
-                        <span>Update <b class:update-state-update={selectedModUpdateTone() === "update"} class:update-state-current={selectedModUpdateTone() === "current"} class:update-state-tracked={selectedModUpdateTone() === "tracked"}>{selectedModUpdateLabel()}</b></span>
+                        <span>Update <b title={selectedModUpdateReason()} class:update-state-update={selectedModUpdateTone() === "update"} class:update-state-current={selectedModUpdateTone() === "current"} class:update-state-tracked={selectedModUpdateTone() === "tracked"} class:update-state-review={selectedModUpdateTone() === "review"}>{selectedModUpdateLabel()}</b></span>
                         <span>Tracked <b>{isNexusModTracked(selectedMod.mod_id) ? "Yes" : "No"}</b></span>
                         <span>Updated <b>{formatTimestamp(selectedModDetails?.updated_timestamp, selectedModDetails?.updated_time)}</b></span>
                         <span>Downloads <b>{formatNumber(selectedModDetails?.mod_downloads)}</b></span>
@@ -3882,6 +4047,10 @@
 
     .update-state-tracked {
         color: #78d9f4;
+    }
+
+    .update-state-review {
+        color: #fdc66d;
     }
 
     .loading-line {
