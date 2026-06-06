@@ -1,6 +1,7 @@
 <script lang="ts">
     import { gameExePath, isPathValid } from "./store";
     import * as dialog from "@tauri-apps/plugin-dialog"
+    import LucideFolderOpen from "~icons/lucide/folder-open";
 
     async function selectPath() {
         try {
@@ -8,22 +9,36 @@
                 multiple: false,
                 filters: [{ name: "Executable", extensions: ["exe"] }],
             });
-            if (result && result.length > 0) {
-                const exe = result as string;
-                if (exe.endsWith("SonsOfTheForest.exe")) {
-                    gameExePath.set(result as string);
-                    isPathValid.set(true);
-                }
+            const exe = Array.isArray(result) ? result[0] : result;
+            if (!exe) {
+                return;
             }
+
+            if (isSonsExecutable(exe)) {
+                gameExePath.set(exe);
+                isPathValid.set(true);
+                return;
+            }
+
+            await dialog.message("Select SonsOfTheForest.exe from the Sons Of The Forest install folder.", {
+                title: "Game path",
+                kind: "warning"
+            });
         } catch (error) {
             console.error("Error selecting path:", error);
         }
     }
+
+    function isSonsExecutable(exe: string) {
+        return exe.split(/[\\/]/).pop()?.toLowerCase() === "sonsoftheforest.exe";
+    }
 </script>
 
 <div id="path-selector">
-    <input class="path-input" type="text" bind:value={$gameExePath} readonly />
-    <button class="select-btn" on:click={selectPath}>...</button>
+    <input class="path-input" type="text" bind:value={$gameExePath} placeholder="Select SonsOfTheForest.exe" readonly />
+    <button class="select-btn" on:click={selectPath} aria-label="Select SonsOfTheForest.exe" title="Select SonsOfTheForest.exe">
+        <LucideFolderOpen aria-hidden="true" />
+    </button>
 </div>
 
 <style>
@@ -47,10 +62,21 @@
     }
 
     .select-btn {
+        align-items: center;
         border-radius: 0 2px 2px 0;
+        box-sizing: border-box;
+        display: flex;
+        justify-content: center;
         min-height: clamp(2.4em, 5vh, 3.1em);
         margin: 0; /* Removes default margin from button */
-        box-sizing: border-box;
+        padding: 0;
+        width: 3.4em;
+    }
+
+    .select-btn :global(svg) {
+        display: block;
+        font-size: 1.1em;
+        stroke-width: 2.25;
     }
 
     @media (max-height: 720px) {
