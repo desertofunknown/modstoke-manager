@@ -87,6 +87,7 @@
     let session: NexusSession = { is_connected: false };
     let apiKey = "";
     let mods: NexusMod[] = [];
+    let knownNexusDetails: Record<number, NexusMod> = {};
     let nexusCategories: NexusCategory[] = [];
     let endorsements: NexusEndorsement[] = [];
     let endorsementsLoaded = false;
@@ -189,6 +190,7 @@
     $: conflictCount = localConflictEntryKeys.size;
     $: {
         mods;
+        knownNexusDetails;
         updateCount = inventory.filter(hasInventoryUpdate).length;
     }
     $: {
@@ -199,6 +201,7 @@
     }
     $: {
         mods;
+        knownNexusDetails;
         localConflictEntryKeys;
         installedAttentionCount = inventory.filter(inventoryNeedsAttention).length;
     }
@@ -228,6 +231,7 @@
         selectedInstallFilter;
         selectedInstalledSort;
         trackedMods;
+        knownNexusDetails;
         localConflictEntryKeys;
         visibleInstalledEntries = sortInstalledEntries(inventory.filter(matchesInstalledFilters));
     }
@@ -576,6 +580,7 @@
         await clearNexusApiKey();
         session = { is_connected: false };
         mods = [];
+        knownNexusDetails = {};
         nexusCategories = [];
         nexusCatalogLoadedAt = null;
         endorsements = [];
@@ -601,6 +606,7 @@
             }
 
             beginManualRefreshCooldown(now);
+            knownNexusDetails = {};
         }
 
         isLoading = true;
@@ -1068,12 +1074,21 @@
         isDetailLoading = true;
 
         try {
-            const [details, fileResponse, changelogResponse] = await Promise.all([
-                fetchNexusModDetails(mod.mod_id).catch(() => mod),
+            const [detailResponse, fileResponse, changelogResponse] = await Promise.all([
+                fetchNexusModDetails(mod.mod_id)
+                    .then(details => ({ details, fetched: true }))
+                    .catch(() => ({ details: mod, fetched: false })),
                 fetchNexusModFiles(mod.mod_id),
                 fetchNexusModChangelogs(mod.mod_id).catch(() => ({ changelogs: [], rate_limit: session.rate_limit ?? {} }))
             ]);
-            selectedModDetails = { ...mod, ...details };
+            const mergedDetails = { ...mod, ...detailResponse.details };
+            const recommendedFileVersion = preferredNexusFileVersion(fileResponse.files);
+            selectedModDetails = recommendedFileVersion
+                ? { ...mergedDetails, version: recommendedFileVersion }
+                : mergedDetails;
+            if (detailResponse.fetched) {
+                rememberNexusDetails(selectedModDetails);
+            }
             selectedModFiles = fileResponse.files;
             selectedChangelogs = changelogResponse.changelogs.slice(0, 5);
             selectedFileId = pickRecommendedNexusFile(fileResponse.files)?.file_id ?? fileResponse.files[0]?.file_id ?? null;
@@ -1093,6 +1108,25 @@
         } finally {
             isDetailLoading = false;
         }
+    }
+
+    function rememberNexusDetails(details: NexusMod) {
+        if (!details.mod_id) {
+            return;
+        }
+
+        knownNexusDetails = {
+            ...knownNexusDetails,
+            [details.mod_id]: {
+                ...(knownNexusDetails[details.mod_id] ?? {}),
+                ...details
+            }
+        };
+    }
+
+    function preferredNexusFileVersion(files: NexusModFile[]): string | undefined {
+        const recommended = pickRecommendedNexusFile(files) ?? files[0];
+        return recommended?.mod_version ?? recommended?.version;
     }
 
     function closeModDetails() {
@@ -2104,7 +2138,7 @@
 
     function selectedModUpdateVerdict(): UpdateVerdict {
         return selectedMod
-            ? nexusUpdateVerdict(selectedMod)
+            ? nexusUpdateVerdict(selectedModDetails ?? selectedMod)
             : {
                 label: "-",
                 tone: "neutral",
@@ -2143,6 +2177,10 @@
 
     function findOnlineModForEntry(entry: InstalledInventoryEntry): NexusMod | null {
         const entryNexusId = numericNexusId(entry.nexusModId);
+        if (entryNexusId && knownNexusDetails[entryNexusId]) {
+            return knownNexusDetails[entryNexusId];
+        }
+
         return mods.find(mod =>
             (entryNexusId && mod.mod_id === entryNexusId)
             || findMatchingInstall([entry], mod.name, mod.mod_id, [
