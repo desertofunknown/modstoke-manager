@@ -25,6 +25,7 @@
   - Added selected-file notes in Nexus detail drawers so file-specific descriptions and changelog HTML are shown with the same safe formatting before Vortex handoff.
   - Improved Nexus install plans so dependency lookup progress, lookup failures, no-API-row responses, author-linked requirement counts, and nested dependency check readiness are visible before handing a file to Vortex.
   - Improved Nexus description formatting fidelity with monospaced column-style line blocks, codebox/plain/fixed preformatted BBCode aliases, hidden/spoilerblock aliases, legacy horizontal-rule tags, and relative/point size hints.
+  - Improved Nexus BBCode layout recovery for indented plain lists, standalone image aliases, and cell-only table layouts so author instructions keep more of their original reading order.
   - Rebuilt and signed portable/setup EXEs as `0.2.0`.
 
 - 0.1.2

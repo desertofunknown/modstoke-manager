@@ -3560,6 +3560,7 @@
         | { kind: "table"; value: string };
     type NexusPlainListLine = {
         explicit: boolean;
+        indent: number;
         ordered: boolean;
         raw: string;
         style?: string;
@@ -3941,42 +3942,18 @@
             return null;
         }
 
-        const bulletItems = lines.map(line => line.match(/^(?:[-*]|\u2022)\s+(.+)$/)?.[1]?.trim() ?? "");
-        const bbcodeItems = lines.map(line => line.match(/^\[\*(?:\s*=[^\]]+)?\]\s*(.+)$/i)?.[1]?.trim() ?? "");
-        if (bbcodeItems.every(Boolean)) {
-            return {
-                kind: "list",
-                ordered: false,
-                value: bbcodeItems.map(item => `[*]${item}`).join("\n")
-            };
-        }
+        const parsedLines = lines.map(line => nexusPlainListLine(line));
+        if (parsedLines.every(Boolean)) {
+            const first = parsedLines[0];
+            if (!first) {
+                return null;
+            }
 
-        if (bulletItems.every(Boolean)) {
             return {
                 kind: "list",
-                ordered: false,
-                value: bulletItems.map(item => `[*]${item}`).join("\n")
-            };
-        }
-
-        const numberedItems = lines.map(line => line.match(/^\d+[.)]\s+(.+)$/)?.[1]?.trim() ?? "");
-        if (numberedItems.every(Boolean)) {
-            return {
-                kind: "list",
-                ordered: true,
-                style: "1",
-                value: numberedItems.map(item => `[*]${item}`).join("\n")
-            };
-        }
-
-        const alphaItems = lines.map(line => line.match(/^[a-z][.)]\s+(.+)$/i)?.[1]?.trim() ?? "");
-        if (alphaItems.every(Boolean)) {
-            const startsUpper = /^[A-Z][.)]/.test(lines[0]);
-            return {
-                kind: "list",
-                ordered: true,
-                style: startsUpper ? "A" : "a",
-                value: alphaItems.map(item => `[*]${item}`).join("\n")
+                ordered: first.ordered,
+                style: first.style,
+                value: nexusPlainListLinesToBbcode(parsedLines as NexusPlainListLine[])
             };
         }
 
@@ -4045,7 +4022,8 @@
             }
 
             const first = listLines[0];
-            if (first.ordered === parsed.ordered && first.style === parsed.style) {
+            const baseIndent = Math.min(...listLines.map(line => line.indent));
+            if (parsed.indent > baseIndent || (first.ordered === parsed.ordered && first.style === parsed.style)) {
                 listLines.push(parsed);
             } else {
                 pushListLines();
@@ -4069,6 +4047,7 @@
         if (explicit?.[1]?.trim()) {
             return {
                 explicit: true,
+                indent: nexusPlainListIndentLevel(line),
                 ordered: false,
                 raw: line,
                 value: explicit[1].trim()
@@ -4079,6 +4058,7 @@
         if (bullet?.[1]?.trim()) {
             return {
                 explicit: false,
+                indent: nexusPlainListIndentLevel(line),
                 ordered: false,
                 raw: line,
                 value: bullet[1].trim()
@@ -4089,6 +4069,7 @@
         if (numbered?.[1]?.trim()) {
             return {
                 explicit: false,
+                indent: nexusPlainListIndentLevel(line),
                 ordered: true,
                 raw: line,
                 style: "1",
@@ -4100,6 +4081,7 @@
         if (alpha?.[2]?.trim()) {
             return {
                 explicit: false,
+                indent: nexusPlainListIndentLevel(line),
                 ordered: true,
                 raw: line,
                 style: alpha[1] === alpha[1].toUpperCase() ? "A" : "a",
@@ -4108,6 +4090,70 @@
         }
 
         return null;
+    }
+
+    function nexusPlainListIndentLevel(line: string): number {
+        const leading = line.match(/^[\t ]*/)?.[0] ?? "";
+        const width = leading.replace(/\t/g, "    ").length;
+        return Math.max(0, Math.min(4, Math.floor(width / 2)));
+    }
+
+    function nexusPlainListLinesToBbcode(lines: NexusPlainListLine[]): string {
+        if (lines.length === 0) {
+            return "";
+        }
+
+        const minIndent = Math.min(...lines.map(line => line.indent));
+        const parts: string[] = [];
+        const nestedLists: Array<{ ordered: boolean; style?: string }> = [];
+        let previousLevel = 0;
+
+        for (const [index, line] of lines.entries()) {
+            let level = Math.max(0, line.indent - minIndent);
+            if (index === 0) {
+                level = 0;
+            }
+
+            level = Math.min(3, Math.min(level, previousLevel + 1));
+
+            while (nestedLists.length > level) {
+                parts.push("[/list]");
+                nestedLists.pop();
+            }
+
+            while (nestedLists.length < level) {
+                parts.push(nexusPlainListOpeningTag(line));
+                nestedLists.push({ ordered: line.ordered, style: line.style });
+            }
+
+            if (level > 0) {
+                const active = nestedLists[level - 1];
+                if (active && (active.ordered !== line.ordered || active.style !== line.style)) {
+                    parts.push("[/list]");
+                    nestedLists.pop();
+                    parts.push(nexusPlainListOpeningTag(line));
+                    nestedLists.push({ ordered: line.ordered, style: line.style });
+                }
+            }
+
+            parts.push(`[*]${line.value}`);
+            previousLevel = level;
+        }
+
+        while (nestedLists.length > 0) {
+            parts.push("[/list]");
+            nestedLists.pop();
+        }
+
+        return parts.join("\n");
+    }
+
+    function nexusPlainListOpeningTag(line: NexusPlainListLine): string {
+        if (line.ordered) {
+            return `[olist${line.style ? `=${line.style}` : ""}]`;
+        }
+
+        return `[list${line.style ? `=${line.style}` : ""}]`;
     }
 
     function shouldPreserveNexusLineLayout(value: string): boolean {
@@ -4386,8 +4432,19 @@
     }
 
     function looksLikeNexusLooseTable(value: string): boolean {
-        return /\[tr(?:[^\]]*)\][\s\S]*?(?:\[\/tr\]|\[tr(?:[^\]]*)\]|\[\/table\]|$)/i.test(value)
-            && /\[(?:td|th)(?:[^\]]*)\][\s\S]*?(?:\[\/(?:td|th)\]|\[(?:td|th)(?:[^\]]*)\]|\[\/tr\]|$)/i.test(value);
+        return (/\[tr(?:[^\]]*)\][\s\S]*?(?:\[\/tr\]|\[tr(?:[^\]]*)\]|\[\/table\]|$)/i.test(value)
+            && /\[(?:td|th)(?:[^\]]*)\][\s\S]*?(?:\[\/(?:td|th)\]|\[(?:td|th)(?:[^\]]*)\]|\[\/tr\]|$)/i.test(value)
+        ) || looksLikeNexusCellOnlyTable(value);
+    }
+
+    function looksLikeNexusCellOnlyTable(value: string): boolean {
+        if (/\[tr(?:[^\]]*)\]/i.test(value)) {
+            return false;
+        }
+
+        const cellMatches = value.match(/\[(?:td|th)(?:[^\]]*)\]/gi) ?? [];
+        return cellMatches.length >= 2
+            && /\[\/(?:td|th)\]/i.test(value);
     }
 
     function looksLikeNexusPipeTable(value: string): boolean {
@@ -4500,26 +4557,56 @@
         let rowMatch: RegExpExecArray | null;
 
         while ((rowMatch = rowPattern.exec(block)) !== null) {
-            const cells: NexusTableCell[] = [];
-            const cellPattern = /\[(td|th)([^\]]*)\]([\s\S]*?)(?:\[\/\1\]|(?=\[(?:td|th)(?:[^\]]*)\]|\[\/tr\]|$))/gi;
-            let cellMatch: RegExpExecArray | null;
-
-            while ((cellMatch = cellPattern.exec(rowMatch[1])) !== null) {
-                const attrs = cellMatch[2] ?? "";
-                cells.push({
-                    value: cellMatch[3].trim(),
-                    header: cellMatch[1].toLowerCase() === "th",
-                    colspan: safeNexusTableSpan(nexusBbAttribute(attrs, "colspan") ?? nexusBbAttribute(attrs, "col") ?? nexusBbFirstAttributeValue(attrs)),
-                    rowspan: safeNexusTableSpan(nexusBbAttribute(attrs, "rowspan") ?? nexusBbAttribute(attrs, "row"))
-                });
-            }
-
+            const cells = nexusTableCells(rowMatch[1]);
             if (cells.length > 0) {
                 rows.push({ cells });
             }
         }
 
+        if (rows.length === 0) {
+            return nexusCellOnlyTableRows(block);
+        }
+
         return rows;
+    }
+
+    function nexusCellOnlyTableRows(block: string): Array<{ cells: NexusTableCell[] }> {
+        if (!looksLikeNexusCellOnlyTable(block)) {
+            return [];
+        }
+
+        const groups = block
+            .split(/\n{2,}/)
+            .map(group => group.trim())
+            .filter(Boolean);
+        const groupedRows = groups
+            .map(group => ({ cells: nexusTableCells(group) }))
+            .filter(row => row.cells.length > 0);
+
+        if (groupedRows.length > 1 && groupedRows.some(row => row.cells.length > 1)) {
+            return groupedRows;
+        }
+
+        const cells = nexusTableCells(block);
+        return cells.length > 0 ? [{ cells }] : [];
+    }
+
+    function nexusTableCells(value: string): NexusTableCell[] {
+        const cells: NexusTableCell[] = [];
+        const cellPattern = /\[(td|th)([^\]]*)\]([\s\S]*?)(?:\[\/\1\]|(?=\[(?:td|th)(?:[^\]]*)\]|\[\/tr\]|$))/gi;
+        let cellMatch: RegExpExecArray | null;
+
+        while ((cellMatch = cellPattern.exec(value)) !== null) {
+            const attrs = cellMatch[2] ?? "";
+            cells.push({
+                value: cellMatch[3].trim(),
+                header: cellMatch[1].toLowerCase() === "th",
+                colspan: safeNexusTableSpan(nexusBbAttribute(attrs, "colspan") ?? nexusBbAttribute(attrs, "col") ?? nexusBbFirstAttributeValue(attrs)),
+                rowspan: safeNexusTableSpan(nexusBbAttribute(attrs, "rowspan") ?? nexusBbAttribute(attrs, "row"))
+            });
+        }
+
+        return cells;
     }
 
     function nexusListItems(block: string): string[] {
@@ -4609,13 +4696,15 @@
             const name = match[2].toLowerCase();
             const isClosing = match[1] === "/";
             const rawAttrs = match[3] ?? "";
-            const isSelfClosing = /\/\s*$/.test(rawAttrs);
+            const isSelfClosing = /\/\s*$/.test(rawAttrs) || isNexusVoidRichTag(name, rawAttrs);
 
             if (!NEXUS_RICH_BB_TAGS.has(name)) {
                 stack[stack.length - 1].children.push({ kind: "text", value: full });
             } else if (isClosing) {
                 if (stack.length > 1 && stack[stack.length - 1].name === name) {
                     stack.pop();
+                } else if (isNexusLooseClosingTag(name)) {
+                    // Standalone Nexus image aliases often leave a harmless closing token behind.
                 } else {
                     stack[stack.length - 1].children.push({ kind: "text", value: full });
                 }
@@ -4635,6 +4724,32 @@
         }
 
         return root.children;
+    }
+
+    function isNexusVoidRichTag(name: string, rawAttrs?: string): boolean {
+        if (name === "clear" || name === "nextcol") {
+            return true;
+        }
+
+        if (name !== "img" && name !== "image" && name !== "thumb" && name !== "thumbnail") {
+            return false;
+        }
+
+        const direct = nexusBbDirectAttribute(rawAttrs);
+        return Boolean(
+            safeNexusUrl(nexusBbAttribute(rawAttrs, "src"))
+            ?? safeNexusUrl(nexusBbAttribute(rawAttrs, "url"))
+            ?? safeNexusUrl(direct)
+        );
+    }
+
+    function isNexusLooseClosingTag(name: string): boolean {
+        return name === "img"
+            || name === "image"
+            || name === "thumb"
+            || name === "thumbnail"
+            || name === "clear"
+            || name === "nextcol";
     }
 
     function renderNexusNodes(nodes: NexusRichNode[]): string {
