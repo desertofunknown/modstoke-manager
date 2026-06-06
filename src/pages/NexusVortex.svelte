@@ -109,6 +109,10 @@
         notes: ["Select a Nexus file before handing it to Vortex."]
     };
     let selectedInstallActionButtonLabel = "Choose File";
+    let selectedNxmUrl = "";
+    let lastSelectedNxmUrl = "";
+    let nxmCopyState = "";
+    let nxmCopyResetTimer: number | null = null;
     let activeNexusActionId: number | null = null;
     let activeNexusEndorseId: number | null = null;
     let activeNexusTrackId: number | null = null;
@@ -240,6 +244,11 @@
     $: selectedInstallFileLabel = selectedNexusFile
         ? `${fileChoiceCategoryLabel(selectedNexusFile)} - ${selectedNexusFile.name}`
         : "No file selected";
+    $: selectedNxmUrl = selectedMod && selectedNexusFile ? getNexusNxmUrl(selectedMod, selectedNexusFile) : "";
+    $: if (selectedNxmUrl !== lastSelectedNxmUrl) {
+        lastSelectedNxmUrl = selectedNxmUrl;
+        clearNxmCopyFeedback();
+    }
 
     onMount(async () => {
         loadEndorsementPreferences();
@@ -254,6 +263,7 @@
     onDestroy(() => {
         cleanupSso();
         cleanupManualRefreshCooldown();
+        clearNxmCopyFeedback();
     });
 
     async function refreshSession() {
@@ -978,6 +988,7 @@
         selectedFileId = null;
         selectedDependencies = [];
         selectedChangelogs = [];
+        clearNxmCopyFeedback();
     }
 
     async function selectNexusFile(fileId: number) {
@@ -1025,6 +1036,79 @@
         }
 
         await shell.open(`${getNexusModPageUrl(selectedMod)}?tab=${tab}`);
+    }
+
+    async function copySelectedNxmLink() {
+        if (!selectedNxmUrl) {
+            return;
+        }
+
+        try {
+            await copyTextToClipboard(selectedNxmUrl);
+            nxmCopyState = "Copied";
+        } catch (error) {
+            nxmCopyState = "Copy failed";
+            await dialog.message(`Could not copy automatically.\n\n${selectedNxmUrl}\n\n${error}`, {
+                title: "Vortex link",
+                kind: "info"
+            });
+        }
+
+        scheduleNxmCopyFeedbackReset();
+    }
+
+    async function copyTextToClipboard(value: string) {
+        if (copyTextWithSelection(value)) {
+            return;
+        }
+
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(value);
+            return;
+        }
+
+        throw new Error("Clipboard API is unavailable.");
+    }
+
+    function copyTextWithSelection(value: string): boolean {
+        const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        const textArea = document.createElement("textarea");
+        textArea.value = value;
+        textArea.setAttribute("readonly", "");
+        textArea.style.left = "-9999px";
+        textArea.style.opacity = "0";
+        textArea.style.position = "fixed";
+        textArea.style.top = "0";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        try {
+            return document.execCommand("copy");
+        } finally {
+            document.body.removeChild(textArea);
+            activeElement?.focus();
+        }
+    }
+
+    function scheduleNxmCopyFeedbackReset() {
+        if (nxmCopyResetTimer !== null) {
+            window.clearTimeout(nxmCopyResetTimer);
+        }
+
+        nxmCopyResetTimer = window.setTimeout(() => {
+            nxmCopyState = "";
+            nxmCopyResetTimer = null;
+        }, 1800);
+    }
+
+    function clearNxmCopyFeedback() {
+        if (nxmCopyResetTimer !== null) {
+            window.clearTimeout(nxmCopyResetTimer);
+            nxmCopyResetTimer = null;
+        }
+
+        nxmCopyState = "";
     }
 
     async function installRecommendedWithVortex(mod: NexusMod) {
@@ -2449,6 +2533,16 @@
                         </div>
                     </div>
 
+                    {#if selectedNxmUrl}
+                        <div class="nxm-link-box">
+                            <span class="detail-section-title">Vortex Link</span>
+                            <div class="nxm-link-row">
+                                <code title={selectedNxmUrl}>{selectedNxmUrl}</code>
+                                <button on:click={copySelectedNxmLink}>{nxmCopyState || "Copy NXM"}</button>
+                            </div>
+                        </div>
+                    {/if}
+
                     {#if selectedInstallConflict}
                         <div class="detail-conflict-box" aria-live="polite">
                             <div class="detail-conflict-head">
@@ -3576,6 +3670,7 @@
     .dependency-box,
     .detail-conflict-box,
     .install-plan,
+    .nxm-link-box,
     .detail-facts {
         background: rgba(18, 18, 18, 0.88);
         border: 1px solid rgba(255, 255, 255, 0.12);
@@ -3700,6 +3795,46 @@
 
     .install-plan-ready .install-plan-notes span {
         color: #98d9af;
+    }
+
+    .nxm-link-box {
+        display: flex;
+        flex: 0 0 auto;
+        flex-direction: column;
+        gap: 0.45em;
+        min-width: 0;
+    }
+
+    .nxm-link-row {
+        align-items: stretch;
+        display: grid;
+        gap: 0.5em;
+        grid-template-columns: minmax(0, 1fr) minmax(7.5em, auto);
+        min-width: 0;
+    }
+
+    .nxm-link-row code {
+        align-items: center;
+        background: rgba(0, 0, 0, 0.28);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-sizing: border-box;
+        color: #b9d7df;
+        display: flex;
+        font-family: "JetBrains Mono", "Consolas", monospace;
+        font-size: 0.72em;
+        min-height: 2.75em;
+        min-width: 0;
+        overflow: hidden;
+        padding: 0 0.65em;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .nxm-link-row button {
+        margin: 0;
+        min-width: 0;
+        padding: 0 0.7em;
+        width: 100%;
     }
 
     .detail-conflict-box {
@@ -4025,6 +4160,10 @@
 
         .detail-link-actions {
             grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .nxm-link-row {
+            grid-template-columns: 1fr;
         }
     }
 </style>
