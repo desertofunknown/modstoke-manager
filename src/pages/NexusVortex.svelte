@@ -118,8 +118,14 @@
         kind: AuthorRequirementKind;
         status: AuthorRequirementStatus;
         detail?: string;
+        excerpt?: string;
         match?: InstalledInventoryEntry | null;
         mod_id?: number;
+    };
+    type AuthorRequirementSource = {
+        key: string;
+        label: string;
+        value: string;
     };
 
     let session: NexusSession = { is_connected: false };
@@ -289,7 +295,7 @@
         selectedDetailDescriptionHtml = selectedDetailDescriptionMarkup();
         selectedDetailDescriptionCanToggle = shouldOfferDetailDescriptionToggle(selectedDetailDescription, selectedDetailDescriptionSource());
         selectedAuthorRequirements = extractAuthorRequirements(
-            selectedAuthorRequirementSource(),
+            selectedAuthorRequirementSources(),
             selectedModDetails?.mod_id ?? selectedMod?.mod_id,
             inventory
         );
@@ -1457,19 +1463,23 @@
         return selectedModDetails?.description ?? selectedModDetails?.summary ?? selectedMod?.summary;
     }
 
-    function selectedAuthorRequirementSource(): string | undefined {
+    function selectedAuthorRequirementSources(): AuthorRequirementSource[] {
         const sources = [
-            selectedDetailDescriptionSource(),
-            selectedNexusFile?.description,
-            selectedNexusFile?.changelog_html,
-            ...selectedChangelogs.map(changelog => changelog.changes)
+            { key: "description", label: "Description", value: selectedDetailDescriptionSource() },
+            { key: "selected-file-notes", label: "Selected file notes", value: selectedNexusFile?.description },
+            { key: "selected-file-changelog", label: "Selected file changelog", value: selectedNexusFile?.changelog_html },
+            ...selectedChangelogs.map((changelog, index) => ({
+                key: `mod-changelog-${changelog.version ?? index}`,
+                label: changelog.version ? `Mod changelog ${changelog.version}` : `Mod changelog ${index + 1}`,
+                value: changelog.changes
+            }))
         ];
         const seen = new Set<string>();
-        const unique = sources
-            .map(source => source?.trim())
-            .filter((source): source is string => Boolean(source))
+        return sources
+            .map(source => ({ ...source, value: source.value?.trim() ?? "" }))
+            .filter((source): source is AuthorRequirementSource => Boolean(source.value))
             .filter(source => {
-                const key = source.replace(/\s+/g, " ").slice(0, 300);
+                const key = source.value.replace(/\s+/g, " ").slice(0, 300);
                 if (seen.has(key)) {
                     return false;
                 }
@@ -1477,8 +1487,6 @@
                 seen.add(key);
                 return true;
             });
-
-        return unique.length > 0 ? unique.join("\n\n") : undefined;
     }
 
     function selectedDetailDescriptionText(): string {
@@ -1496,17 +1504,12 @@
         return description.length > 900 || description.split("\n").length > 12 || structuralWeight >= 8;
     }
 
-    function extractAuthorRequirements(source: string | undefined, currentModId: number | undefined, entries: InstalledInventoryEntry[]): AuthorRequirementLink[] {
-        const normalized = normalizeNexusMarkup(source);
-        if (!normalized) {
-            return [];
-        }
-
+    function extractAuthorRequirements(sources: AuthorRequirementSource[], currentModId: number | undefined, entries: InstalledInventoryEntry[]): AuthorRequirementLink[] {
         const candidates: AuthorRequirementLink[] = [];
         const seen = new Set<string>();
         let linkedCount = 0;
 
-        const addLink = (urlValue: string, labelValue?: string) => {
+        const addLink = (sourceLabel: string, urlValue: string, labelValue?: string) => {
             const url = safeNexusUrl(urlValue);
             if (!url || seen.has(url) || linkedCount >= MAX_AUTHOR_REQUIREMENT_LINKS) {
                 return;
@@ -1529,44 +1532,51 @@
                 key: `${nexusModId ?? "link"}:${url}`,
                 label,
                 url,
-                source: nexusModId ? "Nexus mod link" : "Author link",
+                source: nexusModId ? `${sourceLabel} Nexus link` : `${sourceLabel} link`,
                 kind: "link",
                 status: "review",
-                detail: "Linked by the mod author. Open and confirm whether it is required for this file.",
+                detail: `Found in ${sourceLabel}. Open and confirm whether this author-linked target is required for this file.`,
                 mod_id: nexusModId ?? undefined
             });
         };
 
-        const linkedPattern = /\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi;
-        let linkedMatch: RegExpExecArray | null;
-        while ((linkedMatch = linkedPattern.exec(normalized)) !== null) {
-            addLink(linkedMatch[1], plainText(linkedMatch[2]));
-        }
-
-        const plainUrlPattern = /\[url\]([\s\S]*?)\[\/url\]|https?:\/\/[^\s<>"'\]]+/gi;
-        let plainMatch: RegExpExecArray | null;
-        while ((plainMatch = plainUrlPattern.exec(normalized)) !== null) {
-            const raw = plainMatch[1] ?? plainMatch[0];
-            addLink(raw);
-        }
-
-        for (const hint of inferAuthorRuntimeRequirements(normalized, entries)) {
-            if (candidates.length >= MAX_AUTHOR_REQUIREMENT_HINTS) {
-                break;
-            }
-
-            if (seen.has(hint.key)) {
+        for (const source of sources) {
+            const normalized = normalizeNexusMarkup(source.value);
+            if (!normalized) {
                 continue;
             }
 
-            seen.add(hint.key);
-            candidates.push(hint);
+            const linkedPattern = /\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi;
+            let linkedMatch: RegExpExecArray | null;
+            while ((linkedMatch = linkedPattern.exec(normalized)) !== null) {
+                addLink(source.label, linkedMatch[1], plainText(linkedMatch[2]));
+            }
+
+            const plainUrlPattern = /\[url\]([\s\S]*?)\[\/url\]|https?:\/\/[^\s<>"'\]]+/gi;
+            let plainMatch: RegExpExecArray | null;
+            while ((plainMatch = plainUrlPattern.exec(normalized)) !== null) {
+                const raw = plainMatch[1] ?? plainMatch[0];
+                addLink(source.label, raw);
+            }
+
+            for (const hint of inferAuthorRuntimeRequirements(normalized, source.label, entries)) {
+                if (candidates.length >= MAX_AUTHOR_REQUIREMENT_HINTS) {
+                    break;
+                }
+
+                if (seen.has(hint.key)) {
+                    continue;
+                }
+
+                seen.add(hint.key);
+                candidates.push(hint);
+            }
         }
 
         return candidates.slice(0, MAX_AUTHOR_REQUIREMENT_HINTS);
     }
 
-    function inferAuthorRuntimeRequirements(source: string, entries: InstalledInventoryEntry[]): AuthorRequirementLink[] {
+    function inferAuthorRuntimeRequirements(source: string, sourceLocation: string, entries: InstalledInventoryEntry[]): AuthorRequirementLink[] {
         const text = plainText(source);
         if (!text) {
             return [];
@@ -1577,12 +1587,13 @@
         const addRuntimeHint = (
             key: string,
             label: string,
-            sourceLabel: string,
+            kindLabel: string,
             pattern: RegExp,
             matchPredicate: (entry: InstalledInventoryEntry) => boolean,
             reviewDetail: string
         ) => {
-            if (!pattern.test(text) || seen.has(key)) {
+            const matched = text.match(pattern);
+            if (!matched || seen.has(key)) {
                 return;
             }
 
@@ -1591,13 +1602,14 @@
             hints.push({
                 key: `runtime:${key}`,
                 label,
-                source: sourceLabel,
+                source: kindLabel,
                 kind: "runtime",
                 status: match ? "detected" : "review",
                 match,
                 detail: match
-                    ? `Detected locally as ${describeInstallSource(match)} in ${match.expectedLocation}.`
-                    : reviewDetail
+                    ? `Found in ${sourceLocation}. Detected locally as ${describeInstallSource(match)} in ${match.expectedLocation}.`
+                    : `Found in ${sourceLocation}. ${reviewDetail}`,
+                excerpt: authorRequirementExcerpt(text, matched)
             });
         };
 
@@ -1651,6 +1663,23 @@
         );
 
         return hints;
+    }
+
+    function authorRequirementExcerpt(text: string, match: RegExpMatchArray): string | undefined {
+        const index = match.index ?? -1;
+        const phrase = match[0]?.trim();
+        if (index < 0 || !phrase) {
+            return phrase;
+        }
+
+        const start = Math.max(0, index - 70);
+        const end = Math.min(text.length, index + phrase.length + 70);
+        const compact = text.slice(start, end).replace(/\s+/g, " ").trim();
+        if (!compact) {
+            return undefined;
+        }
+
+        return `${start > 0 ? "... " : ""}${compact}${end < text.length ? " ..." : ""}`.slice(0, 220);
     }
 
     function authorRequirementEntryText(entry: InstalledInventoryEntry): string {
@@ -6873,6 +6902,9 @@
                                             {#if requirement.detail}
                                                 <small>{requirement.detail}</small>
                                             {/if}
+                                            {#if requirement.excerpt}
+                                                <small class="author-requirement-excerpt">Matched: {requirement.excerpt}</small>
+                                            {/if}
                                         </div>
                                         {#if requirement.mod_id || requirement.url || requirement.match}
                                             <button on:click={() => openAuthorRequirement(requirement)}>
@@ -9603,6 +9635,13 @@
         color: #9aa5af;
         font-size: 0.74em;
         font-weight: 700;
+    }
+
+    .author-requirement-main .author-requirement-excerpt {
+        color: #b9c6cf;
+        font-size: 0.72em;
+        font-style: italic;
+        line-height: 1.25;
     }
 
     .author-requirement-detected .author-requirement-main span,
