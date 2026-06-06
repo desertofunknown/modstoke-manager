@@ -3454,6 +3454,13 @@
         | { kind: "line"; value: string }
         | { kind: "list"; value: string; ordered: boolean; style?: string }
         | { kind: "table"; value: string };
+    type NexusPlainListLine = {
+        explicit: boolean;
+        ordered: boolean;
+        raw: string;
+        style?: string;
+        value: string;
+    };
     type NexusTableCell = {
         value: string;
         header: boolean;
@@ -3688,6 +3695,7 @@
             .replace(/\[hr\s*\/?\]/gi, "\n\n[hr]\n\n")
             .replace(/\[line\s*\/?\]/gi, "\n\n[hr]\n\n")
             .replace(/\[(?:rule|divider|separator)\s*\/?\]/gi, "\n\n[hr]\n\n")
+            .replace(/\[\/(?:hr|line|rule|divider|separator)\]/gi, "\n")
             .replace(/\[clear\s*\/?\]/gi, "\n[clear/]\n")
             .replace(/(^|\n)[ \t]*(?:-{3,}|={3,}|_{3,}|\*{3,})[ \t]*(?=\n|$)/g, "$1\n\n[hr]\n\n")
             .replace(/\[(list|olist)([^\]]*)\]\n{2,}/gi, (_match, tag: string, attr: string) => `[${tag.toLowerCase()}${attr ?? ""}]\n`)
@@ -3737,7 +3745,7 @@
                         kind: "list",
                         value: remainder,
                         ordered: tag === "olist" || isOrderedNexusListAttr(attr),
-                        style: nexusOrderedListType(attr) ?? undefined
+                        style: nexusListMarkerStyle(attr, tag === "olist" || isOrderedNexusListAttr(attr)) ?? undefined
                     });
                     cursor = text.length;
                     structuralPattern.lastIndex = text.length;
@@ -3756,7 +3764,7 @@
                     kind: "list",
                     value,
                     ordered: tag === "olist" || isOrderedNexusListAttr(attr),
-                    style: nexusOrderedListType(attr) ?? undefined
+                    style: nexusListMarkerStyle(attr, tag === "olist" || isOrderedNexusListAttr(attr)) ?? undefined
                 });
             } else {
                 chunks.push({ kind: "block", value: text.slice(match.index, close.end).trim() });
@@ -3778,6 +3786,17 @@
         for (const block of value.split(/\n{2,}/)) {
             const trimmed = block.trim();
             if (trimmed) {
+                if (looksLikeNexusLooseTable(trimmed)) {
+                    chunks.push({ kind: "table", value: trimmed });
+                    continue;
+                }
+
+                const mixedChunks = nexusMixedPlainListChunks(trimmed);
+                if (mixedChunks) {
+                    chunks.push(...mixedChunks);
+                    continue;
+                }
+
                 const listChunk = nexusPlainListChunk(trimmed);
                 chunks.push(listChunk ?? {
                     kind: shouldPreserveNexusLineLayout(trimmed) ? "line" : "block",
@@ -3801,6 +3820,15 @@
         }
 
         const bulletItems = lines.map(line => line.match(/^(?:[-*]|\u2022)\s+(.+)$/)?.[1]?.trim() ?? "");
+        const bbcodeItems = lines.map(line => line.match(/^\[\*(?:=[^\]]+)?\]\s*(.+)$/i)?.[1]?.trim() ?? "");
+        if (bbcodeItems.every(Boolean)) {
+            return {
+                kind: "list",
+                ordered: false,
+                value: bbcodeItems.map(item => `[*]${item}`).join("\n")
+            };
+        }
+
         if (bulletItems.every(Boolean)) {
             return {
                 kind: "list",
@@ -3827,6 +3855,136 @@
                 ordered: true,
                 style: startsUpper ? "A" : "a",
                 value: alphaItems.map(item => `[*]${item}`).join("\n")
+            };
+        }
+
+        return null;
+    }
+
+    function nexusMixedPlainListChunks(value: string): NexusBlockChunk[] | null {
+        if (hasNexusBlockStructure(value)) {
+            return null;
+        }
+
+        const lines = value.split("\n");
+        if (lines.length < 2 && !/\[\*(?:=[^\]]+)?\]/i.test(value)) {
+            return null;
+        }
+
+        const chunks: NexusBlockChunk[] = [];
+        let textLines: string[] = [];
+        let listLines: NexusPlainListLine[] = [];
+
+        const pushTextLines = () => {
+            const text = textLines.join("\n").trim();
+            textLines = [];
+            if (!text) {
+                return;
+            }
+
+            chunks.push({
+                kind: shouldPreserveNexusLineLayout(text) ? "line" : "block",
+                value: text
+            });
+        };
+
+        const pushListLines = () => {
+            if (listLines.length === 0) {
+                return;
+            }
+
+            const shouldRenderList = listLines.length >= 2 || listLines.some(line => line.explicit);
+            if (!shouldRenderList) {
+                textLines.push(...listLines.map(line => line.raw.trim()).filter(Boolean));
+                listLines = [];
+                return;
+            }
+
+            pushTextLines();
+            const first = listLines[0];
+            chunks.push({
+                kind: "list",
+                ordered: first.ordered,
+                style: first.style,
+                value: listLines.map(line => `[*]${line.value}`).join("\n")
+            });
+            listLines = [];
+        };
+
+        for (const line of lines) {
+            const parsed = nexusPlainListLine(line);
+            if (!parsed) {
+                pushListLines();
+                textLines.push(line);
+                continue;
+            }
+
+            if (listLines.length === 0) {
+                pushTextLines();
+                listLines.push(parsed);
+                continue;
+            }
+
+            const first = listLines[0];
+            if (first.ordered === parsed.ordered && first.style === parsed.style) {
+                listLines.push(parsed);
+            } else {
+                pushListLines();
+                listLines.push(parsed);
+            }
+        }
+
+        pushListLines();
+        pushTextLines();
+
+        return chunks.some(chunk => chunk.kind === "list") ? chunks : null;
+    }
+
+    function nexusPlainListLine(line: string): NexusPlainListLine | null {
+        const trimmed = line.trim();
+        if (!trimmed) {
+            return null;
+        }
+
+        const explicit = trimmed.match(/^\[\*(?:=[^\]]+)?\]\s*(.+)$/i);
+        if (explicit?.[1]?.trim()) {
+            return {
+                explicit: true,
+                ordered: false,
+                raw: line,
+                value: explicit[1].trim()
+            };
+        }
+
+        const bullet = trimmed.match(/^(?:[-*+]|\u2022)\s+(.+)$/);
+        if (bullet?.[1]?.trim()) {
+            return {
+                explicit: false,
+                ordered: false,
+                raw: line,
+                value: bullet[1].trim()
+            };
+        }
+
+        const numbered = trimmed.match(/^\d+[.)]\s+(.+)$/);
+        if (numbered?.[1]?.trim()) {
+            return {
+                explicit: false,
+                ordered: true,
+                raw: line,
+                style: "1",
+                value: numbered[1].trim()
+            };
+        }
+
+        const alpha = trimmed.match(/^([a-z])[.)]\s+(.+)$/i);
+        if (alpha?.[2]?.trim()) {
+            return {
+                explicit: false,
+                ordered: true,
+                raw: line,
+                style: alpha[1] === alpha[1].toUpperCase() ? "A" : "a",
+                value: alpha[2].trim()
             };
         }
 
@@ -3899,7 +4057,8 @@
 
             const tag = chunk.ordered ? "ol" : "ul";
             const typeAttribute = chunk.ordered && chunk.style ? ` type="${escapeAttribute(chunk.style)}"` : "";
-            return `<${tag}${typeAttribute}>${listItems.map(item => `<li>${renderNexusListItem(item, depth)}</li>`).join("")}</${tag}>`;
+            const classAttribute = !chunk.ordered && chunk.style ? ` class="nexus-rich-list-${escapeAttribute(chunk.style)}"` : "";
+            return `<${tag}${typeAttribute}${classAttribute}>${listItems.map(item => `<li>${renderNexusListItem(item, depth)}</li>`).join("")}</${tag}>`;
         }
 
         if (chunk.kind === "table") {
@@ -4083,7 +4242,13 @@
     }
 
     function hasNexusBlockStructure(value: string): boolean {
-        return /\[(?:table|list|olist|quote|spoiler|collapse|details|accordion|accordionitem|indent|center|left|right|align|justify|code|heading|float|youtube|video|media|embed|columns|cols|tabs|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error)(?:=[^\]]+)?\]/i.test(value);
+        return /\[(?:table|list|olist|quote|spoiler|collapse|details|accordion|accordionitem|indent|center|left|right|align|justify|code|heading|float|youtube|video|media|embed|columns|cols|tabs|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error)(?:=[^\]]+)?\]/i.test(value)
+            || looksLikeNexusLooseTable(value);
+    }
+
+    function looksLikeNexusLooseTable(value: string): boolean {
+        return /\[tr(?:[^\]]*)\][\s\S]*?(?:\[\/tr\]|\[tr(?:[^\]]*)\]|\[\/table\]|$)/i.test(value)
+            && /\[(?:td|th)(?:[^\]]*)\][\s\S]*?(?:\[\/(?:td|th)\]|\[(?:td|th)(?:[^\]]*)\]|\[\/tr\]|$)/i.test(value);
     }
 
     function nexusStandaloneSectionHeading(block: string): string | null {
@@ -4151,12 +4316,12 @@
 
     function nexusTableRows(block: string): Array<{ cells: NexusTableCell[] }> {
         const rows: Array<{ cells: NexusTableCell[] }> = [];
-        const rowPattern = /\[tr\]([\s\S]*?)\[\/tr\]/gi;
+        const rowPattern = /\[tr\]([\s\S]*?)(?:\[\/tr\]|(?=\[tr\]|\[\/table\]|$))/gi;
         let rowMatch: RegExpExecArray | null;
 
         while ((rowMatch = rowPattern.exec(block)) !== null) {
             const cells: NexusTableCell[] = [];
-            const cellPattern = /\[(td|th)([^\]]*)\]([\s\S]*?)\[\/\1\]/gi;
+            const cellPattern = /\[(td|th)([^\]]*)\]([\s\S]*?)(?:\[\/\1\]|(?=\[(?:td|th)(?:[^\]]*)\]|\[\/tr\]|$))/gi;
             let cellMatch: RegExpExecArray | null;
 
             while ((cellMatch = cellPattern.exec(rowMatch[1])) !== null) {
@@ -4495,7 +4660,8 @@
         }
 
         if (name === "ul") {
-            return "\n[list]\n";
+            const style = nexusListMarkerStyle(attr, false);
+            return `\n[list${style ? `=${style}` : ""}]\n`;
         }
 
         if (name === "list") {
@@ -4504,7 +4670,8 @@
                 return `\n[olist${type ? `=${type}` : ""}]\n`;
             }
 
-            return "\n[list]\n";
+            const style = nexusListMarkerStyle(attr, false);
+            return `\n[list${style ? `=${style}` : ""}]\n`;
         }
 
         return attr ? `[${name}=${attr}]` : `[${name}]`;
@@ -5084,11 +5251,40 @@
         }
 
         const lowered = attr.toLowerCase();
-        if (lowered === "disc" || lowered === "circle" || lowered === "square" || lowered === "bullet" || lowered === "bullets") {
+        if (nexusUnorderedListStyle(attr) || lowered === "bullet" || lowered === "bullets") {
             return false;
         }
 
         return Boolean(nexusOrderedListType(attr)) || lowered === "number" || lowered === "numbers" || lowered === "numeric";
+    }
+
+    function nexusListMarkerStyle(value: string | undefined, ordered: boolean): string | null {
+        return ordered ? nexusOrderedListType(value) : nexusUnorderedListStyle(value);
+    }
+
+    function nexusUnorderedListStyle(value?: string): "disc" | "circle" | "square" | "none" | "dash" | "check" | null {
+        const attr = decodeHtmlEntities(value ?? "").trim().replace(/^['"]|['"]$/g, "").toLowerCase();
+        if (!attr || attr === "bullet" || attr === "bullets") {
+            return null;
+        }
+
+        if (attr === "disc" || attr === "circle" || attr === "square") {
+            return attr;
+        }
+
+        if (attr === "none" || attr === "plain" || attr === "no-bullet" || attr === "nobullet") {
+            return "none";
+        }
+
+        if (attr === "dash" || attr === "hyphen") {
+            return "dash";
+        }
+
+        if (attr === "check" || attr === "checklist" || attr === "checkbox" || attr === "tick") {
+            return "check";
+        }
+
+        return null;
     }
 
     function nexusOrderedListType(value?: string): "1" | "a" | "A" | "i" | "I" | null {
@@ -7782,6 +7978,42 @@
     .nexus-rich-text :global(ol) {
         margin: 0.65em 0 0;
         padding-left: 1.4em;
+    }
+
+    .nexus-rich-text :global(ul.nexus-rich-list-circle) {
+        list-style-type: circle;
+    }
+
+    .nexus-rich-text :global(ul.nexus-rich-list-square) {
+        list-style-type: square;
+    }
+
+    .nexus-rich-text :global(ul.nexus-rich-list-none),
+    .nexus-rich-text :global(ul.nexus-rich-list-dash),
+    .nexus-rich-text :global(ul.nexus-rich-list-check) {
+        list-style: none;
+        padding-left: 0.95em;
+    }
+
+    .nexus-rich-text :global(ul.nexus-rich-list-dash li),
+    .nexus-rich-text :global(ul.nexus-rich-list-check li) {
+        position: relative;
+    }
+
+    .nexus-rich-text :global(ul.nexus-rich-list-dash li::before),
+    .nexus-rich-text :global(ul.nexus-rich-list-check li::before) {
+        color: #78d9f4;
+        font-weight: 900;
+        left: -0.95em;
+        position: absolute;
+    }
+
+    .nexus-rich-text :global(ul.nexus-rich-list-dash li::before) {
+        content: "-";
+    }
+
+    .nexus-rich-text :global(ul.nexus-rich-list-check li::before) {
+        content: "+";
     }
 
     .nexus-rich-text :global(li) {
