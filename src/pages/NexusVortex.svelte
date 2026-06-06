@@ -49,6 +49,7 @@
     type NexusSortMode = "attention" | "updated" | "downloads" | "endorsements" | "name" | "version";
     type InstalledSortMode = "attention" | "name" | "source" | "location" | "state" | "version";
     type DependencyStatus = "installed" | "missing" | "version-mismatch" | "review";
+    type InstallPlanTone = "ready" | "review" | "blocked";
     type ResolvedDependency = NexusModDependency & {
         match: InstalledInventoryEntry | null;
         status: DependencyStatus;
@@ -57,6 +58,12 @@
         key: string;
         label: string;
         entries: InstalledInventoryEntry[];
+    };
+    type InstallPlan = {
+        action: string;
+        target: string;
+        tone: InstallPlanTone;
+        notes: string[];
     };
 
     let session: NexusSession = { is_connected: false };
@@ -85,6 +92,14 @@
     let selectedFileId: number | null = null;
     let selectedDependencies: NexusModDependency[] = [];
     let selectedChangelogs: NexusModChangelog[] = [];
+    let selectedInstallMatch: InstalledInventoryEntry | null = null;
+    let selectedInstallConflict: LocalConflict | null = null;
+    let selectedInstallPlan: InstallPlan = {
+        action: "Choose a file",
+        target: "-",
+        tone: "blocked",
+        notes: ["Select a Nexus file before handing it to Vortex."]
+    };
     let activeNexusActionId: number | null = null;
     let activeNexusEndorseId: number | null = null;
     let activeNexusTrackId: number | null = null;
@@ -128,6 +143,21 @@
         dependency.status === "missing" || dependency.status === "version-mismatch"
     ).length;
     $: dependencyReviewCount = resolvedDependencies.filter(dependency => dependency.status === "review").length;
+    $: selectedInstallMatch = selectedMod
+        ? findMatchingInstall(inventory, selectedMod.name, selectedMod.mod_id, [
+            selectedMod.author ?? "",
+            selectedMod.uploaded_by ?? ""
+        ])
+        : null;
+    $: selectedInstallConflict = conflictForEntry(selectedInstallMatch);
+    $: selectedInstallPlan = buildInstallPlan(
+        selectedModDetails ?? selectedMod,
+        selectedNexusFile,
+        selectedInstallMatch,
+        selectedInstallConflict,
+        resolvedDependencies,
+        vortexStagingPath
+    );
 
     onMount(async () => {
         loadEndorsementPreferences();
@@ -917,6 +947,114 @@
             default:
                 return "Missing from this game folder";
         }
+    }
+
+    function buildInstallPlan(
+        mod: NexusMod | null,
+        file: NexusModFile | null,
+        match: InstalledInventoryEntry | null,
+        conflict: LocalConflict | null,
+        dependencies: ResolvedDependency[],
+        stagingPath: string | null): InstallPlan {
+        if (!mod || !file) {
+            return {
+                action: "Choose a file",
+                target: "-",
+                tone: "blocked",
+                notes: ["Select a Nexus file before handing it to Vortex."]
+            };
+        }
+
+        const target = match?.expectedLocation ?? inferNexusInstallTarget(mod, file);
+        const notes: string[] = [];
+        const missingCount = dependencies.filter(dependency => dependency.status === "missing").length;
+        const mismatchCount = dependencies.filter(dependency => dependency.status === "version-mismatch").length;
+        const reviewCount = dependencies.filter(dependency => dependency.status === "review").length;
+
+        if (!stagingPath) {
+            notes.push("Vortex deployment metadata was not detected in this game folder yet.");
+        }
+
+        if (missingCount > 0) {
+            notes.push(`${missingCount} dependency ${missingCount === 1 ? "is" : "are"} missing locally.`);
+        }
+
+        if (mismatchCount > 0) {
+            notes.push(`${mismatchCount} dependency ${mismatchCount === 1 ? "has" : "have"} a version mismatch.`);
+        }
+
+        if (reviewCount > 0) {
+            notes.push(`${reviewCount} installed dependency ${reviewCount === 1 ? "needs" : "need"} a version review.`);
+        }
+
+        if (conflict) {
+            notes.push(`Local conflict detected across ${conflict.entries.length} matching installs.`);
+        }
+
+        if (match && !match.enabled) {
+            notes.push("The local match is currently disabled.");
+        }
+
+        return {
+            action: installPlanAction(mod, match),
+            target,
+            tone: notes.length > 0 ? "review" : "ready",
+            notes: notes.length > 0 ? notes : ["No local blockers detected from API dependency data."]
+        };
+    }
+
+    function installPlanAction(mod: NexusMod, match: InstalledInventoryEntry | null): string {
+        if (!match) {
+            return "Install with Vortex";
+        }
+
+        if (versionsDiffer(match.version, mod.version)) {
+            return "Update with Vortex";
+        }
+
+        return match.installSource === "vortex" ? "Repair/redeploy in Vortex" : "Import/update via Vortex";
+    }
+
+    function inferNexusInstallTarget(mod: NexusMod, file: NexusModFile): string {
+        const text = [
+            mod.loader_type,
+            mod.category_name,
+            mod.name,
+            file.category_name,
+            file.name,
+            file.description
+        ].filter(Boolean).join(" ").toLowerCase();
+
+        if (/\b(bepinex|plugin|plugins)\b/.test(text)) {
+            return "BepInEx/plugins";
+        }
+
+        if (/\b(library|libraries|lib|libs)\b/.test(text)) {
+            return "Libs";
+        }
+
+        return "Mods";
+    }
+
+    function installPlanToneLabel(tone: InstallPlanTone): string {
+        switch (tone) {
+            case "ready":
+                return "Ready";
+            case "blocked":
+                return "Blocked";
+            default:
+                return "Review";
+        }
+    }
+
+    function selectedInstallButtonLabel(): string {
+        if (!selectedNexusFile) {
+            return "Choose File";
+        }
+
+        return dependencyIssueCount > 0 || selectedInstallConflict
+            ? "Install With Vortex Anyway"
+            : "Install Selected With Vortex";
     }
 
     async function openDependencyPage(dependency: ResolvedDependency) {
@@ -1897,6 +2035,28 @@
                         <span>Dependencies <b class:update-state-update={dependencyIssueCount > 0} class:update-state-tracked={dependencyReviewCount > 0 && dependencyIssueCount === 0} class:update-state-current={resolvedDependencies.length > 0 && dependencyIssueCount === 0 && dependencyReviewCount === 0}>{dependencySummaryLabel()}</b></span>
                     </div>
 
+                    <div
+                        class="install-plan"
+                        class:install-plan-ready={selectedInstallPlan.tone === "ready"}
+                        class:install-plan-review={selectedInstallPlan.tone === "review"}
+                        class:install-plan-blocked={selectedInstallPlan.tone === "blocked"}
+                    >
+                        <div class="install-plan-head">
+                            <span class="detail-section-title">Install Plan</span>
+                            <b>{installPlanToneLabel(selectedInstallPlan.tone)}</b>
+                        </div>
+                        <div class="install-plan-facts">
+                            <span>Action <b>{selectedInstallPlan.action}</b></span>
+                            <span>Target <b>{selectedInstallPlan.target}</b></span>
+                            <span>File <b>{selectedNexusFile?.name ?? "No file selected"}</b></span>
+                        </div>
+                        <div class="install-plan-notes">
+                            {#each selectedInstallPlan.notes as note}
+                                <span>{note}</span>
+                            {/each}
+                        </div>
+                    </div>
+
                     <div class="file-picker">
                         <span class="detail-section-title">Files</span>
                         {#if selectedModFiles.length === 0 && !isDetailLoading}
@@ -1944,7 +2104,7 @@
                     </div>
 
                     <div class="detail-actions">
-                        <button class="install" disabled={!selectedNexusFile} on:click={installSelectedFileWithVortex}>Install Selected With Vortex</button>
+                        <button class="install" disabled={!selectedNexusFile} on:click={installSelectedFileWithVortex}>{selectedInstallButtonLabel()}</button>
                         <button class="track-btn" disabled={activeNexusTrackId === selectedMod.mod_id} on:click={toggleSelectedModTracking}>
                             {activeNexusTrackId === selectedMod.mod_id ? "Saving..." : isNexusModTracked(selectedMod.mod_id) ? "Tracked" : "Track"}
                         </button>
@@ -2730,6 +2890,7 @@
     .changelog-box,
     .file-picker,
     .dependency-box,
+    .install-plan,
     .detail-facts {
         background: rgba(18, 18, 18, 0.88);
         border: 1px solid rgba(255, 255, 255, 0.12);
@@ -2769,6 +2930,82 @@
 
     .detail-facts b {
         color: #e4e4e4;
+    }
+
+    .install-plan {
+        flex: 0 0 auto;
+    }
+
+    .install-plan-head {
+        align-items: center;
+        display: flex;
+        gap: 0.65em;
+        justify-content: space-between;
+        min-width: 0;
+    }
+
+    .install-plan-head b {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #aab8c5;
+        flex: 0 0 auto;
+        font-size: 0.72em;
+        font-weight: 900;
+        padding: 0.2em 0.5em;
+        text-transform: uppercase;
+    }
+
+    .install-plan-ready .install-plan-head b {
+        color: #62f09b;
+    }
+
+    .install-plan-review .install-plan-head b {
+        color: #fdc66d;
+    }
+
+    .install-plan-blocked .install-plan-head b {
+        color: #fd9b9d;
+    }
+
+    .install-plan-facts {
+        color: #8d99a5;
+        display: grid;
+        font-size: 0.76em;
+        gap: 0.35em 0.75em;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-top: 0.55em;
+    }
+
+    .install-plan-facts span,
+    .install-plan-facts b,
+    .install-plan-notes span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .install-plan-facts b {
+        color: #d6dde5;
+        display: block;
+        font-weight: 800;
+    }
+
+    .install-plan-notes {
+        display: flex;
+        flex-direction: column;
+        gap: 0.18em;
+        margin-top: 0.55em;
+    }
+
+    .install-plan-notes span {
+        color: #9aa5af;
+        font-size: 0.76em;
+        font-weight: 700;
+    }
+
+    .install-plan-ready .install-plan-notes span {
+        color: #98d9af;
     }
 
     .file-picker,
