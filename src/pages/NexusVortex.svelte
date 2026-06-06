@@ -1370,6 +1370,25 @@
         selectedInstallFilter = "conflicts";
     }
 
+    function reviewLocalConflict(conflict: LocalConflict | null = null) {
+        catalogMode = "installed";
+        selectedInstallFilter = "conflicts";
+        selectedInstalledSort = "attention";
+        if (selectedMod) {
+            closeModDetails();
+        }
+
+        const message = conflict
+            ? `Showing conflict review for ${conflict.label}.`
+            : "Showing local conflict review.";
+        status = message;
+        window.setTimeout(() => {
+            if (status === message) {
+                status = "";
+            }
+        }, 4500);
+    }
+
     function showEndorsementQueue() {
         catalogMode = "installed";
         selectedInstallFilter = "endorsements";
@@ -6479,6 +6498,9 @@
                                         <button class="vortex-install-btn" disabled={activeNexusActionId === mod.mod_id} on:click={() => installRecommendedWithVortex(mod)}>
                                             {activeNexusActionId === mod.mod_id ? "Preparing..." : vortexActionLabel(mod)}
                                         </button>
+                                        {#if conflict}
+                                            <button class="conflict-review-btn" on:click={() => reviewLocalConflict(conflict)}>Review Conflict</button>
+                                        {/if}
                                         <button on:click={() => openModDetails(mod)}>Details</button>
                                         <button on:click={() => openModPage(mod)}>Open Page</button>
                                     </div>
@@ -6555,6 +6577,9 @@
                                             {/if}
                                             <button on:click={() => openInstalledEntryDetails(entry)}>Details</button>
                                             <button on:click={() => shell.open(`https://www.nexusmods.com/sonsoftheforest/mods/${entryNexusModId}`)}>Nexus Page</button>
+                                        {/if}
+                                        {#if conflict}
+                                            <button class="conflict-review-btn" on:click={() => reviewLocalConflict(conflict)}>Review Conflict</button>
                                         {/if}
                                     </div>
                                 </div>
@@ -6770,7 +6795,11 @@
                     {#if selectedInstallConflict}
                         <div class="detail-conflict-box" aria-live="polite">
                             <div class="detail-conflict-head">
-                                <span class="detail-section-title">Local Conflict</span>
+                                <div>
+                                    <span class="detail-section-title">Local Conflict</span>
+                                    <small>Review the duplicate deployment group before handing this file to Vortex.</small>
+                                </div>
+                                <button class="conflict-review-btn" type="button" on:click={() => reviewLocalConflict(selectedInstallConflict)}>Review Conflict</button>
                                 <b>{selectedInstallConflict.entries.length} installs</b>
                             </div>
                             <span class="detail-conflict-note">{selectedInstallConflict.label} · {conflictGroupSummary(selectedInstallConflict)}</span>
@@ -7052,6 +7081,9 @@
                                 {activeNexusEndorseId === selectedMod.mod_id ? "Endorsing..." : "Endorse"}
                             </button>
                         {/if}
+                    {/if}
+                    {#if selectedInstallConflict}
+                        <button class="conflict-review-btn" on:click={() => reviewLocalConflict(selectedInstallConflict)}>Review Conflict</button>
                     {/if}
                     <button on:click={openSelectedModPage}>Open Page</button>
                 </div>
@@ -8017,6 +8049,13 @@
     .detail-actions .track-btn {
         color: #fdc66d;
         min-width: 6.6em;
+    }
+
+    .button-row .conflict-review-btn,
+    .detail-actions .conflict-review-btn,
+    .detail-conflict-head .conflict-review-btn {
+        color: #fdc66d;
+        min-width: 9.6em;
     }
 
     .button-row .endorse-btn,
@@ -9376,6 +9415,21 @@
         gap: 0.65em;
         justify-content: space-between;
         min-width: 0;
+    }
+
+    .detail-conflict-head > div {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: 0.16em;
+        min-width: 0;
+    }
+
+    .detail-conflict-head small {
+        color: #9aa5af;
+        font-size: 0.72em;
+        font-weight: 700;
+        line-height: 1.22;
     }
 
     .detail-conflict-head b {
