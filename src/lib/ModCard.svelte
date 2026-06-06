@@ -254,16 +254,20 @@
 
 <style>
   .mod-card-horizontal {
+    align-items: center;
     display: flex;
     flex-direction: row;
-    align-items: center;
+    gap: 0.85em;
+    min-width: 0;
   }
 
   .vertical {
+    align-items: flex-start;
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    margin-left: 0.7em;
+    gap: 0.25em;
+    margin-left: 0;
+    min-width: 0;
   }
   
   .mod-card-horizontal > * {
@@ -278,34 +282,39 @@
   .feature-container {
     display: flex;
     flex-direction: column;
+    gap: 0.45em;
     justify-content: space-between;
+    min-width: 0;
     position: relative;
   }
 
   .header-desc {
-    height: 3em;
+    min-height: 0;
   }
 
   .description {
-    padding: 10px;
+    padding: 0.75em;
     /* border-radius: 10px; */
     /* border: 2px solid #414141; */
     /* border-bottom: 2px solid #414141; */
 
-    border-radius: 10px;
+    border-radius: 6px;
     border-bottom: 2px solid #333;
     background-color: #121212;
 
-    margin-bottom: 20px;
+    margin-bottom: 0.75em;
     margin-right: 0.4em;
   }
 
   .description-content {
-    display: block;
-    text-align: left;
-    font-size: 0.9em;
     color: #767676;
-    margin-bottom: 1em;
+    display: block;
+    font-size: 0.9em;
+    line-height: 1.35;
+    margin-bottom: 0.35em;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-align: left;
   }
 
   .description-content > b {
@@ -313,11 +322,14 @@
   }
 
   .mod-title {
-    margin-top: 0.2em;
-    display: block;
-    font-size: 1.2em;
-    font-weight: bold;
     color: #a2a2a2;
+    display: block;
+    font-size: 1.08em;
+    font-weight: bold;
+    line-height: 1.2;
+    margin-top: 0.1em;
+    min-width: 0;
+    overflow-wrap: anywhere;
     text-align: left;
   }
 
@@ -435,21 +447,22 @@
   }
 
   .grid-enable-control {
-    bottom: 7em;
-    left: 1em;
-    position: absolute;
+    align-self: flex-start;
+    position: static;
   }
 
   .grid-thing {
-    max-height: 25em;
+    min-height: 0;
   }
 
   .image-container {
+    aspect-ratio: 16 / 9;
+    flex: 0 0 auto;
+    height: clamp(112px, 13vh, 168px);
+    margin-bottom: 0.6em;
+    min-width: 0;
     position: relative;
     width: 100%;
-    /* height: 12.5em; */
-    padding-bottom: 29%;
-    margin-bottom: 1em;
   }
   
   .cover-img {
@@ -458,7 +471,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    border-radius: 10px;
+    border-radius: 6px;
     object-fit: cover;
     transition: opacity 0.3s ease-in-out;
   }
@@ -469,5 +482,73 @@
   
   .main-image.isImageLoaded {
     opacity: 1;
+  }
+
+  .feature-container:not(.grid-thing) {
+    min-height: 0;
+  }
+
+  .feature-container:not(.grid-thing) .header-desc {
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    display: -webkit-box;
+    line-clamp: 2;
+    max-height: 2.7em;
+    overflow: hidden;
+  }
+
+  .feature-container:not(.grid-thing) .image-container {
+    flex: 0 0 clamp(180px, 24%, 285px);
+    height: clamp(106px, 13vh, 158px);
+    margin-bottom: 0;
+    width: clamp(180px, 24%, 285px);
+  }
+
+  .feature-container:not(.grid-thing) .vertical {
+    flex: 1 1 16em;
+    justify-content: center;
+  }
+
+  .feature-container:not(.grid-thing) .bottom-container {
+    margin-top: 0.2em;
+  }
+
+  .grid-thing .mod-card-horizontal {
+    display: block;
+  }
+
+  .grid-thing .image-container {
+    display: block;
+    height: clamp(108px, 12vh, 152px);
+    width: 100%;
+  }
+
+  .grid-thing .vertical {
+    margin-top: 0.35em;
+  }
+
+  .grid-thing .header-desc {
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    display: -webkit-box;
+    line-clamp: 2;
+    max-height: 2.7em;
+    overflow: hidden;
+  }
+
+  .grid-thing .description-content {
+    margin-bottom: 0.3em;
+  }
+
+  @media (max-width: 760px) {
+    .feature-container:not(.grid-thing) .mod-card-horizontal {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .feature-container:not(.grid-thing) .image-container {
+      flex-basis: auto;
+      width: 100%;
+    }
   }
 </style>

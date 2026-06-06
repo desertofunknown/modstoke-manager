@@ -7,8 +7,6 @@
     import InfiniteScroll from "../lib/InfiniteScroll.svelte";
     import { debounce } from "lodash";
     import SvgSpinnersBlocksWave from '~icons/svg-spinners/blocks-wave'
-    import LucideGrid2X2 from "~icons/lucide/grid-2x2";
-    import LucideList from "~icons/lucide/list";
     import LucideRefreshCw from "~icons/lucide/refresh-cw";
 
     let filtered: Mod[] = [];
@@ -24,7 +22,6 @@
     let installedSelected = false;
 
     let isGrid = false;
-    let layoutLocked = false;
 
     let page = 1;
 	let newBatch: Mod[] = [];
@@ -95,7 +92,6 @@
         }
         
 
-        syncResponsiveLayout();
     });
 
     // async function filter() {
@@ -217,17 +213,6 @@
         await toggleInstalled();
     }
 
-    function syncResponsiveLayout() {
-        if (!layoutLocked) {
-            isGrid = window.innerWidth > 1000;
-        }
-    }
-
-    function toggleLayout() {
-        layoutLocked = true;
-        isGrid = !isGrid;
-    }
-
     function matchesClientFilters(mod: Mod): boolean {
         const search = filterTerm.trim().toLowerCase();
         if (search && ![
@@ -269,7 +254,6 @@
 
 </script>
 
-<svelte:window on:resize={syncResponsiveLayout} />
 <div class="column mods-page">
     {#if $isPathValid}
         <div class="row-center mods-toolbar">
@@ -281,13 +265,6 @@
             <button class="refresh-small icon-text-button" disabled={isLoading} on:click={refreshMods} title="Refresh mods">
                 <LucideRefreshCw aria-hidden="true" />
                 <span>Refresh</span>
-            </button>
-            <button class="layout-toggle" on:click={toggleLayout} aria-label={isGrid ? "Use list layout" : "Use grid layout"} title={isGrid ? "Use list layout" : "Use grid layout"}>
-                {#if isGrid}
-                    <LucideList aria-hidden="true" />
-                {:else}
-                    <LucideGrid2X2 aria-hidden="true" />
-                {/if}
             </button>
         </div>
 
@@ -324,7 +301,7 @@
 
         <div class="mods-note">
             <span>{visibleMods.length} shown from {filtered.length} {onlineSelected ? "loaded" : "installed"}.</span>
-            <span>{isGrid ? "Grid layout." : "List layout."}</span>
+            <span>Compact list.</span>
             {#if categories.length > 0}
                 <span>{categories.length} categories.</span>
             {/if}
@@ -499,20 +476,7 @@
         padding: 0 0.8em;
     }
 
-    .layout-toggle {
-        align-items: center;
-        color: #a2a2a2;
-        display: flex;
-        flex: 0 0 2.85em;
-        height: 2.7em;
-        justify-content: center;
-        margin: 0;
-        padding: 0;
-        width: 2.85em;
-    }
-
-    .icon-text-button :global(svg),
-    .layout-toggle :global(svg) {
+    .icon-text-button :global(svg) {
         display: block;
         font-size: 1.05em;
         stroke-width: 2.25;

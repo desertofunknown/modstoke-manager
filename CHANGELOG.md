@@ -5,6 +5,7 @@
   - Updated runtime checks and user messaging for the `.NET 11` loader preview track.
   - Refreshed the manager UI toward a darker Sons-style options shell with flatter controls and chromatic hover states.
   - Merged the SOTF Mods and Nexus/Vortex storefronts into one top-level Mods workspace with a local source switch.
+  - Compacted SOTF Mods list rows so more mods stay visible in the unified Mods workspace, and retired the unstable SOTF grid toggle.
   - Rebuilt and signed portable/setup EXEs as `0.2.0`.
 
 - 0.1.2
