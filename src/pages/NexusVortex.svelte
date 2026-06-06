@@ -197,6 +197,12 @@
     let nexusLayoutObserver: ResizeObserver | null = null;
     let nexusLayoutFrame: number | null = null;
     let nexusWindowResizeHandler: (() => void) | null = null;
+    let detailDescriptionSectionElement: HTMLDivElement | null = null;
+    let detailFilesSectionElement: HTMLDivElement | null = null;
+    let detailDependenciesSectionElement: HTMLDivElement | null = null;
+    let detailInstallPlanSectionElement: HTMLDivElement | null = null;
+    let detailChangelogSectionElement: HTMLDivElement | null = null;
+    let detailFooterElement: HTMLDivElement | null = null;
 
     const NEXUS_SSO_URL = "wss://sso.nexusmods.com";
     const NEXUS_SSO_APPLICATION_SLUG = "openacai-mod-manager";
@@ -214,7 +220,7 @@
     const NEXUS_PLACEHOLDER_IMAGE = "https://placehold.co/320x180/252525/FFF?text=Nexus";
     const NEXUS_DETAIL_PLACEHOLDER_IMAGE = "https://placehold.co/640x360/252525/FFF?text=Nexus";
     const NEXUS_DESCRIPTION_FALLBACK = "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing.";
-    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "sub", "sup", "url", "img", "color", "background", "bgcolor", "highlight", "size", "center", "left", "right", "justify", "align", "indent", "code", "pre", "quote", "spoiler", "font", "heading", "h1", "h2", "h3", "h4", "h5", "h6", "float", "youtube", "video"]);
+    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "del", "sub", "sup", "url", "img", "color", "background", "bgcolor", "highlight", "size", "center", "left", "right", "justify", "align", "indent", "code", "pre", "quote", "spoiler", "font", "heading", "h1", "h2", "h3", "h4", "h5", "h6", "float", "youtube", "video"]);
     const NEXUS_SAFE_COLOR_NAMES = new Set(["black", "white", "gray", "grey", "silver", "red", "maroon", "orange", "yellow", "olive", "lime", "green", "aqua", "cyan", "teal", "blue", "navy", "fuchsia", "magenta", "purple", "pink"]);
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
     const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
@@ -364,6 +370,13 @@
     $: nestedDependencyMismatchCount = resolvedNestedDependencies.filter(source => source.dependency.status === "version-mismatch").length;
     $: totalDependencyIssueCount = dependencyIssueCount + nestedDependencyIssueCount;
     $: totalDependencyReviewCount = dependencyReviewCount + nestedDependencyReviewCount;
+    $: detailDependencyNavText = describeDetailDependencyNav(
+        totalDependencyIssueCount,
+        totalDependencyReviewCount,
+        resolvedDependencies.length,
+        resolvedNestedDependencies.length,
+        selectedAuthorRequirements.length
+    );
     $: selectedInstallMatch = selectedMod
         ? findMatchingInstall(inventory, selectedMod.name, selectedMod.mod_id, [
             selectedMod.author ?? "",
@@ -1615,6 +1628,32 @@
         } finally {
             isDetailLoading = false;
         }
+    }
+
+    function scrollDetailSection(target: "description" | "files" | "dependencies" | "plan" | "changelog" | "deployment") {
+        const element = {
+            description: detailDescriptionSectionElement,
+            files: detailFilesSectionElement,
+            dependencies: detailDependenciesSectionElement,
+            plan: detailInstallPlanSectionElement,
+            changelog: detailChangelogSectionElement,
+            deployment: detailFooterElement
+        }[target];
+
+        element?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+
+    function describeDetailDependencyNav(issueCount: number, reviewCount: number, apiCount: number, nestedCount: number, authorCount: number): string {
+        if (issueCount > 0) {
+            return `${issueCount} issue${issueCount === 1 ? "" : "s"}`;
+        }
+
+        if (reviewCount > 0) {
+            return `${reviewCount} review`;
+        }
+
+        const total = apiCount + nestedCount + authorCount;
+        return total > 0 ? `${total} listed` : "None listed";
     }
 
     function rememberNexusDetails(details: NexusMod) {
@@ -3345,7 +3384,8 @@
             .replace(/\[img[^\]]*\][\s\S]*?\[\/img\]/gi, " ")
             .replace(/\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi, "$2 ($1)")
             .replace(/\[url\]([\s\S]*?)\[\/url\]/gi, "$1")
-            .replace(/\[\*(?:=[^\]]+)?\]/g, "\n- ")
+            .replace(/\[\*=([^\]]+)\]/g, (_match, label: string) => `\n- ${safeNexusListItemLabel(label)} `)
+            .replace(/\[\*\]/g, "\n- ")
             .replace(/\[\s*li(?:\s[^\]]*|=[^\]]*)?\]/gi, "\n- ")
             .replace(/\[\/\s*li\]/gi, "\n")
             .replace(/\[\/?(?:table|tbody|thead|tfoot)[^\]]*\]/gi, "\n")
@@ -3357,7 +3397,7 @@
             .replace(/\[youtube[^\]]*\]([\s\S]*?)\[\/youtube\]/gi, "YouTube: $1")
             .replace(/\[video[^\]]*\]([\s\S]*?)\[\/video\]/gi, "Video: $1")
             .replace(/\[\/?\s*(?:list|ul|ol|olist)[^\]]*\]/gi, "")
-            .replace(/\[\/?(?:b|i|u|s|strike|sub|sup|size|color|background|bgcolor|highlight|font|center|left|right|justify|align|indent|quote|spoiler|code|heading|h[1-6]|float|div|p|span)[^\]]*\]/gi, "")
+            .replace(/\[\/?(?:b|i|u|s|strike|del|sub|sup|size|color|background|bgcolor|highlight|font|center|left|right|justify|align|indent|quote|spoiler|code|heading|h[1-6]|float|div|p|paragraph|span)[^\]]*\]/gi, "")
             .replace(/\[\/?[a-z0-9_-]+[^\]]*\]/gi, "")
             .replace(/[ \t]+/g, " ")
             .replace(/\n\s+/g, "\n")
@@ -3466,6 +3506,8 @@
             .replace(/\[(?:br|break)\s*\/?\]/gi, "\n")
             .replace(/\[(?:pre|raw|noparse)\]/gi, "[code]")
             .replace(/\[\/(?:pre|raw|noparse)\]/gi, "[/code]")
+            .replace(/\[(?:p|paragraph)\]/gi, "\n\n")
+            .replace(/\[\/(?:p|paragraph)\]/gi, "\n\n")
             .replace(/\[\s*li(?:\s[^\]]*|=[^\]]*)?\]/gi, "\n[*]")
             .replace(/\[\/\s*li\]/gi, "\n")
             .replace(/\[h([1-6])\]/gi, "[heading=$1]")
@@ -3484,7 +3526,11 @@
                 return `\n[olist${type ? `=${type}` : ""}]\n`;
             })
             .replace(/\[\/(?:ul|ol|list|olist)\]/gi, "\n[/list]\n")
-            .replace(/\[\*(?:=[^\]]+)?\]/g, "\n[*]")
+            .replace(/\[\*=([^\]]+)\]/g, (_match, label: string) => {
+                const cleanLabel = safeNexusListItemLabel(label);
+                return cleanLabel ? `\n[*][b]${cleanLabel}[/b] ` : "\n[*]";
+            })
+            .replace(/\[\*\]/g, "\n[*]")
             .replace(/\[table[^\]]*\]/gi, "\n\n[table]\n")
             .replace(/\[\/table\]/gi, "\n[/table]\n\n")
             .replace(/\[\/?(?:tbody|thead|tfoot)[^\]]*\]/gi, "")
@@ -3494,6 +3540,7 @@
             .replace(/\[\/(td|th)\]/gi, (_match, cell: string) => `[/${cell.toLowerCase()}]`)
             .replace(/\[hr\s*\/?\]/gi, "\n\n[hr]\n\n")
             .replace(/\[line\s*\/?\]/gi, "\n\n[hr]\n\n")
+            .replace(/(^|\n)[ \t]*(?:-{3,}|={3,}|_{3,}|\*{3,})[ \t]*(?=\n|$)/g, "$1\n\n[hr]\n\n")
             .replace(/\[(list|olist)([^\]]*)\]\n{2,}/gi, (_match, tag: string, attr: string) => `[${tag.toLowerCase()}${attr ?? ""}]\n`)
             .replace(/\n{2,}\[\/list\]/gi, "\n[/list]")
             .replace(/([^\n])\[list\]/gi, "$1\n\n[list]")
@@ -3519,18 +3566,24 @@
 
     function nexusBlockChunks(text: string): NexusBlockChunk[] {
         const chunks: NexusBlockChunk[] = [];
-        const structuralPattern = /\[(table|list|olist)(?:=([^\]]+))?\]/gi;
+        const structuralPattern = /\[(table|list|olist|quote|spoiler|indent|center|left|right|align|justify|code|heading|float)([^\]]*)\]/gi;
         let cursor = 0;
         let match: RegExpExecArray | null;
 
         while ((match = structuralPattern.exec(text)) !== null) {
             const tag = match[1].toLowerCase();
-            const attr = match[2];
-            const close = findNexusStructureClose(text, structuralPattern.lastIndex, tag === "table" ? "table" : "list");
+            const rawAttrs = match[2] ?? "";
+            const attr = nexusBbTagAttribute(tag, rawAttrs);
+            const before = text.slice(cursor, match.index);
+            if (!isNexusStructuralBoundary(before)) {
+                continue;
+            }
+
+            const close = findNexusStructureClose(text, structuralPattern.lastIndex, tag);
             if (!close) {
                 const remainder = text.slice(structuralPattern.lastIndex).trim();
-                if (tag !== "table" && /\[\*\]/.test(remainder)) {
-                    appendNexusTextChunks(chunks, text.slice(cursor, match.index));
+                if ((tag === "list" || tag === "olist") && /\[\*\]/.test(remainder)) {
+                    appendNexusTextChunks(chunks, before);
                     chunks.push({
                         kind: "list",
                         value: remainder,
@@ -3545,17 +3598,19 @@
                 continue;
             }
 
-            appendNexusTextChunks(chunks, text.slice(cursor, match.index));
+            appendNexusTextChunks(chunks, before);
             const value = text.slice(structuralPattern.lastIndex, close.start).trim();
             if (tag === "table") {
                 chunks.push({ kind: "table", value });
-            } else {
+            } else if (tag === "list" || tag === "olist") {
                 chunks.push({
                     kind: "list",
                     value,
                     ordered: tag === "olist" || isOrderedNexusListAttr(attr),
                     style: nexusOrderedListType(attr) ?? undefined
                 });
+            } else {
+                chunks.push({ kind: "block", value: text.slice(match.index, close.end).trim() });
             }
 
             cursor = close.end;
@@ -3564,6 +3619,10 @@
 
         appendNexusTextChunks(chunks, text.slice(cursor));
         return chunks;
+    }
+
+    function isNexusStructuralBoundary(value: string): boolean {
+        return !value.trim() || /\n{2,}\s*$/.test(value);
     }
 
     function appendNexusTextChunks(chunks: NexusBlockChunk[], value: string) {
@@ -3575,10 +3634,11 @@
         }
     }
 
-    function findNexusStructureClose(text: string, startIndex: number, kind: "list" | "table"): { start: number; end: number } | null {
-        const pattern = kind === "table"
-            ? /\[\/?table(?:=[^\]]+)?\]/gi
-            : /\[\/?(?:list|olist)(?:=[^\]]+)?\]/gi;
+    function findNexusStructureClose(text: string, startIndex: number, tag: string): { start: number; end: number } | null {
+        const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const pattern = tag === "list" || tag === "olist"
+            ? /\[\/?(?:list|olist)(?:[^\]]*)\]/gi
+            : new RegExp(`\\[\\/?${escapedTag}(?:[^\\]]*)\\]`, "gi");
         pattern.lastIndex = startIndex;
         let depth = 1;
         let match: RegExpExecArray | null;
@@ -3628,6 +3688,11 @@
             return `<p class="nexus-rich-heading nexus-rich-heading-${level}">${renderNexusInline(heading[2])}</p>`;
         }
 
+        const standaloneHeading = nexusStandaloneSectionHeading(block);
+        if (standaloneHeading) {
+            return `<p class="nexus-rich-heading nexus-rich-heading-3">${renderNexusInline(standaloneHeading)}</p>`;
+        }
+
         const code = block.match(/^\[code\]([\s\S]*?)\[\/code\]$/i);
         if (code) {
             return `<pre><code>${escapeHtml(code[1])}</code></pre>`;
@@ -3657,6 +3722,11 @@
             return `<div class="nexus-rich-indent nexus-rich-indent-${level}">${renderNexusBlocks(indented[2], depth + 1)}</div>`;
         }
 
+        const floated = block.match(/^\[float(?:=([^\]]+))?\]([\s\S]*?)\[\/float\]$/i);
+        if (floated) {
+            return `<div class="nexus-rich-float nexus-rich-float-${safeNexusFloat(floated[1])}">${renderNexusBlocks(floated[2], depth + 1)}</div>`;
+        }
+
         const justified = block.match(/^\[justify\]([\s\S]*?)\[\/justify\]$/i);
         if (justified) {
             return `<div class="nexus-rich-align-justify">${renderNexusBlocks(justified[1], depth + 1)}</div>`;
@@ -3673,6 +3743,27 @@
 
     function hasNexusBlockStructure(value: string): boolean {
         return /\[(?:table|list|olist|quote|spoiler|indent|center|left|right|align|justify|code|heading|float)(?:=[^\]]+)?\]/i.test(value);
+    }
+
+    function nexusStandaloneSectionHeading(block: string): string | null {
+        const trimmed = block.trim();
+        if (!trimmed || trimmed.includes("\n") || trimmed.length > 160) {
+            return null;
+        }
+
+        const wrapped = trimmed.match(/^(?:\[(?:b|u|size(?:=[^\]]+)?|color(?:=[^\]]+)?|background(?:=[^\]]+)?|bgcolor(?:=[^\]]+)?|highlight(?:=[^\]]+)?)\]\s*)+([\s\S]*?)(?:\s*\[\/(?:b|u|size|color|background|bgcolor|highlight)\])+$/i);
+        const framed = trimmed.match(/^(?:={2,}|#{1,3}\s+)(.+?)(?:\s*={2,})?$/);
+        const candidate = wrapped?.[1] ?? framed?.[1];
+        if (!candidate) {
+            return null;
+        }
+
+        const label = collectNexusNodeText(parseNexusRichNodes(candidate)).replace(/\s+/g, " ").trim();
+        if (label.length < 3 || label.length > 80 || /[.!?]\s*$/.test(label)) {
+            return null;
+        }
+
+        return candidate.trim();
     }
 
     function renderNexusTable(block: string, depth: number): string {
@@ -3861,6 +3952,7 @@
                 return `<u>${inner}</u>`;
             case "s":
             case "strike":
+            case "del":
                 return `<s>${inner}</s>`;
             case "sub":
                 return `<sub>${inner}</sub>`;
@@ -4232,6 +4324,13 @@
             .replace(/\s+/g, " ")
             .trim()
             .slice(0, 80);
+    }
+
+    function safeNexusListItemLabel(value?: string): string {
+        return safeNexusLabel(value)
+            .replace(/[\[\]\r\n]/g, "")
+            .trim()
+            .slice(0, 60);
     }
 
     function isOrderedNexusListAttr(value?: string): boolean {
@@ -4856,6 +4955,33 @@
                 </div>
             </div>
 
+            <div class="detail-section-nav" aria-label="Detail sections">
+                <button type="button" on:click={() => scrollDetailSection("description")}>
+                    <span>Description</span>
+                    <b>{selectedDetailDescriptionCanToggle ? "Long" : "Ready"}</b>
+                </button>
+                <button type="button" on:click={() => scrollDetailSection("files")}>
+                    <span>Files</span>
+                    <b>{selectedModFiles.length}</b>
+                </button>
+                <button type="button" on:click={() => scrollDetailSection("dependencies")}>
+                    <span>Dependencies</span>
+                    <b>{detailDependencyNavText}</b>
+                </button>
+                <button type="button" on:click={() => scrollDetailSection("plan")}>
+                    <span>Plan</span>
+                    <b>{installPlanToneLabel(selectedInstallPlan.tone)}</b>
+                </button>
+                <button type="button" on:click={() => scrollDetailSection("changelog")}>
+                    <span>Changelog</span>
+                    <b>{selectedChangelogs.length}</b>
+                </button>
+                <button type="button" on:click={() => scrollDetailSection("deployment")}>
+                    <span>Deploy</span>
+                    <b>{selectedNexusFile ? "Ready" : "Choose file"}</b>
+                </button>
+            </div>
+
             {#if isDetailLoading}
                 <div class="loading-line">
                     <SvgSpinnersBlocksWave />
@@ -4901,7 +5027,7 @@
                         </div>
                     {/if}
 
-                    <div class="detail-text">
+                    <div class="detail-text" bind:this={detailDescriptionSectionElement}>
                         <div class="detail-text-head">
                             <span class="detail-section-title">Directions / Description</span>
                             {#if selectedDetailDescriptionCanToggle}
@@ -4918,7 +5044,7 @@
                         </div>
                     </div>
 
-                    <div class="changelog-box">
+                    <div class="changelog-box" bind:this={detailChangelogSectionElement}>
                         <span class="detail-section-title">Changelog</span>
                         {#if selectedChangelogs.length === 0}
                             <span class="dependency-empty">No API-listed changelog entries were returned for this mod.</span>
@@ -4952,6 +5078,7 @@
                         class:install-plan-ready={selectedInstallPlan.tone === "ready"}
                         class:install-plan-review={selectedInstallPlan.tone === "review"}
                         class:install-plan-blocked={selectedInstallPlan.tone === "blocked"}
+                        bind:this={detailInstallPlanSectionElement}
                     >
                         <div class="install-plan-head">
                             <span class="detail-section-title">Install Plan</span>
@@ -5028,7 +5155,7 @@
                         </div>
                     {/if}
 
-                    <div class="file-picker">
+                    <div class="file-picker" bind:this={detailFilesSectionElement}>
                         <span class="detail-section-title">Files</span>
                         <div class="file-readiness-grid" aria-label="File choice summary">
                             <span
@@ -5109,7 +5236,7 @@
                         </div>
                     {/if}
 
-                    <div class="dependency-box">
+                    <div class="dependency-box" bind:this={detailDependenciesSectionElement}>
                         <div class="dependency-box-head">
                             <span class="detail-section-title">Dependencies</span>
                             <button
@@ -5242,7 +5369,7 @@
                 </div>
             </div>
 
-            <div class="detail-footer" aria-label="Nexus deployment actions">
+            <div class="detail-footer" aria-label="Nexus deployment actions" bind:this={detailFooterElement}>
                 <div class="detail-footer-copy">
                     <span class="detail-section-title">Deployment</span>
                     <small title={selectedInstallFileLabel}>{selectedInstallFileLabel}</small>
@@ -6368,6 +6495,59 @@
         display: flex;
         gap: 0.75em;
         justify-content: space-between;
+    }
+
+    .detail-section-nav {
+        display: grid;
+        flex: 0 0 auto;
+        gap: 0.45em;
+        grid-template-columns: repeat(6, minmax(7.2em, 1fr));
+        min-width: 0;
+        overflow-x: auto;
+        padding-bottom: 0.05em;
+    }
+
+    .detail-section-nav button {
+        align-items: start;
+        background: rgba(255, 255, 255, 0.045);
+        border: 1px solid rgba(255, 255, 255, 0.11);
+        box-shadow: none;
+        box-sizing: border-box;
+        display: grid;
+        gap: 0.12em;
+        margin: 0;
+        min-height: 2.75em;
+        min-width: 0;
+        padding: 0.38em 0.55em;
+        text-align: left;
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+
+    .detail-section-nav button:hover {
+        border-color: rgba(120, 217, 244, 0.42);
+    }
+
+    .detail-section-nav span,
+    .detail-section-nav b {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .detail-section-nav span {
+        color: #88939e;
+        font-size: 0.66em;
+        font-weight: 900;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+    }
+
+    .detail-section-nav b {
+        color: #dce4ea;
+        font-size: 0.76em;
+        font-weight: 900;
     }
 
     .detail-footer {
