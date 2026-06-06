@@ -14,6 +14,8 @@
     let selectedType = "all";
     let selectedCompatibility = "all";
     let categories: ModCategory[] = [];
+    let visibleMods: Mod[] = [];
+    let hasActiveModFilters = false;
 
     let onlineSelected = true;
     let installedSelected = false;
@@ -27,7 +29,17 @@
     let catalogError: string = "";
     let installedInventoryWarning = "";
 
-    $: visibleMods = filtered.filter(matchesClientFilters);
+    $: {
+        filterTerm;
+        selectedCategory;
+        selectedType;
+        selectedCompatibility;
+        visibleMods = filtered.filter(matchesClientFilters);
+    }
+    $: hasActiveModFilters = filterTerm.trim().length > 0
+        || selectedCategory !== "all"
+        || selectedType !== "all"
+        || selectedCompatibility !== "all";
 
     async function fetchData() {
         //processing.set(true);
@@ -107,12 +119,18 @@
     //     });
     // }
 
-    const handleSearchInput = debounce(async (value: string) => {
-        filterTerm = value;
+    const debouncedReloadOnline = debounce(async () => {
         if (onlineSelected) {
             await reloadOnline();
         }
     }, 600);
+
+    function handleSearchInput(value: string) {
+        filterTerm = value;
+        if (onlineSelected) {
+            debouncedReloadOnline();
+        }
+    }
 
     async function loadCategories() {
         try {
@@ -133,6 +151,18 @@
     }
 
     async function handleFacetChange() {
+        if (onlineSelected) {
+            await reloadOnline();
+        }
+    }
+
+    async function clearModFilters() {
+        debouncedReloadOnline.cancel();
+        filterTerm = "";
+        selectedCategory = "all";
+        selectedType = "all";
+        selectedCompatibility = "all";
+
         if (onlineSelected) {
             await reloadOnline();
         }
@@ -262,6 +292,7 @@
                     <option value="client">Client-side</option>
                 </select>
             </label>
+            <button class="filter-clear" disabled={!hasActiveModFilters || isLoading} on:click={clearModFilters}>Clear</button>
         </div>
 
         {#if catalogError}
@@ -332,7 +363,7 @@
     .filter-row {
         display: grid;
         gap: 0.6em;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(7em, 0.45fr);
         margin: 0 0 0.8em;
         width: 100%;
     }
@@ -362,6 +393,15 @@
         min-height: 2.6em;
         padding: 0.45em 0.7em;
         text-transform: uppercase;
+        width: 100%;
+    }
+
+    .filter-clear {
+        align-self: end;
+        color: #a2a2a2;
+        height: 2.6em;
+        margin: 0;
+        padding: 0;
         width: 100%;
     }
 
