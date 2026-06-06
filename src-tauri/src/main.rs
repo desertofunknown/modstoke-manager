@@ -334,8 +334,72 @@ async fn nexus_fetch_file_dependencies(
 ) -> Result<NexusModDependenciesResponse, String> {
     let key =
         read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
+    let client = nexus_client(&key);
+    let dependency_file_id = match nexus_resolve_v3_mod_file_id(&client, file_id).await {
+        Ok(Some(resolved_id)) => resolved_id,
+        _ => file_id.to_string(),
+    };
+
+    let dependency_result =
+        nexus_request_materialized_dependencies(&client, &dependency_file_id).await;
+    let (value, rate_limit) = match dependency_result {
+        Ok(result) => result,
+        Err(error) if dependency_file_id != file_id.to_string() => {
+            nexus_request_materialized_dependencies(&client, &file_id.to_string())
+                .await
+                .map_err(|fallback_error| {
+                    format!("{error}; fallback dependency request failed: {fallback_error}")
+                })?
+        }
+        Err(error) => return Err(error),
+    };
+    let dependencies = value.get("dependencies").cloned().unwrap_or(value);
+    Ok(NexusModDependenciesResponse {
+        dependencies,
+        rate_limit,
+    })
+}
+
+async fn nexus_resolve_v3_mod_file_id(
+    client: &reqwest::Client,
+    game_scoped_file_id: u64,
+) -> Result<Option<String>, String> {
+    let url = format!(
+        "{NEXUS_API_BASE}/v3/games/{NEXUS_GAME_DOMAIN}/mod-files/{game_scoped_file_id}"
+    );
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+
+    let value = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    let data = value.get("data").unwrap_or(&value);
+
+    if let Some(id) = data
+        .get("id")
+        .and_then(|id| id.as_str())
+        .filter(|id| !id.trim().is_empty())
+    {
+        return Ok(Some(id.to_string()));
+    }
+
+    Ok(data.get("id").and_then(|id| id.as_u64()).map(|id| id.to_string()))
+}
+
+async fn nexus_request_materialized_dependencies(
+    client: &reqwest::Client,
+    file_id: &str,
+) -> Result<(serde_json::Value, NexusRateLimit), String> {
     let url = format!("{NEXUS_API_BASE}/v3/mod-files/{file_id}/dependencies/materialized");
-    let response = nexus_client(&key)
+    let response = client
         .get(url)
         .send()
         .await
@@ -353,11 +417,8 @@ async fn nexus_fetch_file_dependencies(
         .json::<serde_json::Value>()
         .await
         .map_err(|e| e.to_string())?;
-    let dependencies = value.get("dependencies").cloned().unwrap_or(value);
-    Ok(NexusModDependenciesResponse {
-        dependencies,
-        rate_limit,
-    })
+
+    Ok((value, rate_limit))
 }
 
 #[tauri::command]

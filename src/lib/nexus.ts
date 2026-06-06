@@ -34,6 +34,7 @@ export type NexusMod = {
     author?: string;
     uploaded_by?: string;
     picture_url?: string;
+    image_urls?: string[];
     category_id?: number;
     category_name?: string;
     category_source?: NexusCategorySource;
@@ -581,7 +582,20 @@ function mergeNexusMods(input: NexusMod[]): NexusMod[] {
     const byId = new Map<number, NexusMod>();
     for (const mod of input) {
         const existing = byId.get(mod.mod_id);
-        byId.set(mod.mod_id, existing ? { ...mod, ...existing, ...emptyFieldsFrom(existing, mod) } : mod);
+        if (!existing) {
+            byId.set(mod.mod_id, mod);
+            continue;
+        }
+
+        const merged = { ...mod, ...existing, ...emptyFieldsFrom(existing, mod) };
+        merged.image_urls = uniqueImageUrls([
+            ...(mod.image_urls ?? []),
+            ...(existing.image_urls ?? []),
+            mod.picture_url,
+            existing.picture_url
+        ]);
+        merged.picture_url = merged.picture_url ?? merged.image_urls[0];
+        byId.set(mod.mod_id, merged);
     }
 
     return Array.from(byId.values())
@@ -732,6 +746,12 @@ function normalizeNexusMod(raw: NexusMod & Record<string, unknown>, categories: 
         ?? stringField(raw.description)
         ?? stringField(raw.short_description);
     const resolvedCategory = resolveNexusCategory(raw, categories);
+    const imageUrls = imageUrlsFrom(raw);
+    const pictureUrl = stringField(raw.picture_url)
+        ?? stringField(raw.picture)
+        ?? stringField(raw.thumbnail_url)
+        ?? stringField(raw.screenshot_url)
+        ?? imageUrls[0];
 
     return {
         ...raw,
@@ -744,10 +764,8 @@ function normalizeNexusMod(raw: NexusMod & Record<string, unknown>, categories: 
         version: stringField(raw.version) ?? stringField(raw.latest_version),
         author: stringField(raw.author) ?? stringField(raw.uploaded_by),
         uploaded_by: stringField(raw.uploaded_by),
-        picture_url: stringField(raw.picture_url)
-            ?? stringField(raw.picture)
-            ?? stringField(raw.thumbnail_url)
-            ?? stringField(raw.screenshot_url),
+        picture_url: pictureUrl,
+        image_urls: uniqueImageUrls([pictureUrl, ...imageUrls]),
         category_id: resolvedCategory.category_id,
         category_name: resolvedCategory.name,
         category_source: resolvedCategory.source,
@@ -828,7 +846,15 @@ function normalizeNexusFile(raw: NexusModFile & Record<string, unknown>): NexusM
 }
 
 function normalizeDependencies(raw: unknown): NexusModDependency[] {
-    const dependencies = Array.isArray(raw) ? raw : (raw as { dependencies?: unknown[] })?.dependencies ?? [];
+    const root = objectField(raw);
+    const data = objectField(root?.data);
+    const dependencies = Array.isArray(raw)
+        ? raw
+        : Array.isArray(root?.dependencies)
+            ? root.dependencies
+            : Array.isArray(data?.dependencies)
+                ? data.dependencies
+                : [];
     const flattened: NexusModDependency[] = [];
 
     for (const dependency of dependencies as Array<Record<string, unknown>>) {
@@ -1014,6 +1040,66 @@ function inferLoaderType(raw: Record<string, unknown>): string {
     }
 
     return "Unknown";
+}
+
+function imageUrlsFrom(raw: Record<string, unknown>): string[] {
+    const urls: Array<string | undefined> = [
+        stringField(raw.picture_url),
+        stringField(raw.picture),
+        stringField(raw.thumbnail_url),
+        stringField(raw.screenshot_url),
+        stringField(raw.image_url)
+    ];
+
+    for (const key of ["images", "image_urls", "screenshots", "screenshot_urls", "pictures", "media", "gallery", "mod_media"]) {
+        collectImageUrls(raw[key], urls);
+    }
+
+    return uniqueImageUrls(urls);
+}
+
+function collectImageUrls(value: unknown, urls: Array<string | undefined>) {
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            collectImageUrls(item, urls);
+        }
+        return;
+    }
+
+    const text = stringField(value);
+    if (text) {
+        urls.push(text);
+        return;
+    }
+
+    const object = objectField(value);
+    if (!object) {
+        return;
+    }
+
+    for (const key of ["url", "image_url", "picture_url", "thumbnail_url", "screenshot_url", "full", "original", "large", "medium", "small", "src"]) {
+        urls.push(stringField(object[key]));
+    }
+
+    for (const key of ["image", "thumbnail", "picture", "screenshot"]) {
+        collectImageUrls(object[key], urls);
+    }
+}
+
+function uniqueImageUrls(values: Array<string | undefined>): string[] {
+    const seen = new Set<string>();
+    const urls: string[] = [];
+
+    for (const value of values) {
+        if (!value || !/^https?:\/\//i.test(value) || seen.has(value)) {
+            continue;
+        }
+
+        seen.add(value);
+        urls.push(value);
+    }
+
+    return urls.slice(0, 12);
 }
 
 function stringField(value: unknown): string | undefined {

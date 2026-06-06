@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy, onMount } from "svelte";
+    import { onDestroy, onMount, tick } from "svelte";
     import semver from "semver";
     import SvgSpinnersBlocksWave from "~icons/svg-spinners/blocks-wave";
     import {
@@ -102,6 +102,7 @@
     let apiKey = "";
     let mods: NexusMod[] = [];
     let knownNexusDetails: Record<number, NexusMod> = {};
+    let catalogPreviewIndexes: Record<number, number> = {};
     let nexusCategories: NexusCategory[] = [];
     let endorsements: NexusEndorsement[] = [];
     let endorsementsLoaded = false;
@@ -136,6 +137,7 @@
     let selectedModFiles: NexusModFile[] = [];
     let selectedFileId: number | null = null;
     let selectedDependencies: NexusModDependency[] = [];
+    let selectedDependencyMessage = "";
     let nestedDependencySources: NestedDependencySource[] = [];
     let resolvedNestedDependencies: ResolvedNestedDependency[] = [];
     let isResolvingNestedDependencies = false;
@@ -173,6 +175,10 @@
     let refreshCooldownSeconds = 0;
     let refreshCooldownTimer: number | null = null;
     let nexusUiPreferencesLoaded = false;
+    let nexusPageElement: HTMLDivElement | null = null;
+    let nexusLayoutObserver: ResizeObserver | null = null;
+    let nexusLayoutFrame: number | null = null;
+    let nexusWindowResizeHandler: (() => void) | null = null;
 
     const NEXUS_SSO_URL = "wss://sso.nexusmods.com";
     const NEXUS_SSO_APPLICATION_SLUG = "openacai-mod-manager";
@@ -186,6 +192,7 @@
     const MAX_NESTED_DEPENDENCY_FILES = 8;
     const MAX_NESTED_DEPENDENCY_DEPTH = 2;
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
+    const NEXUS_PLACEHOLDER_IMAGE = "https://placehold.co/320x180/252525/FFF?text=Nexus";
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
     const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
     const MOD_TYPE_FILTERS: ModTypeFilter[] = ["all", "bepinex-plugin", "redloader-mod", "redloader-library", "vortex", "native", "manual"];
@@ -354,8 +361,24 @@
             persistNexusUiPreferences();
         }
     }
+    $: {
+        session.is_connected;
+        session.rate_limit;
+        status;
+        catalogMode;
+        selectedInstallFilter;
+        visibleNexusMods.length;
+        visibleInstalledEntries.length;
+        localConflicts.length;
+        selectedMod;
+        selectedModFiles.length;
+        selectedDependencies.length;
+        resolvedNestedDependencies.length;
+        void measureNexusLayoutAfterTick();
+    }
 
     onMount(async () => {
+        setupNexusLayoutObserver();
         loadNexusUiPreferences();
         loadEndorsementPreferences();
         await refreshInventory();
@@ -364,13 +387,107 @@
         if (session.is_connected) {
             await loadMods();
         }
+
+        await measureNexusLayoutAfterTick();
     });
 
     onDestroy(() => {
         cleanupSso();
         cleanupManualRefreshCooldown();
         clearNxmCopyFeedback();
+        cleanupNexusLayoutObserver();
     });
+
+    function setupNexusLayoutObserver() {
+        nexusWindowResizeHandler = () => scheduleNexusLayoutMeasure();
+        window.addEventListener("resize", nexusWindowResizeHandler);
+
+        if ("ResizeObserver" in window) {
+            nexusLayoutObserver = new ResizeObserver(() => scheduleNexusLayoutMeasure());
+            if (nexusPageElement) {
+                nexusLayoutObserver.observe(nexusPageElement);
+            }
+        }
+
+        scheduleNexusLayoutMeasure();
+    }
+
+    function cleanupNexusLayoutObserver() {
+        if (nexusWindowResizeHandler) {
+            window.removeEventListener("resize", nexusWindowResizeHandler);
+            nexusWindowResizeHandler = null;
+        }
+
+        nexusLayoutObserver?.disconnect();
+        nexusLayoutObserver = null;
+
+        if (nexusLayoutFrame !== null) {
+            window.cancelAnimationFrame(nexusLayoutFrame);
+            nexusLayoutFrame = null;
+        }
+    }
+
+    async function measureNexusLayoutAfterTick() {
+        await tick();
+        if (nexusLayoutObserver && nexusPageElement) {
+            nexusLayoutObserver.disconnect();
+            nexusLayoutObserver.observe(nexusPageElement);
+        }
+        scheduleNexusLayoutMeasure();
+    }
+
+    function scheduleNexusLayoutMeasure() {
+        if (nexusLayoutFrame !== null) {
+            return;
+        }
+
+        nexusLayoutFrame = window.requestAnimationFrame(() => {
+            nexusLayoutFrame = null;
+            measureNexusLayout();
+        });
+    }
+
+    function measureNexusLayout() {
+        const page = nexusPageElement;
+        if (!page) {
+            return;
+        }
+
+        const catalogPanel = page.querySelector<HTMLElement>(".catalog-panel");
+        const scroller = page.querySelector<HTMLElement>(".nexus-scroller");
+        if (!catalogPanel || !scroller) {
+            return;
+        }
+
+        const pageRect = page.getBoundingClientRect();
+        const catalogRect = catalogPanel.getBoundingClientRect();
+        const catalogStyle = getComputedStyle(catalogPanel);
+        const catalogGap = cssPixels(catalogStyle.rowGap || catalogStyle.gap);
+        const catalogChrome = Array.from(catalogPanel.children)
+            .filter((child): child is HTMLElement => child instanceof HTMLElement && child !== scroller && getComputedStyle(child).display !== "none");
+
+        const chromeHeight = catalogChrome.reduce((sum, child) => sum + child.getBoundingClientRect().height, 0)
+            + Math.max(0, catalogChrome.length) * catalogGap;
+        const availableCatalogHeight = clampNumber(pageRect.bottom - catalogRect.top, 380, Math.max(380, pageRect.height));
+        const targetScrollerHeight = clampNumber(availableCatalogHeight - chromeHeight, 300, availableCatalogHeight);
+        const targetCardHeight = clampNumber(targetScrollerHeight / (targetScrollerHeight >= 620 ? 3.8 : 3.2), 126, 190);
+        const targetThumbWidth = clampNumber(pageRect.width * 0.16, 126, 230);
+
+        page.style.setProperty("--nexus-catalog-target-height", `${Math.round(availableCatalogHeight)}px`);
+        page.style.setProperty("--nexus-scroller-target-height", `${Math.round(targetScrollerHeight)}px`);
+        page.style.setProperty("--nexus-card-min-height", `${Math.round(targetCardHeight)}px`);
+        page.style.setProperty("--nexus-thumb-width", `${Math.round(targetThumbWidth)}px`);
+    }
+
+    function cssPixels(value: string): number {
+        const parsed = Number.parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function clampNumber(value: number, min: number, max: number): number {
+        return Math.min(max, Math.max(min, value));
+    }
+
 
     async function refreshSession() {
         try {
@@ -1141,6 +1258,58 @@
         await shell.open(getNexusModDownloadUrl(mod));
     }
 
+    function catalogPreviewUrls(mod: NexusMod): string[] {
+        const detail = knownNexusDetails[mod.mod_id];
+        return uniquePreviewUrls([
+            ...(mod.image_urls ?? []),
+            mod.picture_url,
+            ...(detail?.image_urls ?? []),
+            detail?.picture_url
+        ]);
+    }
+
+    function catalogPreviewIndex(mod: NexusMod, urls: string[]): number {
+        if (urls.length === 0) {
+            return 0;
+        }
+
+        const current = catalogPreviewIndexes[mod.mod_id] ?? 0;
+        return current >= 0 && current < urls.length ? current : 0;
+    }
+
+    function catalogPreviewImage(mod: NexusMod, urls: string[]): string {
+        return urls[catalogPreviewIndex(mod, urls)] ?? NEXUS_PLACEHOLDER_IMAGE;
+    }
+
+    function cycleCatalogPreview(mod: NexusMod, urls: string[], step: number, event: MouseEvent) {
+        event.stopPropagation();
+        if (urls.length < 2) {
+            return;
+        }
+
+        const current = catalogPreviewIndex(mod, urls);
+        catalogPreviewIndexes = {
+            ...catalogPreviewIndexes,
+            [mod.mod_id]: (current + step + urls.length) % urls.length
+        };
+    }
+
+    function uniquePreviewUrls(values: Array<string | undefined>): string[] {
+        const seen = new Set<string>();
+        const urls: string[] = [];
+
+        for (const value of values) {
+            if (!value || !/^https?:\/\//i.test(value) || seen.has(value)) {
+                continue;
+            }
+
+            seen.add(value);
+            urls.push(value);
+        }
+
+        return urls;
+    }
+
     async function openInventoryLocation(entry: InstalledInventoryEntry) {
         const target = entry.packagePath ?? entry.assemblyPath ?? await getDirectoryPath();
         await openExternalTarget(target);
@@ -1171,6 +1340,7 @@
         selectedFileId = null;
         selectedInstallPlacement = "auto";
         selectedDependencies = [];
+        selectedDependencyMessage = "";
         clearNestedDependencyCheck();
         selectedChangelogs = [];
         isDetailLoading = true;
@@ -1241,6 +1411,7 @@
         selectedModFiles = [];
         selectedFileId = null;
         selectedDependencies = [];
+        selectedDependencyMessage = "";
         clearNestedDependencyCheck();
         selectedChangelogs = [];
         detailBackStack = [];
@@ -1265,6 +1436,7 @@
 
     async function loadDependenciesForFile(fileId: number) {
         selectedDependencies = [];
+        selectedDependencyMessage = "Checking Nexus dependency metadata...";
         clearNestedDependencyCheck();
         try {
             const response = await fetchNexusFileDependencies(fileId);
@@ -1272,15 +1444,19 @@
                 return;
             }
             selectedDependencies = response.dependencies;
+            selectedDependencyMessage = response.dependencies.length > 0
+                ? `${response.dependencies.length} API-listed ${response.dependencies.length === 1 ? "dependency" : "dependencies"} returned for this file.`
+                : "Nexus returned no API dependency rows for this file.";
             session = {
                 ...session,
                 rate_limit: response.rate_limit
             };
-        } catch {
+        } catch (error) {
             if (selectedFileId !== fileId) {
                 return;
             }
             selectedDependencies = [];
+            selectedDependencyMessage = `Dependency lookup failed: ${error}`;
         }
     }
 
@@ -2764,6 +2940,7 @@
             .replace(/\[img[^\]]*\][\s\S]*?\[\/img\]/gi, " ")
             .replace(/\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi, "$2 ($1)")
             .replace(/\[\*\]/g, "\n- ")
+            .replace(/\[\/\*\]/g, "")
             .replace(/\[\/?(?:b|i|u|s|size|color|font|center|left|right|list|quote|spoiler|code)[^\]]*\]/gi, "")
             .replace(/\[\/?[a-z0-9_-]+[^\]]*\]/gi, "")
             .replace(/&#92;/g, "\\")
@@ -2777,7 +2954,7 @@
     }
 </script>
 
-<div class="column nexus-page">
+<div class="column nexus-page" bind:this={nexusPageElement}>
     <section class="account-panel">
         <div class="account-copy">
             <span class="panel-title">Vortex / Nexus Mods</span>
@@ -3056,14 +3233,25 @@
                         {@const match = installedMatch(mod)}
                         {@const updateVerdict = nexusUpdateVerdict(mod, match)}
                         {@const conflict = conflictForEntry(match)}
+                        {@const previewUrls = catalogPreviewUrls(mod)}
+                        {@const previewIndex = catalogPreviewIndex(mod, previewUrls)}
                         <article class="nexus-card" class:nexus-installed={!!match} class:nexus-conflict={!!conflict}>
-                            <button class="thumbnail-button" aria-label={`Open ${mod.name} details`} on:click={() => openModDetails(mod)}>
-                                <img
-                                    class="nexus-img"
-                                    src={mod.picture_url ?? "https://placehold.co/320x180/252525/FFF?text=Nexus"}
-                                    alt=""
-                                />
-                            </button>
+                            <div class="thumbnail-frame">
+                                <button class="thumbnail-button" aria-label={`Open ${mod.name} details`} on:click={() => openModDetails(mod)}>
+                                    <img
+                                        class="nexus-img"
+                                        src={catalogPreviewImage(mod, previewUrls)}
+                                        alt=""
+                                    />
+                                </button>
+                                {#if previewUrls.length > 1}
+                                    <div class="thumbnail-nav" aria-label={`${mod.name} preview images`}>
+                                        <button type="button" aria-label="Previous preview image" on:click={(event) => cycleCatalogPreview(mod, previewUrls, -1, event)}>&lt;</button>
+                                        <span>{previewIndex + 1}/{previewUrls.length}</span>
+                                        <button type="button" aria-label="Next preview image" on:click={(event) => cycleCatalogPreview(mod, previewUrls, 1, event)}>&gt;</button>
+                                    </div>
+                                {/if}
+                            </div>
 
                             <div class="nexus-body">
                                 <div class="card-head">
@@ -3414,8 +3602,11 @@
                         {#if nestedDependencySummary}
                             <span class="dependency-empty">{nestedDependencySummary}</span>
                         {/if}
+                        {#if selectedDependencyMessage}
+                            <span class="dependency-empty">{selectedDependencyMessage}</span>
+                        {/if}
                         {#if resolvedDependencies.length === 0}
-                            <span class="dependency-empty">No API-listed dependencies for the selected file. Still review the author directions for manual requirements.</span>
+                            <span class="dependency-empty">{selectedDependencyMessage ? "Still review the author directions for manual requirements." : "No API-listed dependencies for the selected file. Still review the author directions for manual requirements."}</span>
                         {:else}
                             {#each resolvedDependencies as dependency}
                                 <div
@@ -3508,6 +3699,10 @@
 
 <style>
     .nexus-page {
+        --nexus-card-min-height: clamp(138px, 17vh, 178px);
+        --nexus-catalog-target-height: 360px;
+        --nexus-scroller-target-height: 280px;
+        --nexus-thumb-width: clamp(145px, 18vw, 230px);
         gap: clamp(0.55em, 1vh, 0.9em);
         height: 100%;
         justify-content: flex-start;
@@ -3792,10 +3987,8 @@
         font-size: 0.68em;
         font-weight: 900;
         letter-spacing: 0.1em;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        overflow-wrap: anywhere;
         text-transform: uppercase;
-        white-space: nowrap;
     }
 
     .summary-value {
@@ -3812,9 +4005,7 @@
         color: #8fa3b5;
         font-size: 0.68em;
         font-weight: 700;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        overflow-wrap: anywhere;
     }
 
     .active-summary .summary-value {
@@ -3832,10 +4023,10 @@
 
     .catalog-panel {
         display: flex;
-        flex: 1 1 auto;
+        flex: 1 0 var(--nexus-catalog-target-height);
         flex-direction: column;
         gap: 0.65em;
-        min-height: 0;
+        min-height: min(var(--nexus-catalog-target-height), 100%);
     }
 
     .catalog-toolbar {
@@ -4142,10 +4333,10 @@
 
     .nexus-scroller {
         display: flex;
-        flex: 1 1 auto;
+        flex: 1 0 var(--nexus-scroller-target-height);
         flex-direction: column;
         gap: 0.65em;
-        min-height: 0;
+        min-height: min(var(--nexus-scroller-target-height), 100%);
         overflow-y: auto;
         padding: 0 0.45em 0.15em 0;
         scrollbar-gutter: stable;
@@ -4159,8 +4350,8 @@
         display: grid;
         flex: 0 0 auto;
         gap: 0;
-        grid-template-columns: clamp(145px, 18vw, 230px) minmax(0, 1fr);
-        min-height: clamp(138px, 17vh, 178px);
+        grid-template-columns: var(--nexus-thumb-width) minmax(0, 1fr);
+        min-height: var(--nexus-card-min-height);
         overflow: hidden;
     }
 
@@ -4170,6 +4361,14 @@
 
     .nexus-conflict {
         border-left: 3px solid #fdc66d;
+    }
+
+    .thumbnail-frame {
+        background: rgba(8, 8, 8, 0.85);
+        min-height: var(--nexus-card-min-height);
+        min-width: 0;
+        overflow: hidden;
+        position: relative;
     }
 
     .thumbnail-button {
@@ -4186,13 +4385,14 @@
         padding: 0;
         -webkit-mask-image: none;
         mask-image: none;
+        width: 100%;
     }
 
     .nexus-img {
         background: #252525;
         display: block;
         height: 100%;
-        min-height: clamp(138px, 17vh, 178px);
+        min-height: var(--nexus-card-min-height);
         object-fit: cover;
         opacity: 0.9;
         width: 100%;
@@ -4531,11 +4731,56 @@
         display: flex;
         flex-direction: column;
         gap: 0.8em;
-        max-height: min(86vh, 820px);
-        max-width: min(92vw, 1180px);
-        min-height: min(70vh, 720px);
+        max-height: calc(100vh - 1.5em);
+        max-width: min(96vw, 1320px);
+        min-height: min(74vh, 740px);
         padding: clamp(1em, 2vh, 1.35em);
         width: 100%;
+    }
+
+    .thumbnail-nav {
+        align-items: center;
+        background: rgba(0, 0, 0, 0.54);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        bottom: 0.45em;
+        box-sizing: border-box;
+        display: flex;
+        gap: 0.25em;
+        left: 0.45em;
+        max-width: calc(100% - 0.9em);
+        padding: 0.2em;
+        position: absolute;
+        right: 0.45em;
+    }
+
+    .thumbnail-nav button {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: none;
+        color: #eefcff;
+        display: flex;
+        flex: 0 0 1.9em;
+        font-size: 0.7em;
+        font-weight: 900;
+        height: 1.9em;
+        justify-content: center;
+        margin: 0;
+        min-height: 0;
+        min-width: 0;
+        padding: 0;
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+
+    .thumbnail-nav span {
+        color: #d6dde5;
+        flex: 1 1 auto;
+        font-size: 0.68em;
+        font-weight: 900;
+        min-width: 0;
+        text-align: center;
+        white-space: nowrap;
     }
 
     .detail-header,
@@ -4588,8 +4833,9 @@
         display: grid;
         flex: 1 1 auto;
         gap: 1em;
-        grid-template-columns: minmax(0, 1fr) minmax(300px, 0.45fr);
+        grid-template-columns: minmax(0, 1fr) minmax(480px, 0.78fr);
         min-height: 0;
+        overflow: hidden;
     }
 
     .detail-main,
@@ -4599,6 +4845,40 @@
         gap: 0.75em;
         min-height: 0;
         min-width: 0;
+        overflow-y: auto;
+        padding-right: 0.2em;
+    }
+
+    .detail-facts {
+        order: 1;
+    }
+
+    .file-picker {
+        order: 2;
+    }
+
+    .dependency-box {
+        order: 3;
+    }
+
+    .install-plan {
+        order: 4;
+    }
+
+    .nxm-link-box {
+        order: 5;
+    }
+
+    .detail-conflict-box {
+        order: 6;
+    }
+
+    .detail-actions {
+        order: 7;
+    }
+
+    .detail-link-actions {
+        order: 8;
     }
 
     .detail-img {
@@ -4624,7 +4904,8 @@
     }
 
     .detail-text {
-        flex: 1 1 auto;
+        flex: 1 1 12em;
+        max-height: clamp(190px, 30vh, 360px);
         min-height: 0;
         overflow-y: auto;
     }
@@ -4724,8 +5005,7 @@
     }
 
     .install-plan-facts span,
-    .install-plan-facts b,
-    .install-plan-notes span {
+    .install-plan-facts b {
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -4758,6 +5038,8 @@
         color: #9aa5af;
         font-size: 0.76em;
         font-weight: 700;
+        min-width: 0;
+        overflow-wrap: anywhere;
     }
 
     .install-plan-ready .install-plan-notes span {
@@ -4789,12 +5071,12 @@
         display: flex;
         font-family: "JetBrains Mono", "Consolas", monospace;
         font-size: 0.72em;
+        line-height: 1.25;
         min-height: 2.75em;
         min-width: 0;
-        overflow: hidden;
-        padding: 0 0.65em;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        overflow-wrap: anywhere;
+        padding: 0.45em 0.65em;
+        white-space: normal;
     }
 
     .nxm-link-row button {
@@ -4879,9 +5161,10 @@
     .dependency-box {
         display: flex;
         flex-direction: column;
-        flex: 1 1 0;
+        flex: 1 1 15em;
         gap: 0.45em;
-        min-height: 0;
+        max-height: clamp(240px, 32vh, 380px);
+        min-height: 13em;
         overflow-y: auto;
     }
 
@@ -4908,9 +5191,9 @@
     }
 
     .changelog-box {
-        flex: 0 1 auto;
-        max-height: clamp(120px, 20vh, 220px);
-        min-height: 0;
+        flex: 1 1 10em;
+        max-height: clamp(150px, 24vh, 280px);
+        min-height: 8.5em;
         overflow-y: auto;
     }
 
@@ -5109,6 +5392,198 @@
         .facts {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
+
+        .detail-grid {
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding-right: 0.2em;
+        }
+
+        .detail-panel {
+            max-height: calc(100vh - 1.5em);
+            min-height: 0;
+        }
+
+        .detail-main,
+        .detail-side {
+            flex: 0 0 auto;
+            min-height: auto;
+            overflow-y: visible;
+            padding-right: 0;
+        }
+
+        .detail-side {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            align-items: start;
+        }
+
+        .file-picker,
+        .dependency-box,
+        .detail-actions,
+        .detail-link-actions {
+            grid-column: 1 / -1;
+        }
+
+        .file-picker,
+        .dependency-box,
+        .changelog-box {
+            max-height: clamp(220px, 36vh, 420px);
+            min-height: 14em;
+        }
+
+        .detail-text {
+            flex: 0 0 auto;
+            max-height: clamp(220px, 36vh, 430px);
+        }
+
+        .detail-img {
+            height: clamp(140px, 22vh, 230px);
+        }
+
+        .detail-header {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .detail-header-actions {
+            width: 100%;
+        }
+
+        .detail-header-actions button {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+
+        .nxm-link-row {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-height: 900px) {
+        .nexus-page {
+            gap: 0.45em;
+        }
+
+        .account-panel {
+            padding: 0.48em 0.75em;
+        }
+
+        .account-actions {
+            gap: 0.38em;
+        }
+
+        .account-actions button,
+        .auto-endorse-control {
+            font-size: 0.7em;
+            min-height: 2.25em;
+            padding: 0.25em 0.55em;
+        }
+
+        .rate-row,
+        .vortex-summary,
+        .catalog-panel,
+        .action-queue,
+        .nexus-filter-row {
+            gap: 0.38em;
+        }
+
+        .vortex-summary {
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+        }
+
+        .summary-card {
+            gap: 0;
+            padding: 0.38em 0.5em;
+        }
+
+        .summary-note {
+            display: none;
+        }
+
+        .api-note {
+            padding: 0.36em 0.6em;
+        }
+
+        .queue-chip {
+            min-height: 2.45em;
+            padding: 0.32em 0.5em;
+        }
+
+        .queue-chip small {
+            display: none;
+        }
+
+        .nexus-filter-row select,
+        .nexus-filter-row .key-input {
+            min-height: 2.35em;
+            padding-bottom: 0.35em;
+            padding-top: 0.35em;
+        }
+
+        .nexus-filter-row {
+            grid-template-columns: minmax(10em, 1.5fr) repeat(4, minmax(6.5em, 1fr)) minmax(4.8em, 0.55fr);
+        }
+
+        .cat-btn,
+        .refresh-btn,
+        .catalog-mode-buttons button {
+            height: 2.3em;
+        }
+
+        .nexus-card {
+            grid-template-columns: clamp(86px, 10vw, 126px) minmax(0, 1fr);
+            min-height: clamp(104px, 13vh, 136px);
+        }
+
+        .thumbnail-button {
+            display: block;
+            min-width: 0;
+        }
+
+        .thumbnail-frame,
+        .nexus-img {
+            min-height: clamp(104px, 13vh, 136px);
+        }
+
+        .thumbnail-nav {
+            bottom: 0.3em;
+            left: 0.3em;
+            right: 0.3em;
+        }
+
+        .nexus-body {
+            gap: 0.38em;
+            padding: 0.55em 0.7em;
+        }
+
+        .description-content {
+            -webkit-line-clamp: 1;
+            line-clamp: 1;
+            min-height: auto;
+        }
+
+        .facts,
+        .inventory-facts {
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+        }
+
+        .nexus-card-footer {
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .button-row {
+            flex-wrap: wrap;
+            margin-left: 0;
+        }
+
+        .button-row button,
+        .button-row .vortex-install-btn {
+            flex: 1 1 6.5em;
+            min-width: 0;
+        }
     }
 
     @media (max-width: 860px) {
@@ -5140,7 +5615,8 @@
 
         .nexus-filter-row,
         .rate-row,
-        .vortex-summary {
+        .vortex-summary,
+        .detail-side {
             grid-template-columns: 1fr;
         }
 
@@ -5159,33 +5635,6 @@
         .button-row {
             margin-left: 0;
             width: 100%;
-        }
-
-        .detail-grid {
-            grid-template-columns: 1fr;
-            overflow-y: auto;
-        }
-
-        .detail-panel {
-            max-height: 92vh;
-        }
-
-        .detail-header {
-            align-items: stretch;
-            flex-direction: column;
-        }
-
-        .detail-header-actions {
-            width: 100%;
-        }
-
-        .detail-header-actions button {
-            flex: 1 1 0;
-            min-width: 0;
-        }
-
-        .nxm-link-row {
-            grid-template-columns: 1fr;
         }
     }
 </style>
