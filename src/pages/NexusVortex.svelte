@@ -3923,12 +3923,9 @@
             .replace(/<\/th>/gi, "[/th]")
             .replace(/<td\b([^>]*)>/gi, (_match, attrs: string) => `[td${nexusHtmlTableCellAttributes(attrs)}]`)
             .replace(/<\/td>/gi, "[/td]")
-            .replace(/<ul\b[^>]*>/gi, "\n[list]\n")
+            .replace(/<ul\b([^>]*)>/gi, (_match, attrs: string) => nexusHtmlListOpeningTag(attrs, false))
             .replace(/<\/ul>/gi, "\n[/list]\n")
-            .replace(/<ol\b([^>]*)>/gi, (_match, attrs: string) => {
-                const type = nexusOrderedListType(htmlAttribute(attrs, "type") ?? "");
-                return `\n[olist${type ? `=${type}` : ""}]\n`;
-            })
+            .replace(/<ol\b([^>]*)>/gi, (_match, attrs: string) => nexusHtmlListOpeningTag(attrs, true))
             .replace(/<\/ol>/gi, "\n[/olist]\n")
             .replace(/<li\b[^>]*>/gi, "\n[*]")
             .replace(/<\/li>/gi, "\n")
@@ -4929,10 +4926,13 @@
             } else if (isClosing) {
                 if (stack.length > 1 && stack[stack.length - 1].name === name) {
                     stack.pop();
-                } else if (isNexusLooseClosingTag(name)) {
-                    // Standalone Nexus image aliases often leave a harmless closing token behind.
                 } else {
-                    stack[stack.length - 1].children.push({ kind: "text", value: full });
+                    const openTagIndex = lastNexusOpenTagIndex(stack, name);
+                    if (openTagIndex > 0) {
+                        stack.length = openTagIndex;
+                    } else if (isNexusLooseClosingTag(name)) {
+                        // Standalone Nexus image aliases often leave a harmless closing token behind.
+                    }
                 }
             } else {
                 const node: NexusRichNode = { kind: "tag", name, attr: nexusBbTagAttribute(name, rawAttrs), rawAttrs, children: [] };
@@ -4950,6 +4950,16 @@
         }
 
         return root.children;
+    }
+
+    function lastNexusOpenTagIndex(stack: Array<{ name: string; children: NexusRichNode[] }>, name: string): number {
+        for (let index = stack.length - 1; index > 0; index -= 1) {
+            if (stack[index].name === name) {
+                return index;
+            }
+        }
+
+        return -1;
     }
 
     function isNexusVoidRichTag(name: string, rawAttrs?: string): boolean {
@@ -5566,6 +5576,25 @@
         return Math.max(1, Math.min(4, Math.round(numeric / 28))) as 1 | 2 | 3 | 4;
     }
 
+    function nexusHtmlListOpeningTag(attrs: string, ordered: boolean): string {
+        const style = htmlAttribute(attrs, "type") ?? htmlListStyleTypeAttribute(attrs) ?? "";
+        if (ordered) {
+            const type = nexusOrderedListType(style);
+            return `\n[olist${type ? `=${type}` : ""}]\n`;
+        }
+
+        const marker = nexusUnorderedListStyle(style);
+        return `\n[list${marker ? `=${marker}` : ""}]\n`;
+    }
+
+    function htmlListStyleTypeAttribute(attrs: string): string | null {
+        const style = htmlAttribute(attrs, "style") ?? "";
+        const styled = style.match(/(?:^|;)\s*list-style(?:-type)?\s*:\s*([^;]+)/i)?.[1];
+        const classes = htmlAttribute(attrs, "class") ?? "";
+        const classed = classes.match(/(?:^|\s)(?:list-style-)?(disc|circle|square|none|dash|hyphen|check|checklist|decimal|lower-alpha|upper-alpha|lower-latin|upper-latin|lower-roman|upper-roman|roman)(?:\s|$)/i)?.[1];
+        return styled ?? classed ?? null;
+    }
+
     function nexusHtmlTableCellAttributes(attrs: string): string {
         const colspan = safeNexusTableSpan(htmlAttribute(attrs, "colspan") ?? htmlAttribute(attrs, "col") ?? undefined);
         const rowspan = safeNexusTableSpan(htmlAttribute(attrs, "rowspan") ?? htmlAttribute(attrs, "row") ?? undefined);
@@ -5803,7 +5832,7 @@
     }
 
     function nexusUnorderedListStyle(value?: string): "disc" | "circle" | "square" | "none" | "dash" | "check" | null {
-        const attr = decodeHtmlEntities(value ?? "").trim().replace(/^['"]|['"]$/g, "").toLowerCase();
+        const attr = nexusListStyleToken(value).toLowerCase();
         if (!attr || attr === "bullet" || attr === "bullets") {
             return null;
         }
@@ -5828,18 +5857,18 @@
     }
 
     function nexusOrderedListType(value?: string): "1" | "a" | "A" | "i" | "I" | null {
-        const attr = decodeHtmlEntities(value ?? "").trim().replace(/^['"]|['"]$/g, "");
+        const attr = nexusListStyleToken(value);
         const lowered = attr.toLowerCase();
 
-        if (attr === "1" || lowered === "decimal" || lowered === "number" || lowered === "numbers" || lowered === "numeric") {
+        if (attr === "1" || lowered === "decimal" || lowered === "decimal-leading-zero" || lowered === "number" || lowered === "numbers" || lowered === "numeric") {
             return "1";
         }
 
-        if (attr === "a" || lowered === "lower-alpha" || lowered === "alpha") {
+        if (attr === "a" || lowered === "lower-alpha" || lowered === "lower-latin" || lowered === "alpha") {
             return "a";
         }
 
-        if (attr === "A" || lowered === "upper-alpha") {
+        if (attr === "A" || lowered === "upper-alpha" || lowered === "upper-latin") {
             return "A";
         }
 
@@ -5852,6 +5881,18 @@
         }
 
         return null;
+    }
+
+    function nexusListStyleToken(value?: string): string {
+        const normalized = decodeHtmlEntities(value ?? "")
+            .trim()
+            .replace(/^['"]|['"]$/g, "")
+            .replace(/\s*!important\s*$/i, "");
+        const styled = normalized.match(/(?:^|;)\s*list-style(?:-type)?\s*:\s*([^;]+)/i)?.[1];
+        return (styled ?? normalized)
+            .replace(/^['"]|['"]$/g, "")
+            .replace(/;.*$/g, "")
+            .trim();
     }
 
     function safeNexusHeadingLevel(value?: string): "1" | "2" | "3" | "4" | "5" | "6" {
