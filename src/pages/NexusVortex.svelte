@@ -248,7 +248,7 @@
     const NEXUS_PLACEHOLDER_IMAGE = nexusFallbackImage;
     const NEXUS_DETAIL_PLACEHOLDER_IMAGE = nexusFallbackImage;
     const NEXUS_DESCRIPTION_FALLBACK = "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing.";
-    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "del", "sub", "sup", "small", "big", "mark", "abbr", "acronym", "cite", "q", "url", "img", "image", "thumb", "thumbnail", "color", "background", "bgcolor", "highlight", "size", "center", "left", "right", "justify", "align", "indent", "code", "pre", "tt", "kbd", "samp", "var", "quote", "spoiler", "collapse", "details", "accordion", "accordionitem", "font", "heading", "h", "header", "title", "subtitle", "caption", "h1", "h2", "h3", "h4", "h5", "h6", "float", "clear", "anchor", "goto", "jump", "youtube", "video", "media", "embed", "columns", "cols", "column", "col", "nextcol", "tabs", "tab", "note", "info", "warning", "important", "tip", "box", "panel", "fieldset", "notice", "success", "danger", "error"]);
+    const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "strikethrough", "del", "sub", "sup", "small", "big", "mark", "abbr", "acronym", "cite", "q", "url", "img", "image", "thumb", "thumbnail", "color", "colour", "background", "bgcolor", "bgcolour", "backgroundcolour", "bcolor", "highlight", "size", "center", "centre", "left", "right", "justify", "align", "indent", "code", "pre", "tt", "kbd", "samp", "var", "quote", "spoiler", "collapse", "details", "accordion", "accordionitem", "font", "heading", "h", "header", "title", "subtitle", "caption", "h1", "h2", "h3", "h4", "h5", "h6", "float", "clear", "anchor", "goto", "jump", "youtube", "video", "media", "embed", "columns", "cols", "column", "col", "nextcol", "tabs", "tab", "dl", "dt", "dd", "note", "info", "warning", "important", "tip", "box", "panel", "fieldset", "notice", "success", "danger", "error"]);
     const NEXUS_SAFE_COLOR_NAMES = new Set(["black", "white", "gray", "grey", "silver", "red", "maroon", "orange", "yellow", "olive", "lime", "green", "aqua", "cyan", "teal", "blue", "navy", "fuchsia", "magenta", "purple", "pink"]);
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
     const INSTALL_FILTERS: InstallFilter[] = ["all", "attention", "installed", "missing", "updates", "disabled", "vortex", "native", "manual", "tracked", "endorsements", "conflicts"];
@@ -3801,13 +3801,15 @@
     type NexusBlockChunk =
         | { kind: "block"; value: string }
         | { kind: "line"; value: string; mono?: boolean }
-        | { kind: "list"; value: string; ordered: boolean; style?: string }
-        | { kind: "table"; value: string };
+        | { kind: "list"; value: string; ordered: boolean; style?: string; start?: number }
+        | { kind: "table"; value: string }
+        | { kind: "definition"; value: string };
     type NexusPlainListLine = {
         explicit: boolean;
         indent: number;
         ordered: boolean;
         raw: string;
+        start?: number;
         style?: string;
         value: string;
     };
@@ -3927,12 +3929,12 @@
             .replace(/<figure\b[^>]*>/gi, "\n\n[box=Media]\n")
             .replace(/<\/figure>/gi, "\n[/box]\n\n")
             .replace(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/gi, "\n[caption]$1[/caption]\n")
-            .replace(/<dl\b[^>]*>/gi, "\n[list]\n")
-            .replace(/<\/dl>/gi, "\n[/list]\n")
-            .replace(/<dt\b[^>]*>/gi, "\n[*][b]")
-            .replace(/<\/dt>/gi, "[/b] ")
-            .replace(/<dd\b[^>]*>/gi, "")
-            .replace(/<\/dd>/gi, "\n")
+            .replace(/<dl\b[^>]*>/gi, "\n\n[dl]\n")
+            .replace(/<\/dl>/gi, "\n[/dl]\n\n")
+            .replace(/<dt\b[^>]*>/gi, "\n[dt]")
+            .replace(/<\/dt>/gi, "[/dt]\n")
+            .replace(/<dd\b[^>]*>/gi, "[dd]")
+            .replace(/<\/dd>/gi, "[/dd]\n")
             .replace(/<table\b[^>]*>/gi, "\n\n[table]\n")
             .replace(/<\/table>/gi, "\n[/table]\n\n")
             .replace(/<\/?(?:tbody|thead|tfoot)\b[^>]*>/gi, "")
@@ -3964,7 +3966,7 @@
 
         return decodeHtmlEntities(text)
             .replace(/\[\/\*\]/g, "")
-            .replace(/\[(?:br|break)\s*\/?\]/gi, "\n")
+            .replace(/\[(?:br|break|nl|newline)\s*\/?\]/gi, "\n")
             .replace(/\[(?:pre|raw|noparse|codebox|plaintext|plain|fixed)(?:=[^\]]+|[ \t][^\]]*)?\]/gi, "[code]")
             .replace(/\[\/(?:pre|raw|noparse|codebox|plaintext|plain|fixed)\]/gi, "[/code]")
             .replace(/\[(?:p|paragraph)\]/gi, "\n\n")
@@ -3982,12 +3984,20 @@
                 return label ? `\n[*][b]${label}[/b] ` : "\n[*]";
             })
             .replace(/\[\/\s*li\]/gi, "\n")
-            .replace(/\[dl[^\]]*\]/gi, "\n[list]\n")
-            .replace(/\[\/dl\]/gi, "\n[/list]\n")
-            .replace(/\[dt[^\]]*\]/gi, "\n[*][b]")
-            .replace(/\[\/dt\]/gi, "[/b] ")
-            .replace(/\[dd[^\]]*\]/gi, "")
-            .replace(/\[\/dd\]/gi, "\n")
+            .replace(/\[(?:centre)([^\]]*)\]/gi, (_match, attrs: string) => `[center${attrs ?? ""}]`)
+            .replace(/\[\/(?:centre)\]/gi, "[/center]")
+            .replace(/\[(?:colour)([^\]]*)\]/gi, (_match, attrs: string) => `[color${attrs ?? ""}]`)
+            .replace(/\[\/(?:colour)\]/gi, "[/color]")
+            .replace(/\[(?:bgcolour|backgroundcolour|bcolor)([^\]]*)\]/gi, (_match, attrs: string) => `[background${attrs ?? ""}]`)
+            .replace(/\[\/(?:bgcolour|backgroundcolour|bcolor)\]/gi, "[/background]")
+            .replace(/\[(?:strikethrough|strikeout)\]/gi, "[s]")
+            .replace(/\[\/(?:strikethrough|strikeout)\]/gi, "[/s]")
+            .replace(/\[dl[^\]]*\]/gi, "\n\n[dl]\n")
+            .replace(/\[\/dl\]/gi, "\n[/dl]\n\n")
+            .replace(/\[dt[^\]]*\]/gi, "\n[dt]")
+            .replace(/\[\/dt\]/gi, "[/dt]\n")
+            .replace(/\[dd[^\]]*\]/gi, "[dd]")
+            .replace(/\[\/dd\]/gi, "[/dd]\n")
             .replace(/\[h([1-6])\]/gi, "[heading=$1]")
             .replace(/\[\/h[1-6]\]/gi, "[/heading]")
             .replace(/\[(?:headline|subhead|subheading)(?:=([^\]]+))?\]/gi, (_match, level: string | undefined) => `[heading=${safeNexusHeadingLevel(level ?? "3")}]`)
@@ -4074,7 +4084,7 @@
 
     function nexusBlockChunks(text: string): NexusBlockChunk[] {
         const chunks: NexusBlockChunk[] = [];
-        const structuralPattern = /\[(table|list|olist|quote|spoiler|collapse|details|accordion|accordionitem|indent|center|left|right|align|justify|code|heading|float|youtube|video|media|embed|columns|cols|tabs|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error)([^\]]*)\]/gi;
+        const structuralPattern = /\[(table|list|olist|dl|quote|spoiler|collapse|details|accordion|accordionitem|indent|center|left|right|align|justify|code|heading|float|youtube|video|media|embed|columns|cols|tabs|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error)([^\]]*)\]/gi;
         let cursor = 0;
         let match: RegExpExecArray | null;
 
@@ -4091,12 +4101,14 @@
             if (!close) {
                 const remainder = text.slice(structuralPattern.lastIndex).trim();
                 if ((tag === "list" || tag === "olist") && /\[\*\]/.test(remainder)) {
+                    const ordered = tag === "olist" || isOrderedNexusListAttr(attr);
                     appendNexusTextChunks(chunks, before);
                     chunks.push({
                         kind: "list",
                         value: remainder,
-                        ordered: tag === "olist" || isOrderedNexusListAttr(attr),
-                        style: nexusListMarkerStyle(attr, tag === "olist" || isOrderedNexusListAttr(attr)) ?? undefined
+                        ordered,
+                        style: nexusListMarkerStyle(attr, ordered) ?? undefined,
+                        start: ordered ? nexusOrderedListStart(rawAttrs, attr) : undefined
                     });
                     cursor = text.length;
                     structuralPattern.lastIndex = text.length;
@@ -4110,12 +4122,16 @@
             const value = text.slice(structuralPattern.lastIndex, close.start).trim();
             if (tag === "table") {
                 chunks.push({ kind: "table", value });
+            } else if (tag === "dl") {
+                chunks.push({ kind: "definition", value });
             } else if (tag === "list" || tag === "olist") {
+                const ordered = tag === "olist" || isOrderedNexusListAttr(attr);
                 chunks.push({
                     kind: "list",
                     value,
-                    ordered: tag === "olist" || isOrderedNexusListAttr(attr),
-                    style: nexusListMarkerStyle(attr, tag === "olist" || isOrderedNexusListAttr(attr)) ?? undefined
+                    ordered,
+                    style: nexusListMarkerStyle(attr, ordered) ?? undefined,
+                    start: ordered ? nexusOrderedListStart(rawAttrs, attr) : undefined
                 });
             } else {
                 chunks.push({ kind: "block", value: text.slice(match.index, close.end).trim() });
@@ -4194,6 +4210,7 @@
             return {
                 kind: "list",
                 ordered: first.ordered,
+                start: first.start,
                 style: first.style,
                 value: nexusPlainListLinesToBbcode(parsedLines as NexusPlainListLine[])
             };
@@ -4243,6 +4260,7 @@
             chunks.push({
                 kind: "list",
                 ordered: first.ordered,
+                start: first.start,
                 style: first.style,
                 value: listLines.map(line => `[*]${line.value}`).join("\n")
             });
@@ -4307,15 +4325,17 @@
             };
         }
 
-        const numbered = trimmed.match(/^\d+[.)]\s+(.+)$/);
-        if (numbered?.[1]?.trim()) {
+        const numbered = trimmed.match(/^(\d+)[.)]\s+(.+)$/);
+        if (numbered?.[2]?.trim()) {
+            const start = Number.parseInt(numbered[1], 10);
             return {
                 explicit: false,
                 indent: nexusPlainListIndentLevel(line),
                 ordered: true,
                 raw: line,
+                start: Number.isFinite(start) && start > 1 ? Math.min(999, start) : undefined,
                 style: "1",
-                value: numbered[1].trim()
+                value: numbered[2].trim()
             };
         }
 
@@ -4392,6 +4412,10 @@
 
     function nexusPlainListOpeningTag(line: NexusPlainListLine): string {
         if (line.ordered) {
+            if (line.start) {
+                return `[olist${line.style ? ` type="${line.style}"` : ""} start="${line.start}"]`;
+            }
+
             return `[olist${line.style ? `=${line.style}` : ""}]`;
         }
 
@@ -4481,12 +4505,17 @@
 
             const tag = chunk.ordered ? "ol" : "ul";
             const typeAttribute = chunk.ordered && chunk.style ? ` type="${escapeAttribute(chunk.style)}"` : "";
+            const startAttribute = chunk.ordered && chunk.start ? ` start="${chunk.start}"` : "";
             const classAttribute = !chunk.ordered && chunk.style ? ` class="nexus-rich-list-${escapeAttribute(chunk.style)}"` : "";
-            return `<${tag}${typeAttribute}${classAttribute}>${listItems.map(item => `<li>${renderNexusListItem(item, depth)}</li>`).join("")}</${tag}>`;
+            return `<${tag}${typeAttribute}${startAttribute}${classAttribute}>${listItems.map(item => `<li>${renderNexusListItem(item, depth)}</li>`).join("")}</${tag}>`;
         }
 
         if (chunk.kind === "table") {
             return renderNexusTable(block, depth);
+        }
+
+        if (chunk.kind === "definition") {
+            return renderNexusDefinitionList(block, depth);
         }
 
         if (chunk.kind === "line") {
@@ -4659,6 +4688,55 @@
         return tabs;
     }
 
+    function renderNexusDefinitionList(value: string, depth: number): string {
+        const entries = nexusDefinitionListEntries(value);
+        if (entries.length === 0) {
+            return renderNexusBlocks(value, depth + 1);
+        }
+
+        return `<dl class="nexus-rich-definition-list">${entries.map(entry => {
+            const details = entry.details.length > 0 ? entry.details : [""];
+            return `<div><dt>${renderNexusInline(entry.term)}</dt>${details.map(detail => `<dd>${detail ? renderNexusBlocks(detail, depth + 1) : ""}</dd>`).join("")}</div>`;
+        }).join("")}</dl>`;
+    }
+
+    function nexusDefinitionListEntries(value: string): Array<{ term: string; details: string[] }> {
+        const entries: Array<{ term: string; details: string[] }> = [];
+        const entryPattern = /\[dt(?:[^\]]*)\]([\s\S]*?)(?:\[\/dt\])?([\s\S]*?)(?=\[dt(?:[^\]]*)\]|$)/gi;
+        let entryMatch: RegExpExecArray | null;
+
+        while ((entryMatch = entryPattern.exec(value)) !== null) {
+            const term = entryMatch[1].trim();
+            const body = entryMatch[2] ?? "";
+            if (!term) {
+                continue;
+            }
+
+            const details: string[] = [];
+            const detailPattern = /\[dd(?:[^\]]*)\]([\s\S]*?)(?:\[\/dd\]|(?=\[dd(?:[^\]]*)\]|\[dt(?:[^\]]*)\]|$))/gi;
+            let detailMatch: RegExpExecArray | null;
+            while ((detailMatch = detailPattern.exec(body)) !== null) {
+                const detail = detailMatch[1].trim();
+                if (detail) {
+                    details.push(detail);
+                }
+            }
+
+            if (details.length === 0) {
+                const fallback = body
+                    .replace(/\[\/?dd(?:[^\]]*)\]/gi, "")
+                    .trim();
+                if (fallback) {
+                    details.push(fallback);
+                }
+            }
+
+            entries.push({ term, details });
+        }
+
+        return entries;
+    }
+
     function renderNexusMediaBlock(tag: string, rawAttrs: string, body: string): string {
         const media = nexusMediaRenderData(tag, rawAttrs, nexusBbTagAttribute(tag, rawAttrs), collectNexusNodeText(parseNexusRichNodes(body)));
         if (!media) {
@@ -4669,7 +4747,7 @@
     }
 
     function hasNexusBlockStructure(value: string): boolean {
-        return /\[(?:table|list|olist|quote|spoiler|collapse|details|accordion|accordionitem|indent|center|left|right|align|justify|code|heading|float|youtube|video|media|embed|columns|cols|tabs|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error)(?:=[^\]]+)?\]/i.test(value)
+        return /\[(?:table|list|olist|dl|quote|spoiler|collapse|details|accordion|accordionitem|indent|center|left|right|align|justify|code|heading|float|youtube|video|media|embed|columns|cols|tabs|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error)(?:=[^\]]+|[ \t][^\]]*)?\]/i.test(value)
             || looksLikeNexusLooseTable(value);
     }
 
@@ -4853,7 +4931,7 @@
 
     function nexusListItems(block: string): string[] {
         const cleaned = block
-            .replace(/^\[(?:list|olist)(?:=[^\]]+)?\]\s*/i, "")
+            .replace(/^\[(?:list|olist)(?:=[^\]]+|[ \t][^\]]*)?\]\s*/i, "")
             .replace(/\s*\[\/list\]$/i, "")
             .replace(/\s*\[\/olist\]$/i, "")
             .trim();
@@ -4872,7 +4950,7 @@
 
     function splitNexusMarkedListItems(value: string): string[] {
         const items: string[] = [];
-        const tokenPattern = /\[\*(?:\s*=[^\]]+)?\]|\[\/?(?:list|olist|table)(?:=[^\]]+)?\]/gi;
+        const tokenPattern = /\[\*(?:\s*=[^\]]+)?\]|\[\/?(?:list|olist|table)(?:=[^\]]+|[ \t][^\]]*)?\]/gi;
         let listDepth = 0;
         let tableDepth = 0;
         let currentStart: number | null = null;
@@ -4917,7 +4995,7 @@
 
     function renderNexusInline(value: string): string {
         const inlineValue = value
-            .replace(/\[\/?(?:ul|ol|olist|list)(?:=[^\]]+)?\]/gi, "\n")
+            .replace(/\[\/?(?:ul|ol|olist|list)(?:=[^\]]+|[ \t][^\]]*)?\]/gi, "\n")
             .replace(/\[\*\]/g, "\n- ");
         return renderNexusNodes(parseNexusRichNodes(inlineValue));
     }
@@ -5026,6 +5104,7 @@
                 return `<u>${inner}</u>`;
             case "s":
             case "strike":
+            case "strikethrough":
             case "del":
                 return `<s>${inner}</s>`;
             case "sub":
@@ -5071,8 +5150,15 @@
                 const color = safeNexusColor(node.attr);
                 return color ? `<span style="color: ${escapeAttribute(color)}">${inner}</span>` : inner;
             }
+            case "colour": {
+                const color = safeNexusColor(node.attr);
+                return color ? `<span style="color: ${escapeAttribute(color)}">${inner}</span>` : inner;
+            }
             case "background":
             case "bgcolor":
+            case "bgcolour":
+            case "backgroundcolour":
+            case "bcolor":
             case "highlight": {
                 const color = safeNexusColor(node.attr) ?? (node.name === "highlight" ? "yellow" : null);
                 return color ? `<span class="nexus-rich-highlight" style="background-color: ${escapeAttribute(color)}">${inner}</span>` : inner;
@@ -5080,9 +5166,10 @@
             case "size":
                 return `<span class="${nexusSizeClass(node.attr)}">${inner}</span>`;
             case "center":
+            case "centre":
             case "left":
             case "right":
-                return `<span class="nexus-rich-align-${node.name}">${inner}</span>`;
+                return `<span class="nexus-rich-align-${node.name === "centre" ? "center" : node.name}">${inner}</span>`;
             case "justify":
                 return `<span class="nexus-rich-align-justify">${inner}</span>`;
             case "align":
@@ -5101,6 +5188,9 @@
             case "column":
             case "col":
             case "tab":
+            case "dl":
+            case "dt":
+            case "dd":
                 return inner;
             case "nextcol":
                 return "<br>";
@@ -5213,8 +5303,7 @@
 
         const attr = nexusBbTagAttribute(name, rawAttrs);
         if (name === "ol" || name === "olist") {
-            const type = nexusOrderedListType(attr);
-            return `\n[olist${type ? `=${type}` : ""}]\n`;
+            return normalizedNexusOrderedListOpeningTag(attr, rawAttrs);
         }
 
         if (name === "ul") {
@@ -5224,8 +5313,7 @@
 
         if (name === "list") {
             if (isOrderedNexusListAttr(attr)) {
-                const type = nexusOrderedListType(attr);
-                return `\n[olist${type ? `=${type}` : ""}]\n`;
+                return normalizedNexusOrderedListOpeningTag(attr, rawAttrs);
             }
 
             const style = nexusListMarkerStyle(attr, false);
@@ -5233,6 +5321,16 @@
         }
 
         return attr ? `[${name}=${attr}]` : `[${name}]`;
+    }
+
+    function normalizedNexusOrderedListOpeningTag(attr: string | undefined, rawAttrs?: string): string {
+        const type = nexusOrderedListType(attr);
+        const start = nexusOrderedListStart(rawAttrs);
+        if (start) {
+            return `\n[olist${type ? ` type="${type}"` : ""} start="${start}"]\n`;
+        }
+
+        return `\n[olist${type ? `=${type}` : ""}]\n`;
     }
 
     function nexusImageAliasOpeningTag(alignment: "left" | "right" | "center", rawAttrs: string): string {
@@ -5529,7 +5627,7 @@
 
     function hasNexusBlockishMarkup(value: string): boolean {
         return /<(?:blockquote|details|div|dl|figure|h[1-6]|ol|p|pre|section|table|ul)\b/i.test(value)
-            || /\[(?:table|list|olist|quote|spoiler|collapse|details|accordion|accordionitem|columns|cols|tabs|box|panel|fieldset|notice|note|info|warning|important|tip)(?:[=\s\]])/i.test(value);
+            || /\[(?:table|list|olist|dl|quote|spoiler|collapse|details|accordion|accordionitem|columns|cols|tabs|box|panel|fieldset|notice|note|info|warning|important|tip)(?:[=\s\]])/i.test(value);
     }
 
     function htmlSizeAttribute(attrs: string): string | null {
@@ -5599,6 +5697,11 @@
         const style = htmlAttribute(attrs, "type") ?? htmlListStyleTypeAttribute(attrs) ?? "";
         if (ordered) {
             const type = nexusOrderedListType(style);
+            const start = nexusOrderedListStart(` start="${htmlAttribute(attrs, "start") ?? ""}"`);
+            if (start) {
+                return `\n[olist${type ? ` type="${type}"` : ""} start="${start}"]\n`;
+            }
+
             return `\n[olist${type ? `=${type}` : ""}]\n`;
         }
 
@@ -5926,6 +6029,18 @@
         }
 
         return Math.max(1, Math.min(4, numeric)) as 1 | 2 | 3 | 4;
+    }
+
+    function nexusOrderedListStart(rawAttrs?: string, attr?: string): number | undefined {
+        const raw = nexusBbAttribute(rawAttrs, "start")
+            ?? nexusBbAttribute(rawAttrs, "value")
+            ?? (attr && /^\d{1,3}$/.test(attr.trim()) ? attr : undefined);
+        const numeric = Number.parseInt(decodeHtmlEntities(raw ?? "").trim().replace(/^['"]|['"]$/g, ""), 10);
+        if (!Number.isFinite(numeric) || numeric <= 1) {
+            return undefined;
+        }
+
+        return Math.min(999, numeric);
     }
 
     function safeNexusTableSpan(value?: string): number | undefined {
@@ -8619,7 +8734,8 @@
         font-family: Consolas, "Courier New", monospace;
         font-size: 0.95em;
         overflow-x: auto;
-        white-space: normal;
+        tab-size: 4;
+        white-space: break-spaces;
     }
 
     .nexus-rich-text :global(p:first-child),
@@ -8629,6 +8745,7 @@
     .nexus-rich-text :global(pre:first-child),
     .nexus-rich-text :global(.nexus-rich-line-block:first-child),
     .nexus-rich-text :global(.nexus-rich-table-wrap:first-child),
+    .nexus-rich-text :global(.nexus-rich-definition-list:first-child),
     .nexus-rich-text :global(.nexus-rich-spoiler-block:first-child),
     .nexus-rich-text :global(.nexus-rich-box:first-child),
     .nexus-rich-text :global(.nexus-rich-rule:first-child) {
@@ -9144,6 +9261,35 @@
     .nexus-rich-text :global(.nexus-rich-table td p),
     .nexus-rich-text :global(.nexus-rich-table th p) {
         margin-top: 0.35em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-definition-list) {
+        display: grid;
+        gap: 0.55em;
+        margin: 0.8em 0 0;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-definition-list > div) {
+        border-left: 2px solid rgba(120, 217, 244, 0.2);
+        display: grid;
+        gap: 0.22em;
+        min-width: 0;
+        padding-left: 0.7em;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-definition-list dt) {
+        color: #eefcff;
+        font-weight: 900;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-definition-list dd) {
+        color: #c6d0d9;
+        margin: 0;
+        min-width: 0;
+    }
+
+    .nexus-rich-text :global(.nexus-rich-definition-list dd p:first-child) {
+        margin-top: 0;
     }
 
     .description-toggle {

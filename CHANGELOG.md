@@ -32,6 +32,7 @@
   - Improved Nexus description formatting fidelity with monospaced column-style line blocks, codebox/plain/fixed preformatted BBCode aliases, hidden/spoilerblock aliases, legacy horizontal-rule tags, and relative/point size hints.
   - Improved Nexus BBCode layout recovery for indented plain lists, standalone image aliases, and cell-only table layouts so author instructions keep more of their original reading order.
   - Hardened Nexus rich-text parsing so malformed nested closing tags do not leak raw BBCode into descriptions, and HTML/CSS list marker hints such as square, circle, upper-alpha, and roman styles are preserved where safe.
+  - Improved Nexus author-description layout preservation with real definition-list rendering, ordered-list start numbers, legacy `centre`/`colour`/strikethrough/newline aliases, and tighter monospace spacing for aligned install notes.
   - Rebuilt and signed portable/setup EXEs as `0.2.0`.
 
 - 0.1.2
