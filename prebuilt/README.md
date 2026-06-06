@@ -7,7 +7,7 @@ This folder contains the current Windows desktop builds of OpenACAI Mod Manager.
 - `OpenACAI-Mod-Manager.ico`: OpenACAI Windows icon used by the app and installer.
 - `SHA256SUMS.txt`: checksums for the portable executable, setup installer, and icon.
 
-Version `0.2.0` moves loader updates to GitHub Release assets, adds live SHA256 verification progress, caches the latest release manifest for last-known-good comparisons, updates the manager for the .NET 11 loader preview track, and refreshes the UI toward a darker Sons-style options shell.
+Version `0.2.0` moves loader updates to GitHub Release assets, adds live SHA256 verification progress, caches the latest release manifest for last-known-good comparisons, updates the manager for the .NET 11 loader preview track, refreshes the UI toward a darker Sons-style options shell, and adds the Nexus/Vortex detail flow for browsing installed mods, choosing Nexus files, inspecting API-listed dependencies, and handing selected files to Vortex.
 
 MSI builds are intentionally not published while the current MSI launch issue is investigated.
 

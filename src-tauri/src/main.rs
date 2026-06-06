@@ -76,6 +76,24 @@ struct NexusModsResponse {
     rate_limit: NexusRateLimit,
 }
 
+#[derive(Serialize)]
+struct NexusModFilesResponse {
+    files: serde_json::Value,
+    rate_limit: NexusRateLimit,
+}
+
+#[derive(Serialize)]
+struct NexusModDetailsResponse {
+    details: serde_json::Value,
+    rate_limit: NexusRateLimit,
+}
+
+#[derive(Serialize)]
+struct NexusModDependenciesResponse {
+    dependencies: serde_json::Value,
+    rate_limit: NexusRateLimit,
+}
+
 #[tauri::command]
 fn is_dotnet10_installed() -> Result<bool, String> {
     is_dotnet_major_installed("10.")
@@ -165,13 +183,20 @@ fn nexus_clear_api_key() -> Result<(), String> {
 async fn nexus_fetch_sotf_mods(view: String) -> Result<NexusModsResponse, String> {
     let key =
         read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
-    let endpoint = match view.as_str() {
-        "latest_added" => "latest_added",
-        "latest_updated" => "latest_updated",
-        "trending" => "trending",
-        _ => "trending",
+    let url = match view.as_str() {
+        "latest_added" => {
+            format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/latest_added.json")
+        }
+        "latest_updated" => {
+            format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/latest_updated.json")
+        }
+        "updated" => {
+            format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/updated.json?period=1m")
+        }
+        "trending" | _ => {
+            format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/trending.json")
+        }
     };
-    let url = format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/{endpoint}.json");
     let response = nexus_client(&key)
         .get(url)
         .send()
@@ -188,6 +213,94 @@ async fn nexus_fetch_sotf_mods(view: String) -> Result<NexusModsResponse, String
         .await
         .map_err(|e| e.to_string())?;
     Ok(NexusModsResponse { mods, rate_limit })
+}
+
+#[tauri::command]
+async fn nexus_fetch_mod_details(mod_id: u64) -> Result<NexusModDetailsResponse, String> {
+    let key =
+        read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
+    let url = format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/{mod_id}.json");
+    let response = nexus_client(&key)
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let rate_limit = read_rate_limit(response.headers());
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Nexus mod details request failed: {}",
+            response.status()
+        ));
+    }
+
+    let details = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(NexusModDetailsResponse {
+        details,
+        rate_limit,
+    })
+}
+
+#[tauri::command]
+async fn nexus_fetch_mod_files(mod_id: u64) -> Result<NexusModFilesResponse, String> {
+    let key =
+        read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
+    let url = format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/{mod_id}/files.json");
+    let response = nexus_client(&key)
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let rate_limit = read_rate_limit(response.headers());
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Nexus mod files request failed: {}",
+            response.status()
+        ));
+    }
+
+    let value = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    let files = value.get("files").cloned().unwrap_or(value);
+    Ok(NexusModFilesResponse { files, rate_limit })
+}
+
+#[tauri::command]
+async fn nexus_fetch_file_dependencies(
+    file_id: u64,
+) -> Result<NexusModDependenciesResponse, String> {
+    let key =
+        read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
+    let url = format!("{NEXUS_API_BASE}/v3/mod-files/{file_id}/dependencies/materialized");
+    let response = nexus_client(&key)
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let rate_limit = read_rate_limit(response.headers());
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Nexus dependency request failed: {}",
+            response.status()
+        ));
+    }
+
+    let value = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    let dependencies = value.get("dependencies").cloned().unwrap_or(value);
+    Ok(NexusModDependenciesResponse {
+        dependencies,
+        rate_limit,
+    })
 }
 
 async fn validate_nexus_key(api_key: &str) -> Result<(NexusUser, NexusRateLimit), String> {
@@ -550,6 +663,9 @@ fn main() {
             nexus_get_session,
             nexus_clear_api_key,
             nexus_fetch_sotf_mods,
+            nexus_fetch_mod_details,
+            nexus_fetch_mod_files,
+            nexus_fetch_file_dependencies,
             sha256_file
         ])
         .plugin(tauri_plugin_upload::init())

@@ -3,12 +3,19 @@
     import SvgSpinnersBlocksWave from "~icons/svg-spinners/blocks-wave";
     import {
         clearNexusApiKey,
+        fetchNexusFileDependencies,
+        fetchNexusModDetails,
+        fetchNexusModFiles,
         fetchNexusSotfMods,
+        getNexusNxmUrl,
         getNexusModDownloadUrl,
         getNexusModPageUrl,
         getNexusSession,
         NEXUS_CACHE_TTL_MINUTES,
+        pickRecommendedNexusFile,
         saveNexusApiKey,
+        type NexusModDependency,
+        type NexusModFile,
         type NexusMod,
         type NexusSession,
         type NexusView
@@ -24,18 +31,29 @@
     import { getDirectoryPath, isPathValid } from "../lib/store";
     import * as dialog from "@tauri-apps/plugin-dialog"
     import * as shell from "@tauri-apps/plugin-shell"
+    import { Command } from "@tauri-apps/plugin-shell";
+
+    type CatalogMode = "online" | "installed";
 
     let session: NexusSession = { is_connected: false };
     let apiKey = "";
     let mods: NexusMod[] = [];
     let inventory: InstalledInventoryEntry[] = [];
-    let selectedView: NexusView = "trending";
+    let selectedView: NexusView = "all";
+    let catalogMode: CatalogMode = "online";
     let nexusSearchTerm = "";
     let selectedNexusCategory = "all";
     let selectedInstallFilter = "all";
     let isLoading = false;
+    let isDetailLoading = false;
     let status = "";
     let vortexStagingPath: string | null = null;
+    let selectedMod: NexusMod | null = null;
+    let selectedModDetails: NexusMod | null = null;
+    let selectedModFiles: NexusModFile[] = [];
+    let selectedFileId: number | null = null;
+    let selectedDependencies: NexusModDependency[] = [];
+    let activeNexusActionId: number | null = null;
     let ssoSocket: WebSocket | null = null;
     let ssoTimeout: number | null = null;
 
@@ -49,10 +67,12 @@
 
     $: nexusCategories = Array.from(new Set(mods.map(mod => mod.category_name).filter(Boolean) as string[])).sort();
     $: visibleNexusMods = mods.filter(matchesNexusFilters);
+    $: visibleInstalledEntries = inventory.filter(matchesInstalledFilters);
     $: installedCount = inventory.length;
     $: vortexCount = inventory.filter(entry => entry.installSource === "vortex").length;
     $: nativeCount = inventory.filter(entry => entry.installSource === "native").length;
     $: manualCount = inventory.filter(entry => entry.installSource === "manual").length;
+    $: selectedNexusFile = selectedModFiles.find(file => file.file_id === selectedFileId) ?? null;
 
     onMount(async () => {
         await refreshInventory();
@@ -292,10 +312,35 @@
         await shell.open("https://www.nexusmods.com/games/sonsoftheforest");
     }
 
-    async function openVortexStaging() {
-        if (vortexStagingPath) {
-            await shell.open(vortexStagingPath);
+    async function openExternalTarget(target: string) {
+        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(target)) {
+            await shell.open(target);
+            return;
         }
+
+        try {
+            const cmd = Command.create("open-explorer", [target]);
+            const result = await cmd.execute();
+            if (result.code === 0) {
+                return;
+            }
+        } catch {
+            // Fall back to Tauri's shell opener below.
+        }
+
+        await shell.open(target);
+    }
+
+    async function openVortexStaging() {
+        if (!vortexStagingPath) {
+            await dialog.message("Vortex deployment metadata was not detected for this game folder yet.", {
+                title: "Vortex staging",
+                kind: "info"
+            });
+            return;
+        }
+
+        await openExternalTarget(vortexStagingPath);
     }
 
     async function openModPage(mod: NexusMod) {
@@ -304,6 +349,133 @@
 
     async function openDownloadPage(mod: NexusMod) {
         await shell.open(getNexusModDownloadUrl(mod));
+    }
+
+    async function openInventoryLocation(entry: InstalledInventoryEntry) {
+        const target = entry.packagePath ?? entry.assemblyPath ?? await getDirectoryPath();
+        await openExternalTarget(target);
+    }
+
+    async function openModDetails(mod: NexusMod) {
+        selectedMod = mod;
+        selectedModDetails = mod;
+        selectedModFiles = [];
+        selectedFileId = null;
+        selectedDependencies = [];
+        isDetailLoading = true;
+
+        try {
+            const [details, fileResponse] = await Promise.all([
+                fetchNexusModDetails(mod.mod_id).catch(() => mod),
+                fetchNexusModFiles(mod.mod_id)
+            ]);
+            selectedModDetails = { ...mod, ...details };
+            selectedModFiles = fileResponse.files;
+            selectedFileId = pickRecommendedNexusFile(fileResponse.files)?.file_id ?? fileResponse.files[0]?.file_id ?? null;
+            session = {
+                ...session,
+                rate_limit: fileResponse.rate_limit
+            };
+
+            if (selectedFileId !== null) {
+                await loadDependenciesForFile(selectedFileId);
+            }
+        } catch (error) {
+            await dialog.message(`${error}`, {
+                title: "Nexus mod details",
+                kind: "error"
+            });
+        } finally {
+            isDetailLoading = false;
+        }
+    }
+
+    function closeModDetails() {
+        selectedMod = null;
+        selectedModDetails = null;
+        selectedModFiles = [];
+        selectedFileId = null;
+        selectedDependencies = [];
+    }
+
+    async function selectNexusFile(fileId: number) {
+        selectedFileId = fileId;
+        await loadDependenciesForFile(fileId);
+    }
+
+    async function loadDependenciesForFile(fileId: number) {
+        selectedDependencies = [];
+        try {
+            const response = await fetchNexusFileDependencies(fileId);
+            selectedDependencies = response.dependencies;
+            session = {
+                ...session,
+                rate_limit: response.rate_limit
+            };
+        } catch {
+            selectedDependencies = [];
+        }
+    }
+
+    async function installSelectedFileWithVortex() {
+        if (!selectedMod || !selectedNexusFile) {
+            return;
+        }
+
+        await sendFileToVortex(selectedMod, selectedNexusFile);
+    }
+
+    async function openSelectedModPage() {
+        if (selectedMod) {
+            await openModPage(selectedMod);
+        }
+    }
+
+    async function openSelectedDownloadPage() {
+        if (selectedMod) {
+            await openDownloadPage(selectedMod);
+        }
+    }
+
+    async function installRecommendedWithVortex(mod: NexusMod) {
+        activeNexusActionId = mod.mod_id;
+        status = `Preparing ${mod.name} for Vortex...`;
+
+        try {
+            const response = await fetchNexusModFiles(mod.mod_id);
+            session = {
+                ...session,
+                rate_limit: response.rate_limit
+            };
+            const file = pickRecommendedNexusFile(response.files);
+            if (!file) {
+                await dialog.message("Nexus did not return an installable file for this mod. Open the details page and review the files manually.", {
+                    title: "Vortex install",
+                    kind: "info"
+                });
+                return;
+            }
+
+            await sendFileToVortex(mod, file);
+        } catch (error) {
+            await dialog.message(`${error}`, {
+                title: "Vortex install",
+                kind: "error"
+            });
+        } finally {
+            status = "";
+            activeNexusActionId = null;
+        }
+    }
+
+    async function sendFileToVortex(mod: NexusMod, file: NexusModFile) {
+        await openExternalTarget(getNexusNxmUrl(mod, file));
+        status = `Sent ${mod.name} (${file.name}) to Vortex. Finish deployment in Vortex, then refresh inventory.`;
+        window.setTimeout(() => {
+            if (status.startsWith("Sent ")) {
+                status = "";
+            }
+        }, 7000);
     }
 
     async function toggleMatchedMod(match: InstalledInventoryEntry, event: Event) {
@@ -366,8 +538,75 @@
         return true;
     }
 
+    function matchesInstalledFilters(entry: InstalledInventoryEntry): boolean {
+        const search = nexusSearchTerm.trim().toLowerCase();
+
+        if (search && ![
+            entry.name,
+            entry.author ?? "",
+            entry.version ?? "",
+            entry.vortexPackage ?? "",
+            entry.expectedLocation,
+            entry.loaderType
+        ].some(value => value.toLowerCase().includes(search))) {
+            return false;
+        }
+
+        if (selectedInstallFilter === "vortex" && entry.installSource !== "vortex") {
+            return false;
+        }
+
+        if (selectedInstallFilter === "native" && entry.installSource !== "native") {
+            return false;
+        }
+
+        if (selectedInstallFilter === "manual" && entry.installSource !== "manual") {
+            return false;
+        }
+
+        if (selectedInstallFilter === "missing") {
+            return false;
+        }
+
+        return true;
+    }
+
+    function loaderTypeLabel(entry: InstalledInventoryEntry): string {
+        switch (entry.loaderType) {
+            case "bepinex-plugin":
+                return "BepInEx plugin";
+            case "redloader-library":
+                return "RedLoader library";
+            default:
+                return "RedLoader mod";
+        }
+    }
+
+    function vortexActionLabel(mod: NexusMod): string {
+        const match = installedMatch(mod);
+        if (!match) {
+            return "Install with Vortex";
+        }
+
+        if (match.installSource === "vortex") {
+            return versionsDiffer(match.version, mod.version) ? "Update in Vortex" : "Reinstall in Vortex";
+        }
+
+        return "Get Vortex File";
+    }
+
+    function versionsDiffer(left?: string, right?: string): boolean {
+        if (!left || !right) {
+            return false;
+        }
+
+        return left.trim().toLowerCase() !== right.trim().toLowerCase();
+    }
+
     function viewLabel(view: NexusView): string {
         switch (view) {
+            case "all":
+                return "All";
             case "latest_added":
                 return "Latest";
             case "latest_updated":
@@ -387,6 +626,42 @@
 
     function formatNumber(value?: number): string {
         return typeof value === "number" ? value.toLocaleString() : "-";
+    }
+
+    function formatSizeKb(value?: number): string {
+        if (!value) {
+            return "-";
+        }
+
+        if (value > 1024 * 1024) {
+            return `${(value / 1024 / 1024).toFixed(1)} GB`;
+        }
+
+        if (value > 1024) {
+            return `${(value / 1024).toFixed(1)} MB`;
+        }
+
+        return `${Math.round(value)} KB`;
+    }
+
+    function plainText(value?: string): string {
+        return (value ?? "")
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<\/p>/gi, "\n\n")
+            .replace(/<[^>]*>/g, " ")
+            .replace(/\[img[^\]]*\][\s\S]*?\[\/img\]/gi, " ")
+            .replace(/\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi, "$2 ($1)")
+            .replace(/\[\*\]/g, "\n- ")
+            .replace(/\[\/?(?:b|i|u|s|size|color|font|center|left|right|list|quote|spoiler|code)[^\]]*\]/gi, "")
+            .replace(/\[\/?[a-z0-9_-]+[^\]]*\]/gi, "")
+            .replace(/&#92;/g, "\\")
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/[ \t]+/g, " ")
+            .replace(/\n\s+/g, "\n")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
     }
 </script>
 
@@ -464,8 +739,13 @@
 
         <section class="catalog-panel">
             <div class="catalog-toolbar">
-                <div class="view-buttons">
-                    <button class="btn-left cat-btn" class:cat-btn-selected={selectedView === "trending"} on:click={() => loadMods("trending")}>{viewLabel("trending")}</button>
+                <div class="catalog-mode-buttons">
+                    <button class:cat-btn-selected={catalogMode === "online"} on:click={() => catalogMode = "online"}>Online Nexus</button>
+                    <button class:cat-btn-selected={catalogMode === "installed"} on:click={() => catalogMode = "installed"}>Installed ({installedCount})</button>
+                </div>
+                <div class="view-buttons" class:feed-hidden={catalogMode === "installed"}>
+                    <button class="btn-left cat-btn" class:cat-btn-selected={selectedView === "all"} on:click={() => loadMods("all")}>{viewLabel("all")}</button>
+                    <button class="cat-btn middle-btn" class:cat-btn-selected={selectedView === "trending"} on:click={() => loadMods("trending")}>{viewLabel("trending")}</button>
                     <button class="cat-btn middle-btn" class:cat-btn-selected={selectedView === "latest_added"} on:click={() => loadMods("latest_added")}>{viewLabel("latest_added")}</button>
                     <button class="btn-right cat-btn" class:cat-btn-selected={selectedView === "latest_updated"} on:click={() => loadMods("latest_updated")}>{viewLabel("latest_updated")}</button>
                 </div>
@@ -474,7 +754,11 @@
 
             <div class="notice api-note">
                 <span>Nexus requests are cached locally for {NEXUS_CACHE_TTL_MINUTES} minutes.</span>
-                <span>{visibleNexusMods.length} shown from {mods.length} loaded.</span>
+                {#if catalogMode === "online"}
+                    <span>{visibleNexusMods.length} shown from {mods.length} loaded.</span>
+                {:else}
+                    <span>{visibleInstalledEntries.length} shown from {installedCount} installed.</span>
+                {/if}
             </div>
 
             <div class="nexus-filter-row">
@@ -496,61 +780,121 @@
             </div>
 
             <div class="nexus-scroller" aria-live="polite">
-                {#each visibleNexusMods as mod}
-                    {@const match = installedMatch(mod)}
-                    <article class="nexus-card" class:nexus-installed={!!match}>
-                        <button class="thumbnail-button" aria-label={`Open ${mod.name} on Nexus`} on:click={() => openModPage(mod)}>
-                            <img
-                                class="nexus-img"
-                                src={mod.picture_url ?? "https://placehold.co/320x180/252525/FFF?text=Nexus"}
-                                alt=""
-                            />
-                        </button>
+                {#if catalogMode === "online"}
+                    {#each visibleNexusMods as mod}
+                        {@const match = installedMatch(mod)}
+                        <article class="nexus-card" class:nexus-installed={!!match}>
+                            <button class="thumbnail-button" aria-label={`Open ${mod.name} details`} on:click={() => openModDetails(mod)}>
+                                <img
+                                    class="nexus-img"
+                                    src={mod.picture_url ?? "https://placehold.co/320x180/252525/FFF?text=Nexus"}
+                                    alt=""
+                                />
+                            </button>
 
-                        <div class="nexus-body">
-                            <div class="card-head">
-                                <div class="title-stack">
-                                    <span class="mod-title">{mod.name}</span>
-                                    <span class="mod-byline">{mod.category_name ?? "Nexus"} · {mod.author ?? mod.uploaded_by ?? "Unknown author"}</span>
+                            <div class="nexus-body">
+                                <div class="card-head">
+                                    <button class="title-stack title-button" on:click={() => openModDetails(mod)}>
+                                        <span class="mod-title">{mod.name}</span>
+                                        <span class="mod-byline">{mod.category_name ?? "Nexus"} · {mod.loader_type ?? "Unknown type"} · {mod.author ?? mod.uploaded_by ?? "Unknown author"}</span>
+                                    </button>
+                                    <span class="source-pill" class:source-vortex={match?.installSource === "vortex"} class:source-native={match?.installSource === "native"} class:source-manual={match?.installSource === "manual"}>
+                                        {describeInstallSource(match)}
+                                    </span>
                                 </div>
-                                <span class="source-pill" class:source-vortex={match?.installSource === "vortex"} class:source-native={match?.installSource === "native"} class:source-manual={match?.installSource === "manual"}>
-                                    {describeInstallSource(match)}
-                                </span>
+
+                                <button class="description-content description-button" on:click={() => openModDetails(mod)}>{mod.summary ?? "No summary is available from Nexus for this mod."}</button>
+
+                                <div class="facts">
+                                    <span>Version <b>{mod.version ?? "-"}</b></span>
+                                    <span>Updated <b>{formatTimestamp(mod.updated_timestamp, mod.updated_time)}</b></span>
+                                    <span>Downloads <b>{formatNumber(mod.mod_downloads)}</b></span>
+                                    <span>Endorsements <b>{formatNumber(mod.endorsement_count)}</b></span>
+                                </div>
+
+                                <div class="nexus-card-footer">
+                                    {#if match}
+                                        <label class="nexus-enable" class:vortex-disabled={match.installSource === "vortex"}>
+                                            <input
+                                                type="checkbox"
+                                                checked={match.enabled}
+                                                disabled={match.installSource === "vortex"}
+                                                on:change={(event) => toggleMatchedMod(match, event)}
+                                            />
+                                            <span>{match.enabled ? "Enabled" : "Disabled"}</span>
+                                        </label>
+                                        <span class="match-detail">{loaderTypeLabel(match)} in {match.expectedLocation}</span>
+                                    {:else}
+                                        <span class="match-detail missing-match">Not installed in this game folder.</span>
+                                    {/if}
+
+                                    <div class="button-row">
+                                        <button class="vortex-install-btn" disabled={activeNexusActionId === mod.mod_id} on:click={() => installRecommendedWithVortex(mod)}>
+                                            {activeNexusActionId === mod.mod_id ? "Preparing..." : vortexActionLabel(mod)}
+                                        </button>
+                                        <button on:click={() => openModDetails(mod)}>Details</button>
+                                        <button on:click={() => openModPage(mod)}>Open Page</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </article>
+                    {/each}
+                {:else}
+                    {#each visibleInstalledEntries as entry}
+                        <article class="nexus-card inventory-card" class:nexus-installed={entry.enabled}>
+                            <div class="inventory-icon">
+                                <span>{entry.loaderType === "bepinex-plugin" ? "BEP" : "RED"}</span>
                             </div>
 
-                            <span class="description-content">{mod.summary ?? "No summary is available from Nexus for this mod."}</span>
+                            <div class="nexus-body">
+                                <div class="card-head">
+                                    <div class="title-stack">
+                                        <span class="mod-title">{entry.name}</span>
+                                        <span class="mod-byline">{loaderTypeLabel(entry)} · {entry.author ?? "Unknown author"}</span>
+                                    </div>
+                                    <span class="source-pill" class:source-vortex={entry.installSource === "vortex"} class:source-native={entry.installSource === "native"} class:source-manual={entry.installSource === "manual"}>
+                                        {describeInstallSource(entry)}
+                                    </span>
+                                </div>
 
-                            <div class="facts">
-                                <span>Version <b>{mod.version ?? "-"}</b></span>
-                                <span>Updated <b>{formatTimestamp(mod.updated_timestamp, mod.updated_time)}</b></span>
-                                <span>Downloads <b>{formatNumber(mod.mod_downloads)}</b></span>
-                                <span>Endorsements <b>{formatNumber(mod.endorsement_count)}</b></span>
-                            </div>
+                                <div class="facts inventory-facts">
+                                    <span>Version <b>{entry.version ?? "-"}</b></span>
+                                    <span>Location <b>{entry.expectedLocation}</b></span>
+                                    <span>State <b>{entry.enabled ? "Enabled" : "Disabled"}</b></span>
+                                    <span>Store <b>{entry.store}</b></span>
+                                </div>
 
-                            <div class="nexus-card-footer">
-                                {#if match}
-                                    <label class="nexus-enable" class:vortex-disabled={match.installSource === "vortex"}>
-                                        <input
-                                            type="checkbox"
-                                            checked={match.enabled}
-                                            disabled={match.installSource === "vortex"}
-                                            on:change={(event) => toggleMatchedMod(match, event)}
-                                        />
-                                        <span>{match.enabled ? "Enabled" : "Disabled"}</span>
-                                    </label>
-                                    <span class="match-detail">{match.loaderType === "bepinex-plugin" ? "BepInEx plugin" : "RedLoader package"} in {match.expectedLocation}</span>
+                                {#if entry.vortexPackage}
+                                    <span class="description-content">Vortex package: {entry.vortexPackage}</span>
+                                {:else if entry.packagePath}
+                                    <span class="description-content">{entry.packagePath}</span>
                                 {:else}
-                                    <span class="match-detail missing-match">Not installed in this game folder.</span>
+                                    <span class="description-content">{entry.assemblyPath ?? "No package path was detected."}</span>
                                 {/if}
 
-                                <div class="button-row">
-                                    <button on:click={() => openModPage(mod)}>Open Page</button>
-                                    <button on:click={() => openDownloadPage(mod)}>Files</button>
+                                <div class="nexus-card-footer">
+                                    <label class="nexus-enable" class:vortex-disabled={entry.installSource === "vortex"}>
+                                        <input
+                                            type="checkbox"
+                                            checked={entry.enabled}
+                                            disabled={entry.installSource === "vortex"}
+                                            on:change={(event) => toggleMatchedMod(entry, event)}
+                                        />
+                                        <span>{entry.enabled ? "Enabled" : "Disabled"}</span>
+                                    </label>
+                                    <span class="match-detail">{entry.installSource === "vortex" ? "Managed by Vortex deployment metadata" : "Managed by OpenACAI Mod Manager"}</span>
+
+                                    <div class="button-row">
+                                        <button on:click={() => openInventoryLocation(entry)}>Open Folder</button>
+                                        {#if entry.nexusModId}
+                                            <button on:click={() => shell.open(`https://www.nexusmods.com/sonsoftheforest/mods/${entry.nexusModId}`)}>Nexus Page</button>
+                                        {/if}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </article>
-                {/each}
+                        </article>
+                    {/each}
+                {/if}
 
                 {#if isLoading}
                     <div class="loading-line">
@@ -559,8 +903,12 @@
                     </div>
                 {/if}
 
-                {#if !isLoading && visibleNexusMods.length === 0}
+                {#if !isLoading && catalogMode === "online" && visibleNexusMods.length === 0}
                     <div class="notice empty-nexus">No Nexus mods match the current filters.</div>
+                {/if}
+
+                {#if !isLoading && catalogMode === "installed" && visibleInstalledEntries.length === 0}
+                    <div class="notice empty-nexus">No installed mods match the current filters.</div>
                 {/if}
             </div>
         </section>
@@ -568,6 +916,86 @@
         <div class="notice">Nexus login is required before this section can compare Vortex packages against native installs.</div>
     {/if}
 </div>
+
+{#if selectedMod}
+    <div class="detail-backdrop" role="presentation">
+        <section class="detail-panel" aria-label={`${selectedMod.name} details`}>
+            <div class="detail-header">
+                <div class="detail-title">
+                    <span class="panel-title">{selectedModDetails?.name ?? selectedMod.name}</span>
+                    <span class="panel-subtitle">{selectedModDetails?.category_name ?? "Nexus"} · {selectedModDetails?.loader_type ?? "Unknown type"} · {selectedModDetails?.author ?? selectedModDetails?.uploaded_by ?? "Unknown author"}</span>
+                </div>
+                <button class="close-detail" on:click={closeModDetails}>Close</button>
+            </div>
+
+            {#if isDetailLoading}
+                <div class="loading-line">
+                    <SvgSpinnersBlocksWave />
+                    <span>Loading mod details...</span>
+                </div>
+            {/if}
+
+            <div class="detail-grid">
+                <div class="detail-main">
+                    <img
+                        class="detail-img"
+                        src={selectedModDetails?.picture_url ?? selectedMod.picture_url ?? "https://placehold.co/640x360/252525/FFF?text=Nexus"}
+                        alt=""
+                    />
+
+                    <div class="detail-text">
+                        <span class="detail-section-title">Directions / Description</span>
+                        <p>{plainText(selectedModDetails?.description ?? selectedModDetails?.summary ?? selectedMod.summary) || "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing."}</p>
+                    </div>
+                </div>
+
+                <div class="detail-side">
+                    <div class="detail-facts">
+                        <span>Version <b>{selectedModDetails?.version ?? "-"}</b></span>
+                        <span>Type <b>{selectedModDetails?.loader_type ?? "Unknown"}</b></span>
+                        <span>Updated <b>{formatTimestamp(selectedModDetails?.updated_timestamp, selectedModDetails?.updated_time)}</b></span>
+                        <span>Downloads <b>{formatNumber(selectedModDetails?.mod_downloads)}</b></span>
+                        <span>Installed <b>{describeInstallSource(installedMatch(selectedMod))}</b></span>
+                    </div>
+
+                    <div class="file-picker">
+                        <span class="detail-section-title">Files</span>
+                        {#if selectedModFiles.length === 0 && !isDetailLoading}
+                            <div class="notice empty-nexus">No downloadable files were returned by Nexus.</div>
+                        {/if}
+
+                        {#each selectedModFiles as file}
+                            <button class="file-row" class:file-row-selected={selectedFileId === file.file_id} on:click={() => selectNexusFile(file.file_id)}>
+                                <span class="file-name">{file.name}</span>
+                                <span class="file-meta">{file.category_name ?? "file"} · v{file.version ?? file.mod_version ?? "-"} · {formatSizeKb(file.size)}</span>
+                            </button>
+                        {/each}
+                    </div>
+
+                    <div class="dependency-box">
+                        <span class="detail-section-title">Dependencies</span>
+                        {#if selectedDependencies.length === 0}
+                            <span class="dependency-empty">No API-listed dependencies for the selected file. Still review the author directions for manual requirements.</span>
+                        {:else}
+                            {#each selectedDependencies as dependency}
+                                <div class="dependency-row">
+                                    <span>{dependency.mod_name}</span>
+                                    <small>{dependency.file_name ?? dependency.group_name ?? "Candidate file"} {dependency.version ? `· v${dependency.version}` : ""}</small>
+                                </div>
+                            {/each}
+                        {/if}
+                    </div>
+
+                    <div class="detail-actions">
+                        <button class="install" disabled={!selectedNexusFile} on:click={installSelectedFileWithVortex}>Install Selected With Vortex</button>
+                        <button on:click={openSelectedModPage}>Open Nexus Page</button>
+                        <button on:click={openSelectedDownloadPage}>Open Files Page</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+{/if}
 
 <style>
     .nexus-page {
@@ -616,6 +1044,7 @@
     .button-row,
     .rate-row,
     .catalog-toolbar,
+    .catalog-mode-buttons,
     .view-buttons,
     .nexus-card-footer {
         align-items: center;
@@ -761,6 +1190,19 @@
         justify-content: space-between;
     }
 
+    .catalog-mode-buttons button {
+        color: #c8c8c8;
+        height: 2.55em;
+        margin: 0;
+        min-width: 10em;
+        padding: 0 0.8em;
+    }
+
+    .feed-hidden {
+        opacity: 0.28;
+        pointer-events: none;
+    }
+
     .api-note {
         align-items: center;
         color: #8d99a5;
@@ -896,6 +1338,21 @@
         min-width: 0;
     }
 
+    .title-button,
+    .description-button {
+        background: transparent;
+        border: 0;
+        box-shadow: none;
+        cursor: pointer;
+        font: inherit;
+        margin: 0;
+        min-width: 0;
+        padding: 0;
+        text-align: left;
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+
     .mod-title {
         color: #eefcff;
         font-size: clamp(0.98em, 1.6vh, 1.1em);
@@ -929,6 +1386,10 @@
         -webkit-box-orient: vertical;
         -webkit-line-clamp: 2;
         line-clamp: 2;
+    }
+
+    .description-button {
+        width: 100%;
     }
 
     .facts {
@@ -1064,8 +1525,34 @@
     .button-row button {
         font-size: 0.76em;
         margin: 0;
-        min-width: 7.2em;
+        min-width: 6.6em;
         padding: 0.55em 0.8em;
+    }
+
+    .button-row .vortex-install-btn {
+        color: #62f09b;
+        min-width: 10.5em;
+    }
+
+    .inventory-card {
+        grid-template-columns: clamp(90px, 9vw, 128px) minmax(0, 1fr);
+        min-height: clamp(118px, 14vh, 152px);
+    }
+
+    .inventory-icon {
+        align-items: center;
+        background: radial-gradient(circle at 50% 45%, rgba(98, 240, 155, 0.16), rgba(8, 8, 8, 0.92) 62%);
+        color: #cfeee0;
+        display: flex;
+        font-size: clamp(1.2em, 2.2vh, 1.7em);
+        font-weight: 900;
+        justify-content: center;
+        letter-spacing: 0.1em;
+        min-height: 100%;
+    }
+
+    .inventory-facts {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
     .loading-line {
@@ -1080,6 +1567,182 @@
 
     .empty-nexus {
         flex: 0 0 auto;
+    }
+
+    .detail-backdrop {
+        align-items: center;
+        background: rgba(0, 0, 0, 0.72);
+        bottom: 0;
+        display: flex;
+        justify-content: center;
+        left: 0;
+        padding: clamp(1em, 3vh, 2em);
+        position: fixed;
+        right: 0;
+        top: 0;
+        z-index: 20;
+    }
+
+    .detail-panel {
+        background:
+            linear-gradient(180deg, rgba(18, 18, 18, 0.96), rgba(6, 6, 6, 0.94)),
+            rgba(0, 0, 0, 0.92);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 0.8em;
+        max-height: min(86vh, 820px);
+        max-width: min(92vw, 1180px);
+        min-height: min(70vh, 720px);
+        padding: clamp(1em, 2vh, 1.35em);
+        width: 100%;
+    }
+
+    .detail-header,
+    .detail-actions {
+        align-items: center;
+        display: flex;
+        gap: 0.75em;
+        justify-content: space-between;
+    }
+
+    .detail-title {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    .close-detail {
+        color: #fd9b9d;
+        min-width: 7em;
+    }
+
+    .detail-grid {
+        display: grid;
+        flex: 1 1 auto;
+        gap: 1em;
+        grid-template-columns: minmax(0, 1fr) minmax(300px, 0.45fr);
+        min-height: 0;
+    }
+
+    .detail-main,
+    .detail-side {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75em;
+        min-height: 0;
+        min-width: 0;
+    }
+
+    .detail-img {
+        background: #151515;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        height: clamp(170px, 28vh, 300px);
+        object-fit: cover;
+        width: 100%;
+    }
+
+    .detail-text,
+    .file-picker,
+    .dependency-box,
+    .detail-facts {
+        background: rgba(18, 18, 18, 0.88);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-sizing: border-box;
+        padding: 0.75em;
+    }
+
+    .detail-text {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    .detail-text p {
+        color: #b8c0c8;
+        font-size: 0.9em;
+        line-height: 1.45;
+        margin: 0.55em 0 0;
+        white-space: pre-wrap;
+    }
+
+    .detail-section-title {
+        color: #eefcff;
+        font-size: 0.82em;
+        font-weight: 900;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+    }
+
+    .detail-facts {
+        color: #8d99a5;
+        display: grid;
+        font-size: 0.78em;
+        gap: 0.45em;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .detail-facts b {
+        color: #e4e4e4;
+    }
+
+    .file-picker,
+    .dependency-box {
+        flex: 1 1 0;
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    .file-row {
+        background: rgba(44, 44, 44, 0.9);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: none;
+        display: flex;
+        flex-direction: column;
+        gap: 0.2em;
+        margin: 0.55em 0 0;
+        padding: 0.55em 0.7em;
+        text-align: left;
+        width: 100%;
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+
+    .file-row-selected {
+        border-color: rgba(98, 240, 155, 0.7);
+        color: #62f09b;
+    }
+
+    .file-name {
+        color: #eefcff;
+        font-weight: 900;
+    }
+
+    .file-meta,
+    .dependency-empty,
+    .dependency-row small {
+        color: #9aa5af;
+        font-size: 0.78em;
+        font-weight: 700;
+    }
+
+    .dependency-row {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        flex-direction: column;
+        gap: 0.15em;
+        padding: 0.55em 0;
+    }
+
+    .dependency-row span {
+        color: #fdc66d;
+        font-weight: 900;
+    }
+
+    .detail-actions {
+        flex: 0 0 auto;
+        justify-content: flex-end;
     }
 
     @media (max-width: 1120px) {
@@ -1097,6 +1760,7 @@
         .connect-row,
         .account-actions,
         .catalog-toolbar,
+        .catalog-mode-buttons,
         .nexus-card-footer {
             align-items: stretch;
             flex-direction: column;
@@ -1108,12 +1772,13 @@
 
         .view-buttons {
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(4, minmax(0, 1fr));
             width: 100%;
         }
 
         .cat-btn,
-        .refresh-btn {
+        .refresh-btn,
+        .catalog-mode-buttons button {
             width: 100%;
         }
 
@@ -1137,6 +1802,15 @@
         .button-row {
             margin-left: 0;
             width: 100%;
+        }
+
+        .detail-grid {
+            grid-template-columns: 1fr;
+            overflow-y: auto;
+        }
+
+        .detail-panel {
+            max-height: 92vh;
         }
     }
 </style>

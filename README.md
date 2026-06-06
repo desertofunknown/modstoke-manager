@@ -17,6 +17,7 @@ It is based on Toni Macaroni's RedManager, but the main loader flow has been cha
 - Browse the live SOTF Mods storefront with category, type, compatibility, search, and installed/online filters that mirror the real store taxonomy.
 - Enable or disable installed native/manual mods from the manager with source-aware checkboxes; Vortex-managed packages are detected but left read-only so Vortex deployment metadata is not corrupted.
 - Connect a Nexus Mods account through the Nexus browser SSO flow where available, with a manual API token fallback for testing stored locally in the OS credential vault, and browse Nexus/Vortex-side Sons Of The Forest mods with cross-store install status.
+- Open Nexus mod detail pages inside the manager to read author directions, choose a specific file, inspect API-listed dependencies for that file, and hand the selected file to Vortex through the `nxm://` protocol.
 - Detect the OpenACAI Endnight Loader core assembly through `BepInEx\plugins\OpenACAILoader`.
 - Keep old RedLoader/MelonLoader cleanup affordances so users can avoid competing loader bootstraps.
 - Present the manager in a frameless, transparent Sons-style shell with rough/jagged edges, Endnight splash-logo styling, and native-feeling chromatic text effects instead of a standard Windows app frame.
@@ -65,9 +66,9 @@ npm run tauri dev
 
 The native Mods tab reads from the live SOTF Mods API and currently supports the public storefront categories `Library`, `Misc`, `Model Swap`, and `Quality of Life`, plus type filters for mods, libraries, and builds.
 
-The Nexus/Vortex tab uses the Nexus Mods API for account validation and Sons Of The Forest mod feeds. Browser SSO needs a Nexus-approved application slug; until `openacai-mod-manager` is registered by Nexus Mods, the advanced manual token path is only for development/testing builds.
+The Nexus/Vortex tab uses the Nexus Mods API for account validation, Sons Of The Forest mod feeds, mod details, file choices, and file dependency metadata. Browser SSO needs a Nexus-approved application slug; until `openacai-mod-manager` is registered by Nexus Mods, the advanced manual token path is only for development/testing builds.
 
-Nexus API usage must follow the [Nexus Mods API Acceptable Use Policy](https://help.nexusmods.com/article/114-api-acceptable-use-policy). This manager sends consistent `Application-Name`, `Application-Version`, and User-Agent metadata, stores user tokens locally instead of on OpenACAI servers, caches Nexus feed/session calls for 10 minutes, and rate-limits manual refresh clicks to avoid excessive API traffic. It must not bulk scrape, rehost Nexus data, impersonate another application, or ship as a public-facing app that relies on personal API keys instead of a registered Nexus application slug.
+Nexus API usage must follow the [Nexus Mods API Acceptable Use Policy](https://help.nexusmods.com/article/114-api-acceptable-use-policy). This manager sends consistent `Application-Name`, `Application-Version`, and User-Agent metadata, stores user tokens locally instead of on OpenACAI servers, caches Nexus feed/session/detail/file calls for 10 minutes, and rate-limits manual refresh clicks to avoid excessive API traffic. It must not bulk scrape, rehost Nexus data, impersonate another application, or ship as a public-facing app that relies on personal API keys instead of a registered Nexus application slug.
 
 To refresh prebuilt files and the ignored local portable test executable:
 
