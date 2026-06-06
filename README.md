@@ -79,6 +79,8 @@ The Nexus/Vortex tab uses the Nexus Mods API for account validation, Sons Of The
 
 Nexus API usage must follow the [Nexus Mods API Acceptable Use Policy](https://help.nexusmods.com/article/114-api-acceptable-use-policy). This manager sends consistent `Application-Name`, `Application-Version`, and User-Agent metadata, stores user tokens locally instead of on OpenACAI servers, caches Nexus feed/session/detail/file calls for 10 minutes, shows hourly/daily rate-limit meters from the API headers, and rate-limits manual refresh clicks with a visible cooldown to avoid excessive API traffic. It must not bulk scrape, rehost Nexus data, impersonate another application, or ship as a public-facing app that relies on personal API keys instead of a registered Nexus application slug.
 
+The intended Nexus registration path for `openacai-mod-manager` is to use GraphQL for public/read-heavy metadata and supported community surfaces, OAuth2/PKCE for the public desktop login and user-initiated authenticated actions, and legacy REST/v1 only where current mod-manager capabilities are not yet available through GraphQL or OAuth-backed APIs.
+
 To refresh prebuilt files and the ignored local portable test executable:
 
 ```powershell
