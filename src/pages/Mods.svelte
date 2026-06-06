@@ -295,6 +295,16 @@
             <button class="filter-clear" disabled={!hasActiveModFilters || isLoading} on:click={clearModFilters}>Clear</button>
         </div>
 
+        <div class="mods-note">
+            <span>{visibleMods.length} shown from {filtered.length} {onlineSelected ? "loaded" : "installed"}.</span>
+            {#if categories.length > 0}
+                <span>{categories.length} categories.</span>
+            {/if}
+            {#if hasActiveModFilters}
+                <span>Filters active.</span>
+            {/if}
+        </div>
+
         {#if catalogError}
             <div class="catalog-error">
                 <span>{catalogError}</span>
@@ -402,6 +412,25 @@
         height: 2.6em;
         margin: 0;
         padding: 0;
+        width: 100%;
+    }
+
+    .mods-note {
+        align-items: center;
+        background: rgba(18, 18, 18, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-sizing: border-box;
+        color: #8d99a5;
+        display: flex;
+        flex: 0 0 auto;
+        flex-wrap: wrap;
+        font-size: 0.78em;
+        font-weight: 800;
+        gap: 0.7em;
+        line-height: 1.2;
+        margin: -0.25em 0 0.65em;
+        padding: 0.48em 0.75em;
+        text-align: left;
         width: 100%;
     }
 
