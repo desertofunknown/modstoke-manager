@@ -1788,11 +1788,11 @@
                 <span class="summary-label">Vortex Deployment</span>
                 <span class="summary-value">{vortexStagingPath ? "Detected" : "Not detected"}</span>
             </div>
-            <button type="button" class="summary-card summary-action" on:click={showInstalledInventory}>
+            <button type="button" class="summary-card summary-action" class:summary-card-selected={catalogMode === "installed" && selectedInstallFilter === "all"} on:click={showInstalledInventory}>
                 <span class="summary-label">Installed</span>
                 <span class="summary-value">{installedCount}</span>
             </button>
-            <button type="button" class="summary-card summary-action" class:attention-summary={(catalogMode === "online" ? onlineAttentionCount : installedAttentionCount) > 0} on:click={showCurrentAttention}>
+            <button type="button" class="summary-card summary-action" class:summary-card-selected={selectedInstallFilter === "attention"} class:attention-summary={(catalogMode === "online" ? onlineAttentionCount : installedAttentionCount) > 0} on:click={showCurrentAttention}>
                 <span class="summary-label">Attention</span>
                 <span class="summary-value">{catalogMode === "online" ? onlineAttentionCount : installedAttentionCount}</span>
                 <span class="summary-note">{catalogMode === "online" ? "Tracked missing, updates, conflicts" : "Updates, disabled, conflicts"}</span>
@@ -1801,12 +1801,12 @@
                 <span class="summary-label">Vortex / Native / Manual</span>
                 <span class="summary-value">{vortexCount} / {nativeCount} / {manualCount}</span>
             </div>
-            <button type="button" class="summary-card summary-action" class:update-summary={updateCount > 0 || disabledCount > 0} on:click={showUpdatesOrDisabled}>
+            <button type="button" class="summary-card summary-action" class:summary-card-selected={selectedInstallFilter === "updates" || selectedInstallFilter === "disabled"} class:update-summary={updateCount > 0 || disabledCount > 0} on:click={showUpdatesOrDisabled}>
                 <span class="summary-label">Updates / Disabled</span>
                 <span class="summary-value">{updateCount} / {disabledCount}</span>
                 <span class="summary-note">Local deployment state</span>
             </button>
-            <button type="button" class="summary-card summary-action" class:conflict-summary={conflictCount > 0} on:click={showLocalConflicts}>
+            <button type="button" class="summary-card summary-action" class:summary-card-selected={selectedInstallFilter === "conflicts"} class:conflict-summary={conflictCount > 0} on:click={showLocalConflicts}>
                 <span class="summary-label">Local Conflicts</span>
                 <span class="summary-value">{conflictCount}</span>
                 <span class="summary-note">{conflictCount > 0 ? "Review duplicate deployments" : "No duplicate installs"}</span>
@@ -2430,6 +2430,11 @@
         border-color: rgba(120, 217, 244, 0.55);
         box-shadow: inset 0 0 0 1px rgba(120, 217, 244, 0.14);
         outline: none;
+    }
+
+    .summary-card-selected {
+        border-color: rgba(98, 240, 155, 0.62);
+        box-shadow: inset 0 0 0 1px rgba(98, 240, 155, 0.16);
     }
 
     .summary-label {
