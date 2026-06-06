@@ -5,10 +5,12 @@
         clearNexusApiKey,
         endorseNexusSotfMod,
         fetchNexusFileDependencies,
+        fetchNexusModChangelogs,
         fetchNexusModDetails,
         fetchNexusModFiles,
         fetchNexusSotfMods,
         fetchNexusUserEndorsements,
+        fetchNexusUserTrackedMods,
         getNexusNxmUrl,
         getNexusModDownloadUrl,
         getNexusModPageUrl,
@@ -16,12 +18,16 @@
         NEXUS_CACHE_TTL_MINUTES,
         pickRecommendedNexusFile,
         saveNexusApiKey,
+        trackNexusSotfMod,
+        untrackNexusSotfMod,
         type NexusCategory,
         type NexusEndorsement,
+        type NexusModChangelog,
         type NexusModDependency,
         type NexusModFile,
         type NexusMod,
         type NexusSession,
+        type NexusTrackedMod,
         type NexusView
     } from "../lib/nexus";
     import {
@@ -45,6 +51,8 @@
     let nexusCategories: NexusCategory[] = [];
     let endorsements: NexusEndorsement[] = [];
     let endorsementsLoaded = false;
+    let trackedMods: NexusTrackedMod[] = [];
+    let trackedModsLoaded = false;
     let inventory: InstalledInventoryEntry[] = [];
     let selectedView: NexusView = "all";
     let catalogMode: CatalogMode = "online";
@@ -60,8 +68,10 @@
     let selectedModFiles: NexusModFile[] = [];
     let selectedFileId: number | null = null;
     let selectedDependencies: NexusModDependency[] = [];
+    let selectedChangelogs: NexusModChangelog[] = [];
     let activeNexusActionId: number | null = null;
     let activeNexusEndorseId: number | null = null;
+    let activeNexusTrackId: number | null = null;
     let autoEndorseDownloadedMods = false;
     let autoEndorseAttemptedIds: number[] = [];
     let ssoSocket: WebSocket | null = null;
@@ -88,6 +98,7 @@
     $: vortexCount = inventory.filter(entry => entry.installSource === "vortex").length;
     $: nativeCount = inventory.filter(entry => entry.installSource === "native").length;
     $: manualCount = inventory.filter(entry => entry.installSource === "manual").length;
+    $: trackedCount = trackedMods.length;
     $: selectedNexusFile = selectedModFiles.find(file => file.file_id === selectedFileId) ?? null;
 
     onMount(async () => {
@@ -283,6 +294,8 @@
         nexusCategories = [];
         endorsements = [];
         endorsementsLoaded = false;
+        trackedMods = [];
+        trackedModsLoaded = false;
     }
 
     async function loadMods(view: NexusView = selectedView, forceRefresh = false) {
@@ -315,6 +328,7 @@
                 rate_limit: response.rate_limit
             };
             await refreshEndorsements(forceRefresh);
+            await refreshTrackedMods(forceRefresh);
             await maybeAutoEndorseInstalledVortexMods();
         } catch (error) {
             await dialog.message(`${error}`, {
@@ -347,6 +361,82 @@
         } catch (error) {
             console.log("Failed to refresh Nexus endorsements", error);
             endorsementsLoaded = false;
+        }
+    }
+
+    async function refreshTrackedMods(forceRefresh = false) {
+        if (!session.is_connected) {
+            trackedMods = [];
+            trackedModsLoaded = false;
+            return;
+        }
+
+        try {
+            const response = await fetchNexusUserTrackedMods({ force: forceRefresh });
+            trackedMods = response.tracked_mods.filter(tracked =>
+                !tracked.game_domain_name || tracked.game_domain_name.toLowerCase() === "sonsoftheforest"
+            );
+            trackedModsLoaded = true;
+            session = {
+                ...session,
+                rate_limit: response.rate_limit
+            };
+        } catch (error) {
+            console.log("Failed to refresh Nexus tracked mods", error);
+            trackedModsLoaded = false;
+        }
+    }
+
+    async function toggleNexusTracking(mod: NexusMod) {
+        await setNexusTracking(mod.mod_id, !isNexusModTracked(mod.mod_id), mod.name);
+    }
+
+    async function toggleInstalledTracking(entry: InstalledInventoryEntry) {
+        const modId = numericNexusId(entry.nexusModId);
+        if (!modId) {
+            return;
+        }
+
+        await setNexusTracking(modId, !isNexusModTracked(modId), entry.name);
+    }
+
+    async function toggleSelectedModTracking() {
+        if (selectedMod) {
+            await toggleNexusTracking(selectedMod);
+        }
+    }
+
+    async function setNexusTracking(modId: number, shouldTrack: boolean, label: string) {
+        activeNexusTrackId = modId;
+        status = `${shouldTrack ? "Tracking" : "Untracking"} ${label}...`;
+        let keepStatus = false;
+
+        try {
+            const response = shouldTrack
+                ? await trackNexusSotfMod(modId)
+                : await untrackNexusSotfMod(modId);
+            session = {
+                ...session,
+                rate_limit: response.rate_limit
+            };
+            markNexusModTracked(modId, shouldTrack, label);
+            status = `${shouldTrack ? "Tracking" : "Stopped tracking"} ${label}.`;
+            keepStatus = true;
+            window.setTimeout(() => {
+                if (status === `${shouldTrack ? "Tracking" : "Stopped tracking"} ${label}.`) {
+                    status = "";
+                }
+            }, 4500);
+        } catch (error) {
+            await dialog.message(`${error}`, {
+                title: "Nexus tracking",
+                kind: "error"
+            });
+        } finally {
+            activeNexusTrackId = null;
+            if (!keepStatus) {
+                status = "";
+            }
         }
     }
 
@@ -505,6 +595,19 @@
         }
     }
 
+    function markNexusModTracked(modId: number, shouldTrack: boolean, label?: string) {
+        if (shouldTrack) {
+            trackedMods = [
+                ...trackedMods.filter(tracked => tracked.mod_id !== modId),
+                { mod_id: modId, game_domain_name: "sonsoftheforest", name: label }
+            ];
+            trackedModsLoaded = true;
+            return;
+        }
+
+        trackedMods = trackedMods.filter(tracked => tracked.mod_id !== modId);
+    }
+
     function isNexusModEndorsed(modIdValue?: number | string | null): boolean {
         const modId = numericNexusId(modIdValue);
         if (!modId) {
@@ -515,6 +618,15 @@
             const endorsementStatus = endorsement.status?.toLowerCase() ?? "";
             return endorsement.mod_id === modId && !/abstain|unendors/.test(endorsementStatus);
         });
+    }
+
+    function isNexusModTracked(modIdValue?: number | string | null): boolean {
+        const modId = numericNexusId(modIdValue);
+        if (!modId) {
+            return false;
+        }
+
+        return trackedMods.some(tracked => tracked.mod_id === modId);
     }
 
     function numericNexusId(value?: number | string | null): number | null {
@@ -588,15 +700,18 @@
         selectedModFiles = [];
         selectedFileId = null;
         selectedDependencies = [];
+        selectedChangelogs = [];
         isDetailLoading = true;
 
         try {
-            const [details, fileResponse] = await Promise.all([
+            const [details, fileResponse, changelogResponse] = await Promise.all([
                 fetchNexusModDetails(mod.mod_id).catch(() => mod),
-                fetchNexusModFiles(mod.mod_id)
+                fetchNexusModFiles(mod.mod_id),
+                fetchNexusModChangelogs(mod.mod_id).catch(() => ({ changelogs: [], rate_limit: session.rate_limit ?? {} }))
             ]);
             selectedModDetails = { ...mod, ...details };
             selectedModFiles = fileResponse.files;
+            selectedChangelogs = changelogResponse.changelogs.slice(0, 5);
             selectedFileId = pickRecommendedNexusFile(fileResponse.files)?.file_id ?? fileResponse.files[0]?.file_id ?? null;
             session = {
                 ...session,
@@ -622,6 +737,7 @@
         selectedModFiles = [];
         selectedFileId = null;
         selectedDependencies = [];
+        selectedChangelogs = [];
     }
 
     async function selectNexusFile(fileId: number) {
@@ -774,6 +890,10 @@
             return false;
         }
 
+        if (selectedInstallFilter === "tracked" && !isNexusModTracked(mod.mod_id)) {
+            return false;
+        }
+
         return true;
     }
 
@@ -804,6 +924,10 @@
         }
 
         if (selectedInstallFilter === "missing") {
+            return false;
+        }
+
+        if (selectedInstallFilter === "tracked" && !isNexusModTracked(entry.nexusModId)) {
             return false;
         }
 
@@ -876,6 +1000,67 @@
         }
 
         return "Get Vortex File";
+    }
+
+    function nexusUpdateLabel(mod: NexusMod): string {
+        const match = installedMatch(mod);
+        if (!match) {
+            return isNexusModTracked(mod.mod_id) ? "Tracked" : "Not installed";
+        }
+
+        if (versionsDiffer(match.version, mod.version)) {
+            return "Update available";
+        }
+
+        return match.version && mod.version ? "Current" : "Installed";
+    }
+
+    function selectedModUpdateLabel(): string {
+        return selectedMod ? nexusUpdateLabel(selectedMod) : "-";
+    }
+
+    function selectedModUpdateTone(): "update" | "current" | "tracked" | "neutral" {
+        return updateTone(selectedModUpdateLabel());
+    }
+
+    function inventoryUpdateLabel(entry: InstalledInventoryEntry): string {
+        const onlineMod = findOnlineModForEntry(entry);
+        if (!onlineMod) {
+            return entry.installSource === "vortex" ? "Refresh Nexus" : "Local only";
+        }
+
+        if (versionsDiffer(entry.version, onlineMod.version)) {
+            return "Update available";
+        }
+
+        return entry.version && onlineMod.version ? "Current" : "Installed";
+    }
+
+    function findOnlineModForEntry(entry: InstalledInventoryEntry): NexusMod | null {
+        const entryNexusId = numericNexusId(entry.nexusModId);
+        return mods.find(mod =>
+            (entryNexusId && mod.mod_id === entryNexusId)
+            || findMatchingInstall([entry], mod.name, mod.mod_id, [
+                mod.author ?? "",
+                mod.uploaded_by ?? ""
+            ]) !== null
+        ) ?? null;
+    }
+
+    function updateTone(label: string): "update" | "current" | "tracked" | "neutral" {
+        if (label === "Update available") {
+            return "update";
+        }
+
+        if (label === "Current") {
+            return "current";
+        }
+
+        if (label === "Tracked") {
+            return "tracked";
+        }
+
+        return "neutral";
     }
 
     function versionsDiffer(left?: string, right?: string): boolean {
@@ -1043,9 +1228,9 @@
             <div class="notice api-note">
                 <span>Nexus requests are cached locally for {NEXUS_CACHE_TTL_MINUTES} minutes.</span>
                 {#if catalogMode === "online"}
-                    <span>{visibleNexusMods.length} shown from {mods.length} loaded.</span>
+                    <span>{visibleNexusMods.length} shown from {mods.length} loaded. {trackedModsLoaded ? `${trackedCount} tracked.` : ""}</span>
                 {:else}
-                    <span>{visibleInstalledEntries.length} shown from {installedCount} installed.</span>
+                    <span>{visibleInstalledEntries.length} shown from {installedCount} installed. {trackedModsLoaded ? `${trackedCount} tracked.` : ""}</span>
                 {/if}
             </div>
 
@@ -1064,6 +1249,7 @@
                     <option value="vortex">Vortex</option>
                     <option value="native">OpenACAI store</option>
                     <option value="manual">Manual</option>
+                    <option value="tracked">Tracked</option>
                 </select>
             </div>
 
@@ -1071,6 +1257,8 @@
                 {#if catalogMode === "online"}
                     {#each visibleNexusMods as mod}
                         {@const match = installedMatch(mod)}
+                        {@const updateLabel = nexusUpdateLabel(mod)}
+                        {@const updateToneValue = updateTone(updateLabel)}
                         <article class="nexus-card" class:nexus-installed={!!match}>
                             <button class="thumbnail-button" aria-label={`Open ${mod.name} details`} on:click={() => openModDetails(mod)}>
                                 <img
@@ -1095,6 +1283,7 @@
 
                                 <div class="facts">
                                     <span>Version <b>{mod.version ?? "-"}</b></span>
+                                    <span>State <b class:update-state-update={updateToneValue === "update"} class:update-state-current={updateToneValue === "current"} class:update-state-tracked={updateToneValue === "tracked"}>{updateLabel}</b></span>
                                     <span>Updated <b>{formatTimestamp(mod.updated_timestamp, mod.updated_time)}</b></span>
                                     <span>Downloads <b>{formatNumber(mod.mod_downloads)}</b></span>
                                     <span>Endorsements <b>{formatNumber(mod.endorsement_count)}</b></span>
@@ -1117,6 +1306,9 @@
                                     {/if}
 
                                     <div class="button-row">
+                                        <button class="track-btn" disabled={activeNexusTrackId === mod.mod_id} on:click={() => toggleNexusTracking(mod)}>
+                                            {activeNexusTrackId === mod.mod_id ? "Saving..." : isNexusModTracked(mod.mod_id) ? "Tracked" : "Track"}
+                                        </button>
                                         {#if match}
                                             {#if isNexusModEndorsed(mod.mod_id)}
                                                 <button class="endorsed-btn" disabled>Endorsed</button>
@@ -1139,6 +1331,8 @@
                 {:else}
                     {#each visibleInstalledEntries as entry}
                         {@const entryNexusModId = numericNexusId(entry.nexusModId)}
+                        {@const inventoryUpdate = inventoryUpdateLabel(entry)}
+                        {@const inventoryTone = updateTone(inventoryUpdate)}
                         <article class="nexus-card inventory-card" class:nexus-installed={entry.enabled}>
                             <div class="inventory-icon">
                                 <span>{entry.loaderType === "bepinex-plugin" ? "BEP" : "RED"}</span>
@@ -1157,6 +1351,7 @@
 
                                 <div class="facts inventory-facts">
                                     <span>Version <b>{entry.version ?? "-"}</b></span>
+                                    <span>Update <b class:update-state-update={inventoryTone === "update"} class:update-state-current={inventoryTone === "current"}>{inventoryUpdate}</b></span>
                                     <span>Location <b>{entry.expectedLocation}</b></span>
                                     <span>State <b>{entry.enabled ? "Enabled" : "Disabled"}</b></span>
                                     <span>Store <b>{entry.store}</b></span>
@@ -1185,6 +1380,9 @@
                                     <div class="button-row">
                                         <button on:click={() => openInventoryLocation(entry)}>Open Folder</button>
                                         {#if entryNexusModId}
+                                            <button class="track-btn" disabled={activeNexusTrackId === entryNexusModId} on:click={() => toggleInstalledTracking(entry)}>
+                                                {activeNexusTrackId === entryNexusModId ? "Saving..." : isNexusModTracked(entryNexusModId) ? "Tracked" : "Track"}
+                                            </button>
                                             {#if isNexusModEndorsed(entryNexusModId)}
                                                 <button class="endorsed-btn" disabled>Endorsed</button>
                                             {:else}
@@ -1252,12 +1450,28 @@
                         <span class="detail-section-title">Directions / Description</span>
                         <p>{plainText(selectedModDetails?.description ?? selectedModDetails?.summary ?? selectedMod.summary) || "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing."}</p>
                     </div>
+
+                    <div class="changelog-box">
+                        <span class="detail-section-title">Changelog</span>
+                        {#if selectedChangelogs.length === 0}
+                            <span class="dependency-empty">No API-listed changelog entries were returned for this mod.</span>
+                        {:else}
+                            {#each selectedChangelogs as changelog}
+                                <div class="changelog-row">
+                                    <span>{changelog.version}</span>
+                                    <p>{plainText(changelog.changes)}</p>
+                                </div>
+                            {/each}
+                        {/if}
+                    </div>
                 </div>
 
                 <div class="detail-side">
                     <div class="detail-facts">
                         <span>Version <b>{selectedModDetails?.version ?? "-"}</b></span>
                         <span>Type <b>{selectedModDetails?.loader_type ?? "Unknown"}</b></span>
+                        <span>Update <b class:update-state-update={selectedModUpdateTone() === "update"} class:update-state-current={selectedModUpdateTone() === "current"} class:update-state-tracked={selectedModUpdateTone() === "tracked"}>{selectedModUpdateLabel()}</b></span>
+                        <span>Tracked <b>{isNexusModTracked(selectedMod.mod_id) ? "Yes" : "No"}</b></span>
                         <span>Updated <b>{formatTimestamp(selectedModDetails?.updated_timestamp, selectedModDetails?.updated_time)}</b></span>
                         <span>Downloads <b>{formatNumber(selectedModDetails?.mod_downloads)}</b></span>
                         <span>Installed <b>{describeInstallSource(installedMatch(selectedMod))}</b></span>
@@ -1293,6 +1507,9 @@
 
                     <div class="detail-actions">
                         <button class="install" disabled={!selectedNexusFile} on:click={installSelectedFileWithVortex}>Install Selected With Vortex</button>
+                        <button class="track-btn" disabled={activeNexusTrackId === selectedMod.mod_id} on:click={toggleSelectedModTracking}>
+                            {activeNexusTrackId === selectedMod.mod_id ? "Saving..." : isNexusModTracked(selectedMod.mod_id) ? "Tracked" : "Track"}
+                        </button>
                         {#if installedMatch(selectedMod)}
                             {#if isNexusModEndorsed(selectedMod.mod_id)}
                                 <button class="endorsed-btn" disabled>Endorsed</button>
@@ -1762,7 +1979,7 @@
         display: grid;
         font-size: 0.76em;
         gap: 0.25em 1em;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
         min-width: 0;
     }
 
@@ -1899,6 +2116,12 @@
         min-width: 10.5em;
     }
 
+    .button-row .track-btn,
+    .detail-actions .track-btn {
+        color: #fdc66d;
+        min-width: 6.6em;
+    }
+
     .button-row .endorse-btn,
     .detail-actions .endorse-btn {
         color: #78d9f4;
@@ -1930,7 +2153,19 @@
     }
 
     .inventory-facts {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .update-state-update {
+        color: #fdc66d;
+    }
+
+    .update-state-current {
+        color: #62f09b;
+    }
+
+    .update-state-tracked {
+        color: #78d9f4;
     }
 
     .loading-line {
@@ -2022,6 +2257,7 @@
     }
 
     .detail-text,
+    .changelog-box,
     .file-picker,
     .dependency-box,
     .detail-facts {
@@ -2070,6 +2306,32 @@
         flex: 1 1 0;
         min-height: 0;
         overflow-y: auto;
+    }
+
+    .changelog-box {
+        flex: 0 1 auto;
+        max-height: clamp(120px, 20vh, 220px);
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    .changelog-row {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 0.55em 0;
+    }
+
+    .changelog-row span {
+        color: #78d9f4;
+        font-size: 0.82em;
+        font-weight: 900;
+    }
+
+    .changelog-row p {
+        color: #b8c0c8;
+        font-size: 0.82em;
+        line-height: 1.35;
+        margin: 0.3em 0 0;
+        white-space: pre-wrap;
     }
 
     .file-row {

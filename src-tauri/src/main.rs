@@ -102,8 +102,20 @@ struct NexusModDependenciesResponse {
 }
 
 #[derive(Serialize)]
+struct NexusModChangelogsResponse {
+    changelogs: serde_json::Value,
+    rate_limit: NexusRateLimit,
+}
+
+#[derive(Serialize)]
 struct NexusEndorsementsResponse {
     endorsements: serde_json::Value,
+    rate_limit: NexusRateLimit,
+}
+
+#[derive(Serialize)]
+struct NexusTrackedModsResponse {
+    tracked_mods: serde_json::Value,
     rate_limit: NexusRateLimit,
 }
 
@@ -349,6 +361,36 @@ async fn nexus_fetch_file_dependencies(
 }
 
 #[tauri::command]
+async fn nexus_fetch_mod_changelogs(mod_id: u64) -> Result<NexusModChangelogsResponse, String> {
+    let key =
+        read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
+    let url =
+        format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/{mod_id}/changelogs.json");
+    let response = nexus_client(&key)
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let rate_limit = read_rate_limit(response.headers());
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Nexus changelog request failed: {}",
+            response.status()
+        ));
+    }
+
+    let changelogs = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(NexusModChangelogsResponse {
+        changelogs,
+        rate_limit,
+    })
+}
+
+#[tauri::command]
 async fn nexus_fetch_user_endorsements() -> Result<NexusEndorsementsResponse, String> {
     let key =
         read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
@@ -372,6 +414,34 @@ async fn nexus_fetch_user_endorsements() -> Result<NexusEndorsementsResponse, St
         .map_err(|e| e.to_string())?;
     Ok(NexusEndorsementsResponse {
         endorsements,
+        rate_limit,
+    })
+}
+
+#[tauri::command]
+async fn nexus_fetch_user_tracked_mods() -> Result<NexusTrackedModsResponse, String> {
+    let key =
+        read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
+    let response = nexus_client(&key)
+        .get(format!("{NEXUS_API_BASE}/v1/user/tracked_mods.json"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let rate_limit = read_rate_limit(response.headers());
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Nexus tracked mods request failed: {}",
+            response.status()
+        ));
+    }
+
+    let tracked_mods = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(NexusTrackedModsResponse {
+        tracked_mods,
         rate_limit,
     })
 }
@@ -401,7 +471,53 @@ async fn nexus_endorse_sotf_mod(
     let rate_limit = read_rate_limit(response.headers());
 
     if !response.status().is_success() {
-        return Err(format!("Nexus endorse request failed: {}", response.status()));
+        return Err(format!(
+            "Nexus endorse request failed: {}",
+            response.status()
+        ));
+    }
+
+    let result = read_json_or_empty(response).await?;
+    Ok(NexusActionResponse { result, rate_limit })
+}
+
+#[tauri::command]
+async fn nexus_track_sotf_mod(mod_id: u64) -> Result<NexusActionResponse, String> {
+    nexus_set_sotf_tracking(mod_id, true).await
+}
+
+#[tauri::command]
+async fn nexus_untrack_sotf_mod(mod_id: u64) -> Result<NexusActionResponse, String> {
+    nexus_set_sotf_tracking(mod_id, false).await
+}
+
+async fn nexus_set_sotf_tracking(
+    mod_id: u64,
+    should_track: bool,
+) -> Result<NexusActionResponse, String> {
+    let key =
+        read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
+    let form = vec![("mod_id", mod_id.to_string())];
+    let request = nexus_client(&key)
+        .request(
+            if should_track {
+                reqwest::Method::POST
+            } else {
+                reqwest::Method::DELETE
+            },
+            format!("{NEXUS_API_BASE}/v1/user/tracked_mods.json"),
+        )
+        .query(&[("domain_name", NEXUS_GAME_DOMAIN)])
+        .form(&form);
+    let response = request.send().await.map_err(|e| e.to_string())?;
+    let rate_limit = read_rate_limit(response.headers());
+
+    if !response.status().is_success() {
+        let action = if should_track { "track" } else { "untrack" };
+        return Err(format!(
+            "Nexus {action} request failed: {}",
+            response.status()
+        ));
     }
 
     let result = read_json_or_empty(response).await?;
@@ -787,8 +903,12 @@ fn main() {
             nexus_fetch_mod_details,
             nexus_fetch_mod_files,
             nexus_fetch_file_dependencies,
+            nexus_fetch_mod_changelogs,
             nexus_fetch_user_endorsements,
+            nexus_fetch_user_tracked_mods,
             nexus_endorse_sotf_mod,
+            nexus_track_sotf_mod,
+            nexus_untrack_sotf_mod,
             sha256_file
         ])
         .plugin(tauri_plugin_upload::init())

@@ -80,11 +80,23 @@ export type NexusModDependency = {
     group_name?: string;
 };
 
+export type NexusModChangelog = {
+    version: string;
+    changes: string;
+    updated_at?: string;
+};
+
 export type NexusEndorsement = {
     mod_id: number;
     game_domain_name?: string;
     status?: string;
     endorsed_at?: string;
+};
+
+export type NexusTrackedMod = {
+    mod_id: number;
+    name?: string;
+    game_domain_name?: string;
 };
 
 type RawNexusModsResponse = {
@@ -128,6 +140,16 @@ type NexusModDependenciesResponse = {
     rate_limit: NexusRateLimit;
 };
 
+type RawNexusModChangelogsResponse = {
+    changelogs: unknown;
+    rate_limit: NexusRateLimit;
+};
+
+type NexusModChangelogsResponse = {
+    changelogs: NexusModChangelog[];
+    rate_limit: NexusRateLimit;
+};
+
 type RawNexusEndorsementsResponse = {
     endorsements: unknown;
     rate_limit: NexusRateLimit;
@@ -135,6 +157,16 @@ type RawNexusEndorsementsResponse = {
 
 type NexusEndorsementsResponse = {
     endorsements: NexusEndorsement[];
+    rate_limit: NexusRateLimit;
+};
+
+type RawNexusTrackedModsResponse = {
+    tracked_mods: unknown;
+    rate_limit: NexusRateLimit;
+};
+
+type NexusTrackedModsResponse = {
+    tracked_mods: NexusTrackedMod[];
     rate_limit: NexusRateLimit;
 };
 
@@ -167,8 +199,12 @@ const filesCache = new Map<number, { value: NexusModFilesResponse; cachedAt: num
 const filesRequests = new Map<number, Promise<NexusModFilesResponse>>();
 const dependencyCache = new Map<number, { value: NexusModDependenciesResponse; cachedAt: number }>();
 const dependencyRequests = new Map<number, Promise<NexusModDependenciesResponse>>();
+const changelogCache = new Map<number, { value: NexusModChangelogsResponse; cachedAt: number }>();
+const changelogRequests = new Map<number, Promise<NexusModChangelogsResponse>>();
 let endorsementCache: { value: NexusEndorsementsResponse; cachedAt: number } | null = null;
 let endorsementRequest: Promise<NexusEndorsementsResponse> | null = null;
+let trackedModsCache: { value: NexusTrackedModsResponse; cachedAt: number } | null = null;
+let trackedModsRequest: Promise<NexusTrackedModsResponse> | null = null;
 
 function cacheFresh(cachedAt: number): boolean {
     return Date.now() - cachedAt < NEXUS_CACHE_TTL_MS;
@@ -187,8 +223,12 @@ export function clearNexusClientCache(): void {
     filesRequests.clear();
     dependencyCache.clear();
     dependencyRequests.clear();
+    changelogCache.clear();
+    changelogRequests.clear();
     endorsementCache = null;
     endorsementRequest = null;
+    trackedModsCache = null;
+    trackedModsRequest = null;
 }
 
 export async function getNexusSession(options: { force?: boolean } = {}): Promise<NexusSession> {
@@ -414,6 +454,34 @@ export async function fetchNexusFileDependencies(fileId: number, options: { forc
     return await request;
 }
 
+export async function fetchNexusModChangelogs(modId: number, options: { force?: boolean } = {}): Promise<NexusModChangelogsResponse> {
+    const cached = changelogCache.get(modId);
+    if (!options.force && cached && cacheFresh(cached.cachedAt)) {
+        return cached.value;
+    }
+
+    const existingRequest = changelogRequests.get(modId);
+    if (!options.force && existingRequest) {
+        return await existingRequest;
+    }
+
+    const request = invoke<RawNexusModChangelogsResponse>("nexus_fetch_mod_changelogs", { modId })
+        .then((response) => {
+            const normalized = {
+                changelogs: normalizeChangelogs(response.changelogs),
+                rate_limit: response.rate_limit
+            };
+            changelogCache.set(modId, { value: normalized, cachedAt: Date.now() });
+            return normalized;
+        })
+        .finally(() => {
+            changelogRequests.delete(modId);
+        });
+
+    changelogRequests.set(modId, request);
+    return await request;
+}
+
 export async function fetchNexusUserEndorsements(options: { force?: boolean } = {}): Promise<NexusEndorsementsResponse> {
     if (!options.force && endorsementCache && cacheFresh(endorsementCache.cachedAt)) {
         return endorsementCache.value;
@@ -439,6 +507,31 @@ export async function fetchNexusUserEndorsements(options: { force?: boolean } = 
     return await endorsementRequest;
 }
 
+export async function fetchNexusUserTrackedMods(options: { force?: boolean } = {}): Promise<NexusTrackedModsResponse> {
+    if (!options.force && trackedModsCache && cacheFresh(trackedModsCache.cachedAt)) {
+        return trackedModsCache.value;
+    }
+
+    if (!options.force && trackedModsRequest) {
+        return await trackedModsRequest;
+    }
+
+    trackedModsRequest = invoke<RawNexusTrackedModsResponse>("nexus_fetch_user_tracked_mods")
+        .then((response) => {
+            const normalized = {
+                tracked_mods: normalizeTrackedMods(response.tracked_mods),
+                rate_limit: response.rate_limit
+            };
+            trackedModsCache = { value: normalized, cachedAt: Date.now() };
+            return normalized;
+        })
+        .finally(() => {
+            trackedModsRequest = null;
+        });
+
+    return await trackedModsRequest;
+}
+
 export async function endorseNexusSotfMod(modId: number, version?: string): Promise<NexusActionResponse> {
     const response = await invoke<NexusActionResponse>("nexus_endorse_sotf_mod", {
         modId,
@@ -446,6 +539,20 @@ export async function endorseNexusSotfMod(modId: number, version?: string): Prom
     });
     endorsementCache = null;
     endorsementRequest = null;
+    return response;
+}
+
+export async function trackNexusSotfMod(modId: number): Promise<NexusActionResponse> {
+    const response = await invoke<NexusActionResponse>("nexus_track_sotf_mod", { modId });
+    trackedModsCache = null;
+    trackedModsRequest = null;
+    return response;
+}
+
+export async function untrackNexusSotfMod(modId: number): Promise<NexusActionResponse> {
+    const response = await invoke<NexusActionResponse>("nexus_untrack_sotf_mod", { modId });
+    trackedModsCache = null;
+    trackedModsRequest = null;
     return response;
 }
 
@@ -749,6 +856,50 @@ function normalizeDependencies(raw: unknown): NexusModDependency[] {
     return flattened;
 }
 
+function normalizeChangelogs(raw: unknown): NexusModChangelog[] {
+    const root = objectField(raw);
+    const source = Array.isArray(raw)
+        ? raw
+        : Array.isArray(root?.data)
+            ? root.data
+            : Array.isArray(root?.changelogs)
+                ? root.changelogs
+                : root
+                    ? Object.entries(root).map(([version, value]) => ({ version, value }))
+                    : [];
+
+    return source
+        .map((record, index) => {
+            const changelog = objectField(record);
+            const nestedValue = changelog?.value;
+            const nested = objectField(nestedValue);
+            const version = stringField(changelog?.version)
+                ?? stringField(changelog?.mod_version)
+                ?? stringField(changelog?.name)
+                ?? stringField(nested?.version)
+                ?? stringField(nested?.mod_version)
+                ?? `Changelog ${index + 1}`;
+            const changes = stringField(changelog?.changes)
+                ?? stringField(changelog?.changelog)
+                ?? stringField(changelog?.description)
+                ?? stringField(changelog?.body)
+                ?? stringField(nestedValue)
+                ?? stringField(nested?.changes)
+                ?? stringField(nested?.changelog)
+                ?? stringField(nested?.description);
+
+            return {
+                version,
+                changes: cleanSummary(changes) ?? "",
+                updated_at: stringField(changelog?.updated_at)
+                    ?? stringField(changelog?.created_at)
+                    ?? stringField(changelog?.date)
+                    ?? stringField(nested?.updated_at)
+            };
+        })
+        .filter(changelog => changelog.changes.length > 0);
+}
+
 function normalizeEndorsements(raw: unknown): NexusEndorsement[] {
     const root = objectField(raw);
     const source = Array.isArray(raw)
@@ -783,6 +934,40 @@ function normalizeEndorsements(raw: unknown): NexusEndorsement[] {
             };
         })
         .filter(endorsement => endorsement.mod_id > 0);
+}
+
+function normalizeTrackedMods(raw: unknown): NexusTrackedMod[] {
+    const root = objectField(raw);
+    const source = Array.isArray(raw)
+        ? raw
+        : Array.isArray(root?.data)
+            ? root.data
+            : Array.isArray(root?.tracked_mods)
+                ? root.tracked_mods
+                : [];
+
+    return source
+        .map((record) => {
+            const tracked = objectField(record);
+            const mod = objectField(tracked?.mod);
+            const game = objectField(tracked?.game);
+            const modId = numberField(tracked?.mod_id)
+                ?? numberField(tracked?.id)
+                ?? numberField(mod?.mod_id)
+                ?? numberField(mod?.id)
+                ?? 0;
+
+            return {
+                mod_id: modId,
+                name: stringField(tracked?.name)
+                    ?? stringField(tracked?.mod_name)
+                    ?? stringField(mod?.name),
+                game_domain_name: stringField(tracked?.game_domain_name)
+                    ?? stringField(tracked?.domain_name)
+                    ?? stringField(game?.domain_name)
+            };
+        })
+        .filter(tracked => tracked.mod_id > 0);
 }
 
 function inferNexusCategory(raw: Record<string, unknown>): string {
