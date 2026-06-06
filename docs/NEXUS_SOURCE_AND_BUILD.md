@@ -13,22 +13,16 @@ OpenACAI source repositories:
 
 - OpenACAI Mod Manager:
   https://github.com/desertofunknown/openacai-mod-manager/tree/openacai-tauri2-svelte5-shell
-  - Current reviewed branch commit: `9e8942ee5bdb72d8d7bf45eb676f7e7be1bd9e0c`
 - OpenACAI Endnight Loader:
   https://github.com/desertofunknown/openacai-loader/tree/openacai-net11-preview
-  - Current reviewed branch commit: `7801bdf3bffa281daa55bfb8edf3e21ae42c6807`
 - OpenACAI BepInEx fork:
   https://github.com/desertofunknown/openacai-bepinex/tree/openacai-net11-preview
-  - Current reviewed branch commit: `810068c5699216c4dcaeb3085614b344daead313`
 - OpenACAI UnityDoorstop fork:
   https://github.com/desertofunknown/openacai-unitydoorstop/tree/openacai-hostfxr-net10
-  - Current reviewed branch commit: `f1c40045bcb864226cd0b5a262f0ead83ea999f4`
 - OpenACAI RedLoader compatibility source:
   https://github.com/desertofunknown/openacai-redloader/tree/openacai-loader-compat
-  - Current reviewed branch commit: `fdcf7c0e4f304e27ffe86260401d72bf4039a361`
 - OpenACAI MonoMod fork:
   https://github.com/desertofunknown/openacai-monomod/tree/openacai-net11-preview
-  - Current reviewed branch commit: `0447f29642b3aa220fd022a5d63845d4220f1139`
 
 Upstream source provenance:
 
