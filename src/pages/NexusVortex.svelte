@@ -54,6 +54,7 @@
     export let sharedSearchTerm = "";
     export let sharedSearchVersion = 0;
     export let showEmbeddedSearch = true;
+    export let embeddedStorePreview = false;
 
     const dispatch = createEventDispatcher<{ searchChange: string }>();
 
@@ -7268,7 +7269,13 @@
     }
 </script>
 
-<div class="column nexus-page" class:nexus-catalog-tight={nexusCatalogTight} class:nexus-catalog-very-tight={nexusCatalogVeryTight} bind:this={nexusPageElement}>
+<div
+    class="column nexus-page"
+    class:nexus-catalog-tight={nexusCatalogTight}
+    class:nexus-catalog-very-tight={nexusCatalogVeryTight}
+    class:nexus-embedded-store-preview={embeddedStorePreview}
+    bind:this={nexusPageElement}
+>
     <section class="account-panel">
         <div class="account-copy">
             <span class="panel-title">Vortex / Nexus Mods</span>
@@ -8473,6 +8480,122 @@
 
     .nexus-page.nexus-catalog-tight {
         gap: clamp(0.35em, 0.7vh, 0.55em);
+    }
+
+    .nexus-page.nexus-embedded-store-preview {
+        --nexus-card-min-height: clamp(96px, 10vh, 118px);
+        --nexus-scroll-bottom-guard: clamp(18px, 2.5vh, 30px);
+        --nexus-thumb-width: clamp(112px, 13vw, 150px);
+        gap: clamp(0.3em, 0.55vh, 0.42em);
+    }
+
+    .nexus-embedded-store-preview .account-panel {
+        padding: 0.38em 0.65em;
+    }
+
+    .nexus-embedded-store-preview .account-actions,
+    .nexus-embedded-store-preview .rate-row,
+    .nexus-embedded-store-preview .vortex-summary,
+    .nexus-embedded-store-preview .catalog-toolbar,
+    .nexus-embedded-store-preview .nexus-filter-row,
+    .nexus-embedded-store-preview .action-queue-empty {
+        display: none;
+    }
+
+    .nexus-embedded-store-preview .panel-title {
+        font-size: 0.98em;
+    }
+
+    .nexus-embedded-store-preview .panel-subtitle {
+        font-size: 0.76em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .nexus-embedded-store-preview .catalog-panel,
+    .nexus-embedded-store-preview .nexus-scroller {
+        gap: 0.34em;
+    }
+
+    .nexus-embedded-store-preview .api-note {
+        padding: 0.28em 0.55em;
+    }
+
+    .nexus-embedded-store-preview .cat-btn,
+    .nexus-embedded-store-preview .refresh-btn,
+    .nexus-embedded-store-preview .catalog-mode-buttons button {
+        height: 2.2em;
+    }
+
+    .nexus-embedded-store-preview .nexus-filter-row select,
+    .nexus-embedded-store-preview .nexus-filter-row .key-input {
+        min-height: 2.2em;
+        padding-bottom: 0.28em;
+        padding-top: 0.28em;
+    }
+
+    .nexus-embedded-store-preview .nexus-body {
+        align-items: center;
+        display: grid;
+        gap: 0.26em;
+        grid-template-areas:
+            "head actions"
+            "description actions";
+        grid-template-columns: minmax(0, 1fr) auto;
+        padding: 0.42em 0.52em;
+    }
+
+    .nexus-embedded-store-preview .card-head {
+        grid-area: head;
+    }
+
+    .nexus-embedded-store-preview .description-content {
+        -webkit-line-clamp: 1;
+        grid-area: description;
+        line-clamp: 1;
+        min-height: auto;
+    }
+
+    .nexus-embedded-store-preview .facts {
+        display: none;
+    }
+
+    .nexus-embedded-store-preview .nexus-card-footer {
+        align-items: center;
+        align-self: start;
+        gap: 0.35em;
+        grid-area: actions;
+        justify-self: end;
+        margin-top: 0;
+    }
+
+    .nexus-embedded-store-preview .match-detail,
+    .nexus-embedded-store-preview .nexus-enable {
+        display: none;
+    }
+
+    .nexus-embedded-store-preview .button-row {
+        gap: 0.28em;
+        justify-content: flex-end;
+        margin-left: 0;
+        max-width: min(36vw, 25em);
+    }
+
+    .nexus-embedded-store-preview .button-row .track-btn,
+    .nexus-embedded-store-preview .button-row .endorse-btn,
+    .nexus-embedded-store-preview .button-row .endorsed-btn {
+        display: none;
+    }
+
+    .nexus-embedded-store-preview .button-row button {
+        font-size: 0.68em;
+        min-width: 5.6em;
+        padding: 0.34em 0.5em;
+    }
+
+    .nexus-embedded-store-preview .button-row .vortex-install-btn {
+        min-width: 8.7em;
     }
 
     .nexus-page.nexus-catalog-tight .account-panel {

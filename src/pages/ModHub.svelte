@@ -142,6 +142,7 @@
                 </div>
                 <div class="source-section-body nexus-source-section-body">
                     <NexusVortex
+                        embeddedStorePreview={true}
                         sharedSearchTerm={sharedSearchTerm}
                         sharedSearchVersion={sharedSearchVersion}
                         showEmbeddedSearch={false}
