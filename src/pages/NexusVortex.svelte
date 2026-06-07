@@ -8172,23 +8172,27 @@
                             <div class="notice empty-nexus">No {describeFileListFilter(selectedFileListFilter)} match this file set.</div>
                         {/if}
 
-                        {#each displayedSelectedModFiles as file}
-                            <button
-                                class="file-row"
-                                class:file-row-selected={selectedFileId === file.file_id}
-                                class:file-row-recommended={recommendedNexusFileId === file.file_id}
-                                class:file-row-review={isReviewNexusFile(file)}
-                                on:click={() => selectNexusFile(file.file_id)}
-                            >
-                                <span class="file-row-head">
-                                    <span class="file-name">{file.name}</span>
-                                    {#if fileChoiceBadge(file, recommendedNexusFileId)}
-                                        <b>{fileChoiceBadge(file, recommendedNexusFileId)}</b>
-                                    {/if}
-                                </span>
-                                <span class="file-meta">{fileChoiceCategoryLabel(file)} · v{fileVersionLabel(file)} · {formatSizeKb(file.size)}</span>
-                            </button>
-                        {/each}
+                        {#if displayedSelectedModFiles.length > 0}
+                            <div class="file-row-list">
+                                {#each displayedSelectedModFiles as file}
+                                    <button
+                                        class="file-row"
+                                        class:file-row-selected={selectedFileId === file.file_id}
+                                        class:file-row-recommended={recommendedNexusFileId === file.file_id}
+                                        class:file-row-review={isReviewNexusFile(file)}
+                                        on:click={() => selectNexusFile(file.file_id)}
+                                    >
+                                        <span class="file-row-head">
+                                            <span class="file-name">{file.name}</span>
+                                            {#if fileChoiceBadge(file, recommendedNexusFileId)}
+                                                <b>{fileChoiceBadge(file, recommendedNexusFileId)}</b>
+                                            {/if}
+                                        </span>
+                                        <span class="file-meta">{fileChoiceCategoryLabel(file)} · v{fileVersionLabel(file)} · {formatSizeKb(file.size)}</span>
+                                    </button>
+                                {/each}
+                            </div>
+                        {/if}
                     </div>
 
                     {#snippet selectedFileNotesBlock()}
@@ -11846,6 +11850,13 @@
         margin: 0.3em 0 0;
     }
 
+    .file-row-list {
+        display: grid;
+        gap: 0.45em;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 15.5em), 1fr));
+        min-width: 0;
+    }
+
     .file-row {
         background: rgba(44, 44, 44, 0.9);
         border: 1px solid rgba(255, 255, 255, 0.12);
@@ -11853,7 +11864,8 @@
         display: flex;
         flex-direction: column;
         gap: 0.2em;
-        margin: 0.55em 0 0;
+        margin: 0;
+        min-height: 4.3em;
         padding: 0.55em 0.7em;
         text-align: left;
         width: 100%;
