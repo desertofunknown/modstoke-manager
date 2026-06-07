@@ -53,6 +53,17 @@ export type Mod = {
     hasUpdate: boolean;
 }
 
+export function modPreviewUrls(mod: Mod): string[] {
+    const urls = [
+        mod.imageUrl,
+        ...(mod.images ?? []).map((image) => image.url)
+    ];
+
+    return Array.from(new Set(urls
+        .map((url) => typeof url === "string" ? url.trim() : "")
+        .filter((url) => url.length > 0 && !url.includes("placehold.co"))));
+}
+
 type RequestMeta = {
     limit: number;
     next_page: number;

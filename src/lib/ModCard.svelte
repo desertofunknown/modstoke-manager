@@ -1,7 +1,7 @@
 <script lang="ts">
   import { processProgress, processing } from './store';
     import { createEventDispatcher } from 'svelte';
-    import { ModDatabase, type Mod } from './mods';
+    import { ModDatabase, modPreviewUrls, type Mod } from './mods';
     import StatusButton from './StatusButton.svelte';
     import * as dialog from "@tauri-apps/plugin-dialog"
     import LucideChevronLeft from "~icons/lucide/chevron-left";
@@ -9,6 +9,8 @@
     import LucideImages from "~icons/lucide/images";
 
     export let mod: Mod;
+    export let detailActionsOnly = false;
+    export let showDetailsButton = true;
 
     let isLibrary = false;
     let isImageLoaded = false;
@@ -20,7 +22,7 @@
 
     const fallbackPreviewUrl = "https://placehold.co/600x400/252525/FFF?text=No+Image";
 
-    const dispatch = createEventDispatcher();
+    const dispatch = createEventDispatcher<{ refreshMods: void; details: Mod }>();
 
     $: isLibrary = mod.type === "Library" || mod.installedMod?.loaderType === "redloader-library";
     $: {
@@ -151,17 +153,6 @@
       isImageLoaded = true;
     }
 
-    function modPreviewUrls(mod: Mod): string[] {
-      const urls = [
-        mod.imageUrl,
-        ...(mod.images ?? []).map((image) => image.url)
-      ];
-
-      return Array.from(new Set(urls
-        .map((url) => typeof url === "string" ? url.trim() : "")
-        .filter((url) => url.length > 0 && !url.includes("placehold.co"))));
-    }
-
     function cyclePreview(direction: number) {
       if (previewUrls.length <= 1) {
         return;
@@ -228,8 +219,29 @@
 
       return "Compatibility unknown";
     }
+
+    function showDetails() {
+      dispatch("details", mod);
+    }
 </script>
 
+{#if detailActionsOnly}
+  <div class="detail-action-surface">
+    {#if mod.isInstalled && !isLibrary}
+      <label class="enable-control" class:vortex-disabled={isVortexManaged()}>
+        <input
+          type="checkbox"
+          checked={!!mod.installedMod?.isEnabled}
+          disabled={isVortexManaged()}
+          on:change={handleEnabledChange}
+        />
+        <span>{mod.installedMod?.isEnabled ? "Enabled" : "Disabled"}</span>
+      </label>
+    {/if}
+
+    <StatusButton isUpdateAvailable={mod.hasUpdate} isModInstalled={mod.isInstalled} update={update} uninstall={uninstall} install={install} />
+  </div>
+{:else}
 <div class="feature-container description">
   <div class="mod-card-row">
     <div class="image-container">
@@ -304,9 +316,13 @@
       {/if}
 
       <StatusButton isUpdateAvailable={mod.hasUpdate} isModInstalled={mod.isInstalled} update={update} uninstall={uninstall} install={install} />
+      {#if showDetailsButton}
+        <button class="details-button" type="button" on:click={showDetails}>Details</button>
+      {/if}
     </div>
   </div>
 </div>
+{/if}
 
 <style>
   .mod-card-row {
@@ -334,6 +350,21 @@
     align-self: stretch;
     gap: 0.38em;
     justify-content: center;
+  }
+
+  .detail-action-surface {
+    align-items: stretch;
+    display: grid;
+    gap: 0.45em;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    width: 100%;
+  }
+
+  .detail-action-surface :global(button) {
+    margin: 0;
+    min-height: 2.7em;
+    width: 100%;
   }
 
   .mod-actions :global(button) {
@@ -455,6 +486,10 @@
     font-weight: 700;
     font-size: 0.65em;
     text-transform: lowercase;
+  }
+
+  .details-button {
+    color: #d6dde5;
   }
 
   .enable-control {
