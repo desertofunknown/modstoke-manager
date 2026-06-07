@@ -69,7 +69,7 @@ When Nexus returns no structured dependency rows, author requirement hints now a
 
 The Files panel now exposes `Use Recommended` whenever a nonrecommended file is selected, adds All/current-Main/Review/Selected filters for mixed file sets, and the deployment footer shows `Review File Choice` when the selected file is archived, old, or removed so users can recover before Vortex handoff without leaving the detail drawer.
 
-Nexus detail file rows now use a denser adaptive compact grid on wider detail panes, forming up to three file-choice columns so more returned choices stay visible before Dependencies and Deployment.
+Nexus detail file rows now use an adaptive grid that prefers wider readable rows with two-line file names, forming three compact columns only on sufficiently wide detail panes so returned choices stay visible before Dependencies and Deployment without becoming tiny.
 
 The Nexus/Vortex detail and account actions now include a local-only `Refresh Inventory` scan that reconciles Vortex-managed packages, native installs, and manual/local installs after the user finishes deployment in Vortex without making another Nexus API request.
 

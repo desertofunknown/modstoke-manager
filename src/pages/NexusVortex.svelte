@@ -12185,7 +12185,7 @@
     .file-row-list {
         display: grid;
         gap: 0.45em;
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 12.75em), 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 16.75em), 1fr));
         min-width: 0;
     }
 
@@ -12247,11 +12247,17 @@
 
     .file-name {
         color: #eefcff;
+        display: -webkit-box;
+        font-weight: 900;
+        line-height: 1.18;
         min-width: 0;
         overflow: hidden;
+        overflow-wrap: anywhere;
         text-overflow: ellipsis;
-        white-space: nowrap;
-        font-weight: 900;
+        white-space: normal;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
     }
 
     .file-meta,
