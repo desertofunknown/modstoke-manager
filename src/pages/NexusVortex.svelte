@@ -11868,7 +11868,7 @@
     .file-row-list {
         display: grid;
         gap: 0.45em;
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 15.5em), 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 12.75em), 1fr));
         min-width: 0;
     }
 
@@ -11878,10 +11878,10 @@
         box-shadow: none;
         display: flex;
         flex-direction: column;
-        gap: 0.2em;
+        gap: 0.16em;
         margin: 0;
-        min-height: 4.3em;
-        padding: 0.55em 0.7em;
+        min-height: 3.8em;
+        padding: 0.48em 0.6em;
         text-align: left;
         width: 100%;
         -webkit-mask-image: none;
