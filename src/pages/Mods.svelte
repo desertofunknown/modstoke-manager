@@ -14,6 +14,15 @@
     import LucideRefreshCw from "~icons/lucide/refresh-cw";
     import LucideX from "~icons/lucide/x";
 
+    type DetailDependencyState = "loading" | "available" | "installed" | "missing" | "error";
+
+    type DetailDependencyRow = {
+        id: string;
+        mod?: Mod;
+        state: DetailDependencyState;
+        message?: string;
+    };
+
     export let sharedSearchTerm = "";
     export let sharedSearchVersion = 0;
     export let showEmbeddedSearch = true;
@@ -53,8 +62,11 @@
     let selectedDetailPreviewUrl = "";
     let selectedDetailPreviewLabel = "";
     let selectedDetailDependencies: string[] = [];
+    let selectedDetailDependencyRows: DetailDependencyRow[] = [];
+    let detailDependencyLookupToken = 0;
 
     const SOTF_DETAIL_FALLBACK_IMAGE = "https://placehold.co/900x500/252525/FFF?text=No+Image";
+    const detailDependencyCache = new Map<string, Mod | null>();
 
     $: {
         filterTerm;
@@ -406,16 +418,20 @@
         const updated = filtered.find(mod => modIdentityKey(mod) === selectedKey);
         if (updated) {
             selectedDetailMod = updated;
+            resolveSelectedDetailDependencies(updated);
         }
     }
 
     function openModDetails(mod: Mod) {
         selectedDetailMod = mod;
         selectedDetailPreviewIndex = 0;
+        resolveSelectedDetailDependencies(mod);
     }
 
     function closeModDetails() {
         selectedDetailMod = null;
+        selectedDetailDependencyRows = [];
+        detailDependencyLookupToken += 1;
     }
 
     function cycleSelectedDetailPreview(direction: number) {
@@ -438,6 +454,115 @@
     function openSelectedDetailPage() {
         if (selectedDetailMod) {
             ModDatabase.openModPage(selectedDetailMod);
+        }
+    }
+
+    async function resolveSelectedDetailDependencies(mod: Mod) {
+        const dependencyIds = modDependencies(mod);
+        const lookupToken = ++detailDependencyLookupToken;
+        selectedDetailDependencyRows = dependencyIds.map(id => ({ id, state: "loading" }));
+
+        if (dependencyIds.length === 0) {
+            return;
+        }
+
+        const rows = await Promise.all(dependencyIds.map(async id => resolveDetailDependency(id)));
+        if (lookupToken !== detailDependencyLookupToken || selectedDetailMod !== mod) {
+            return;
+        }
+
+        selectedDetailDependencyRows = rows;
+    }
+
+    async function resolveDetailDependency(id: string): Promise<DetailDependencyRow> {
+        const loadedDependency = findLoadedDependency(id);
+        if (loadedDependency) {
+            return detailDependencyRow(id, loadedDependency);
+        }
+
+        const cacheKey = id.trim().toLowerCase();
+        try {
+            let dependencyMod = detailDependencyCache.get(cacheKey);
+            if (!detailDependencyCache.has(cacheKey)) {
+                dependencyMod = await ModDatabase.fetchMod(id);
+                detailDependencyCache.set(cacheKey, dependencyMod);
+            }
+
+            if (!dependencyMod) {
+                return {
+                    id,
+                    state: "missing",
+                    message: "No matching SOTF Mods entry was returned for this dependency."
+                };
+            }
+
+            ModDatabase.initModList([dependencyMod]);
+            return detailDependencyRow(id, dependencyMod);
+        } catch (error) {
+            return {
+                id,
+                state: "error",
+                message: `Dependency lookup failed: ${error}`
+            };
+        }
+    }
+
+    function findLoadedDependency(id: string): Mod | undefined {
+        const needle = id.trim().toLowerCase();
+        return filtered.find(mod => [
+            mod.mod_id,
+            mod.slug,
+            mod.name
+        ].some(value => typeof value === "string" && value.trim().toLowerCase() === needle));
+    }
+
+    function detailDependencyRow(id: string, mod: Mod): DetailDependencyRow {
+        ModDatabase.initModList([mod]);
+        return {
+            id,
+            mod,
+            state: mod.isInstalled ? "installed" : "available",
+            message: mod.isInstalled ? detailInstallStateLabel(mod) : "Available from SOTF Mods"
+        };
+    }
+
+    function detailDependencyStateLabel(row: DetailDependencyRow): string {
+        if (row.state === "installed") {
+            return "Installed";
+        }
+
+        if (row.state === "available") {
+            return "Available";
+        }
+
+        if (row.state === "missing") {
+            return "Missing";
+        }
+
+        if (row.state === "error") {
+            return "Review";
+        }
+
+        return "Checking";
+    }
+
+    function detailDependencySubtitle(row: DetailDependencyRow): string {
+        if (!row.mod) {
+            return row.message ?? "Checking SOTF Mods dependency metadata...";
+        }
+
+        return `${detailLoaderLabel(row.mod)} · ${row.mod.latestVersion ?? "Unknown version"} · ${row.mod.user?.name ?? "Unknown author"}`;
+    }
+
+    function openDependencyDetails(row: DetailDependencyRow) {
+        if (row.mod) {
+            openModDetails(row.mod);
+        }
+    }
+
+    function openDependencyPage(row: DetailDependencyRow) {
+        if (row.mod) {
+            ModDatabase.openModPage(row.mod);
         }
     }
 
@@ -724,8 +849,28 @@
                                 <span class="sotf-detail-section-title">Dependencies</span>
                                 {#if selectedDetailDependencies.length > 0}
                                     <div class="sotf-detail-dependency-list">
-                                        {#each selectedDetailDependencies as dependency}
-                                            <span>{dependency}</span>
+                                        {#each selectedDetailDependencyRows as dependency}
+                                            <div
+                                                class="sotf-detail-dependency-row"
+                                                class:sotf-detail-dependency-installed={dependency.state === "installed"}
+                                                class:sotf-detail-dependency-available={dependency.state === "available"}
+                                                class:sotf-detail-dependency-review={dependency.state === "missing" || dependency.state === "error"}
+                                            >
+                                                <div class="sotf-detail-dependency-head">
+                                                    <span>{dependency.mod?.name ?? dependency.id}</span>
+                                                    <b>{detailDependencyStateLabel(dependency)}</b>
+                                                </div>
+                                                <small>{detailDependencySubtitle(dependency)}</small>
+                                                {#if dependency.mod}
+                                                    <div class="sotf-detail-dependency-actions">
+                                                        <button type="button" on:click={() => openDependencyDetails(dependency)}>Details</button>
+                                                        <button type="button" on:click={() => openDependencyPage(dependency)}>
+                                                            <LucideExternalLink aria-hidden="true" />
+                                                            <span>Open Page</span>
+                                                        </button>
+                                                    </div>
+                                                {/if}
+                                            </div>
                                         {/each}
                                     </div>
                                 {:else}
@@ -1265,15 +1410,90 @@
         min-width: 0;
     }
 
-    .sotf-detail-dependency-list span {
+    .sotf-detail-dependency-row {
         background: rgba(255, 255, 255, 0.045);
         border: 1px solid rgba(255, 255, 255, 0.1);
         color: #d6dde5;
-        font-size: 0.82em;
-        font-weight: 900;
+        display: grid;
+        gap: 0.36em;
         min-width: 0;
         overflow-wrap: anywhere;
         padding: 0.48em 0.58em;
+    }
+
+    .sotf-detail-dependency-installed {
+        border-color: rgba(98, 240, 155, 0.28);
+    }
+
+    .sotf-detail-dependency-available {
+        border-color: rgba(96, 169, 255, 0.28);
+    }
+
+    .sotf-detail-dependency-review {
+        border-color: rgba(255, 192, 92, 0.32);
+    }
+
+    .sotf-detail-dependency-head {
+        align-items: center;
+        display: flex;
+        gap: 0.5em;
+        justify-content: space-between;
+        min-width: 0;
+    }
+
+    .sotf-detail-dependency-head span {
+        color: #eefcff;
+        font-size: 0.84em;
+        font-weight: 900;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .sotf-detail-dependency-head b {
+        color: #62f09b;
+        flex: 0 0 auto;
+        font-size: 0.68em;
+        font-weight: 900;
+        text-transform: uppercase;
+    }
+
+    .sotf-detail-dependency-review .sotf-detail-dependency-head b {
+        color: #ffc05c;
+    }
+
+    .sotf-detail-dependency-row small {
+        color: #9aa5af;
+        font-size: 0.74em;
+        font-weight: 800;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+    }
+
+    .sotf-detail-dependency-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35em;
+        min-width: 0;
+    }
+
+    .sotf-detail-dependency-actions button {
+        align-items: center;
+        display: inline-flex;
+        flex: 1 1 7.5em;
+        gap: 0.35em;
+        justify-content: center;
+        margin: 0;
+        min-height: 2.15em;
+        min-width: 0;
+        padding: 0.35em 0.5em;
+    }
+
+    .sotf-detail-dependency-actions :global(svg) {
+        flex: 0 0 auto;
+        height: 0.9em;
+        width: 0.9em;
     }
 
     .sotf-detail-footer {

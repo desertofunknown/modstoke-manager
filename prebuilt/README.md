@@ -23,6 +23,8 @@ SOTF Mods details now open in a native drawer that keeps the preview image, mod 
 
 SOTF Mods dependency fields are normalized when the live storefront returns either a single mod ID string or an array, keeping detail dependency rows and recursive dependency installs from splitting one ID into characters.
 
+SOTF Mods dependency rows now resolve matching store metadata in the detail drawer, show available/installed/review state, and expose Details/Open Page actions so users can inspect a dependency before installing it.
+
 The Nexus action queue now collapses to a slim `Queue clear` strip when endorsement, tracking, update, disabled, and conflict counts are all zero, but restores the full shortcut chips whenever an action exists or one of those filters is selected.
 
 The connected Nexus account row now uses tighter button spacing in compact catalog layouts, keeping auto-endorse, Nexus, Vortex staging, inventory refresh, and disconnect controls readable without taking extra list height.
