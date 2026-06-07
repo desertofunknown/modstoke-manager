@@ -12064,12 +12064,14 @@
 
     .dependency-readiness-chip,
     .file-readiness-chip {
+        align-content: start;
         background: rgba(255, 255, 255, 0.045);
         border: 1px solid rgba(255, 255, 255, 0.11);
         box-sizing: border-box;
         display: grid;
         gap: 0.16em;
         grid-template-columns: auto minmax(0, 1fr);
+        min-height: 5.1em;
         min-width: 0;
         padding: 0.45em 0.5em;
     }
@@ -12080,7 +12082,7 @@
         font-size: 0.68em;
         font-weight: 900;
         grid-column: 1 / -1;
-        letter-spacing: 0.07em;
+        letter-spacing: 0;
         text-transform: uppercase;
     }
 
@@ -12097,10 +12099,11 @@
         color: #a8b2bc;
         font-size: 0.72em;
         font-weight: 800;
+        grid-column: 1 / -1;
+        line-height: 1.25;
         min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        overflow-wrap: anywhere;
+        white-space: normal;
     }
 
     .dependency-readiness-ok,

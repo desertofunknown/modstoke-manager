@@ -57,6 +57,8 @@ The Nexus account summary now treats Premium, Supporter, and tier values returne
 
 The install plan now also shows dependency handoff readiness in the deployment area itself, including API row count, author instruction snippets, author hint warning/review/detected summaries, nested-check state, lookup-in-progress or lookup-failed notes, informational no-API-row guidance, a bottom dependency-review shortcut when requirements need attention, and status-aware dependency row actions for installing, updating, or reviewing linked dependency mods before the user sends a selected file to Vortex.
 
+Nexus file and dependency readiness chips now wrap their status summaries instead of truncating to a one-line ellipsis, keeping API dependency, selected-file, author-hint, and nested-check state readable in tight detail panes.
+
 Inferred author runtime/library hints now require requirement, install, dependency, runtime/framework/library, or incompatibility warning context, so ordinary support/compatibility descriptions and credits/attribution text do not become dependency review items.
 
 Detail drawers now move the Dependencies section above selected-file notes whenever dependency warnings, reviews, nested checks, or author hints exist, keeping requirement work visible in both layout and navigation order before long file changelogs or notes consume the side pane.

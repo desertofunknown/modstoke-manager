@@ -42,6 +42,7 @@
   - Broadened Nexus dependency handling so selected-file checks fall back from materialized dependency candidates to range definitions, accept wrapped/camelCase/edges/nodes dependency payload shapes, and preserve version-range requirements as review metadata.
   - Preserved Nexus v3/global file IDs alongside game-scoped Vortex file IDs so selected-file and nested dependency checks can query the correct dependency metadata before falling back to resolver/original-ID paths.
   - Added a compact Nexus dependency readiness strip that summarizes API dependencies, author requirement hints, and nested dependency checks before Vortex handoff.
+  - Let Nexus file/dependency readiness chips wrap their status text in detail drawers so API, selected-file, author-hint, and nested-check state remains readable in tight panes.
   - Added compact Nexus file-choice summary chips that show total files, selected file readiness, and archived/old-file review state before Vortex handoff.
   - Added compact Nexus file-choice filters for All, current Main, Review, and Selected files so mixed file sets can be narrowed inside the detail drawer before Vortex handoff.
   - Added a denser adaptive Nexus file-choice grid so detail drawers can show up to three compact file-choice columns on wider panes without hiding Dependencies or bottom deployment actions.
