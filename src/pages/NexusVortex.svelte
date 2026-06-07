@@ -3431,13 +3431,13 @@
     }
 
     function isMainNexusFileChoice(file: NexusModFile, recommendedFileId: number | null): boolean {
-        return file.file_id === recommendedFileId || file.is_primary || normalizedNexusFileCategory(file) === "main";
+        return !isReviewNexusFile(file) && (file.file_id === recommendedFileId || file.is_primary || normalizedNexusFileCategory(file) === "main");
     }
 
     function describeFileListFilter(filter: NexusFileListFilter): string {
         switch (filter) {
             case "main":
-                return "main or recommended files";
+                return "current main or recommended files";
             case "review":
                 return "archived, old, or removed files";
             case "selected":

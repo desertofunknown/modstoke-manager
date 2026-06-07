@@ -21,7 +21,7 @@ The Nexus account summary now treats Premium, Supporter, and tier values returne
 
 The install plan now also shows dependency handoff readiness in the deployment area itself, including API row count, author instruction snippets, author hint warning/review/detected summaries, nested-check state, lookup-in-progress or lookup-failed notes, informational no-API-row guidance, a bottom dependency-review shortcut when requirements need attention, and status-aware dependency row actions for installing, updating, or reviewing linked dependency mods before the user sends a selected file to Vortex.
 
-The Files panel now exposes `Use Recommended` whenever a nonrecommended file is selected, adds All/Main/Review/Selected filters for mixed file sets, and the deployment footer shows `Review File Choice` when the selected file is archived, old, or removed so users can recover before Vortex handoff without leaving the detail drawer.
+The Files panel now exposes `Use Recommended` whenever a nonrecommended file is selected, adds All/current-Main/Review/Selected filters for mixed file sets, and the deployment footer shows `Review File Choice` when the selected file is archived, old, or removed so users can recover before Vortex handoff without leaving the detail drawer.
 
 The Nexus/Vortex detail and account actions now include a local-only `Refresh Inventory` scan that reconciles Vortex-managed packages, native installs, and manual/local installs after the user finishes deployment in Vortex without making another Nexus API request.
 
