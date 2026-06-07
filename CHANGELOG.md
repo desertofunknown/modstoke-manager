@@ -63,6 +63,7 @@
   - Added compact author instruction hints to Nexus install plans by extracting likely install, configuration, usage, warning, and requirement snippets from API-provided author text, selected-file notes, and changelogs without extra Nexus requests.
   - Added status badges to Nexus detail page-section links so Description, Files, Images, Posts, and Bugs clearly show which surfaces are already represented in-manager and which remain Nexus-only links.
   - Decoded safe HTML character references in Nexus catalog summaries and media URLs so rows do not expose raw numeric entities such as `&#92;`.
+  - Normalized word-joined backslash separators in compact Nexus catalog summaries so decoded author text reads like spaced separator text in rows while rich detail text, file notes, and changelogs keep their authored content.
   - Added local author runtime/library hint detection for BepInEx, RedLoader, SonsSdk, Harmony, .NET, and OpenACAI loader mentions so requirement prose can show detected/review state even when Nexus returns no dependency rows.
   - Tightened inferred author runtime/library hints so support, compatibility, credits, or attribution prose does not become a dependency review item unless it is paired with requirement, install, dependency, runtime, or warning context.
   - Added source labels and matched-text snippets to inferred Nexus author requirement hints so users can audit why a runtime/library review hint appeared.

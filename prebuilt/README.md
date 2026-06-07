@@ -11,7 +11,7 @@ Version `0.2.0` moves loader updates to GitHub Release assets, adds live SHA256 
 
 Nexus catalog thumbnails now expose compact open-preview actions for already-loaded real row images, while local fallback thumbnails offer a user-triggered Load preview action that fetches cached mod details for one row and then reuses the existing carousel when real image URLs are found. Catalog rows also reuse already-loaded preview URLs discovered by detail drawers from API-provided descriptions, selected-file notes, or changelogs, even when Nexus detail payloads omit their mod IDs.
 
-Nexus catalog summaries now decode safe HTML character references before display, so feed rows show readable plain text instead of raw numeric entity codes.
+Nexus catalog summaries now decode safe HTML character references before display and normalize compact word-joined separator text, so feed rows show readable plain text instead of raw numeric entity codes or cramped separators.
 
 Nexus catalog scrolling now reserves a measured bottom guard inside the list viewport so row install/detail/open controls stay above the lower frame mask in both dedicated Nexus/Vortex and All Stores layouts.
 

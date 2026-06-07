@@ -841,7 +841,7 @@ function normalizeNexusMod(raw: NexusMod & Record<string, unknown>, categories: 
             ?? stringField(raw.mod_name)
             ?? stringField(raw.title)
             ?? `Nexus Mod #${modId}`,
-        summary: cleanSummary(rawSummary),
+        summary: cleanSummary(rawSummary, { normalizeWordSeparators: true }),
         version: stringField(raw.version) ?? stringField(raw.latest_version),
         author: stringField(raw.author) ?? stringField(raw.uploaded_by),
         uploaded_by: stringField(raw.uploaded_by),
@@ -1639,7 +1639,11 @@ function numberField(value: unknown): number | undefined {
     return undefined;
 }
 
-function cleanSummary(value: string | undefined): string | undefined {
+type CleanSummaryOptions = {
+    normalizeWordSeparators?: boolean;
+};
+
+function cleanSummary(value: string | undefined, options: CleanSummaryOptions = {}): string | undefined {
     if (!value) {
         return undefined;
     }
@@ -1648,8 +1652,19 @@ function cleanSummary(value: string | undefined): string | undefined {
         .replace(/<[^>]*>/g, " ")
         .replace(/\s+/g, " ")
         .trim();
+    const normalized = options.normalizeWordSeparators
+        ? normalizeCompactSummarySeparators(cleaned)
+        : cleaned;
 
-    return cleaned || undefined;
+    return normalized || undefined;
+}
+
+function normalizeCompactSummarySeparators(value: string): string {
+    return value
+        .replace(/([A-Za-z])\\(?=[A-Za-z])/g, "$1 / ")
+        .replace(/\s+\/\s+/g, " / ")
+        .replace(/\s+/g, " ")
+        .trim();
 }
 
 function decodeHtmlEntities(value: string): string {
