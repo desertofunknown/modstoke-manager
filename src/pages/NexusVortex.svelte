@@ -200,6 +200,7 @@
     let installedAttentionCount = 0;
     let endorsementQueueCount = 0;
     let trackedMissingCount = 0;
+    let showFullActionQueue = true;
     let resolvedDependencies: ResolvedDependency[] = [];
     let hasActiveNexusFilters = false;
     let isLoading = false;
@@ -403,6 +404,14 @@
         trackedMods;
         trackedMissingCount = trackedMods.filter(tracked => !inventoryHasNexusModId(tracked.mod_id)).length;
     }
+    $: showFullActionQueue = !endorsementsLoaded
+        || !trackedModsLoaded
+        || endorsementQueueCount > 0
+        || trackedMissingCount > 0
+        || updateCount > 0
+        || disabledCount > 0
+        || conflictCount > 0
+        || isActionQueueFilter(selectedInstallFilter);
     $: {
         nexusSearchTerm;
         selectedNexusCategory;
@@ -1565,6 +1574,14 @@
         if (selectedView !== "all") {
             void loadMods("all");
         }
+    }
+
+    function isActionQueueFilter(filter: InstallFilter): boolean {
+        return filter === "endorsements"
+            || filter === "tracked"
+            || filter === "updates"
+            || filter === "disabled"
+            || filter === "conflicts";
     }
 
     function clearNexusFilters() {
@@ -7298,43 +7315,50 @@
                 {/if}
             </div>
 
-            <div class="action-queue" aria-label="Nexus action queue">
-                <button type="button" class="queue-chip" class:queue-chip-hot={endorsementQueueCount > 0} class:queue-chip-selected={catalogMode === "installed" && selectedInstallFilter === "endorsements"} on:click={showEndorsementQueue}>
-                    <b>{endorsementQueueCount}</b>
-                    <span>
-                        <span>Endorse</span>
-                        <small>{endorsementsLoaded ? "Installed Nexus mods" : "Loading state"}</small>
-                    </span>
-                </button>
-                <button type="button" class="queue-chip" class:queue-chip-hot={trackedMissingCount > 0} class:queue-chip-selected={catalogMode === "online" && selectedInstallFilter === "tracked"} on:click={showTrackedQueue}>
-                    <b>{trackedMissingCount}</b>
-                    <span>
-                        <span>Tracked Missing</span>
-                        <small>{trackedModsLoaded ? "Watch list gaps" : "Loading tracked"}</small>
-                    </span>
-                </button>
-                <button type="button" class="queue-chip" class:queue-chip-hot={updateCount > 0} class:queue-chip-selected={selectedInstallFilter === "updates"} on:click={() => { catalogMode = "installed"; selectedInstallFilter = "updates"; }}>
-                    <b>{updateCount}</b>
-                    <span>
-                        <span>Updates</span>
-                        <small>Version review</small>
-                    </span>
-                </button>
-                <button type="button" class="queue-chip" class:queue-chip-hot={disabledCount > 0} class:queue-chip-selected={catalogMode === "installed" && selectedInstallFilter === "disabled"} on:click={() => { catalogMode = "installed"; selectedInstallFilter = "disabled"; }}>
-                    <b>{disabledCount}</b>
-                    <span>
-                        <span>Disabled</span>
-                        <small>Local state</small>
-                    </span>
-                </button>
-                <button type="button" class="queue-chip" class:queue-chip-hot={conflictCount > 0} class:queue-chip-selected={selectedInstallFilter === "conflicts"} on:click={showLocalConflicts}>
-                    <b>{conflictCount}</b>
-                    <span>
-                        <span>Conflicts</span>
-                        <small>Duplicate installs</small>
-                    </span>
-                </button>
-            </div>
+            {#if showFullActionQueue}
+                <div class="action-queue" aria-label="Nexus action queue">
+                    <button type="button" class="queue-chip" class:queue-chip-hot={endorsementQueueCount > 0} class:queue-chip-selected={catalogMode === "installed" && selectedInstallFilter === "endorsements"} on:click={showEndorsementQueue}>
+                        <b>{endorsementQueueCount}</b>
+                        <span>
+                            <span>Endorse</span>
+                            <small>{endorsementsLoaded ? "Installed Nexus mods" : "Loading state"}</small>
+                        </span>
+                    </button>
+                    <button type="button" class="queue-chip" class:queue-chip-hot={trackedMissingCount > 0} class:queue-chip-selected={catalogMode === "online" && selectedInstallFilter === "tracked"} on:click={showTrackedQueue}>
+                        <b>{trackedMissingCount}</b>
+                        <span>
+                            <span>Tracked Missing</span>
+                            <small>{trackedModsLoaded ? "Watch list gaps" : "Loading tracked"}</small>
+                        </span>
+                    </button>
+                    <button type="button" class="queue-chip" class:queue-chip-hot={updateCount > 0} class:queue-chip-selected={selectedInstallFilter === "updates"} on:click={() => { catalogMode = "installed"; selectedInstallFilter = "updates"; }}>
+                        <b>{updateCount}</b>
+                        <span>
+                            <span>Updates</span>
+                            <small>Version review</small>
+                        </span>
+                    </button>
+                    <button type="button" class="queue-chip" class:queue-chip-hot={disabledCount > 0} class:queue-chip-selected={catalogMode === "installed" && selectedInstallFilter === "disabled"} on:click={() => { catalogMode = "installed"; selectedInstallFilter = "disabled"; }}>
+                        <b>{disabledCount}</b>
+                        <span>
+                            <span>Disabled</span>
+                            <small>Local state</small>
+                        </span>
+                    </button>
+                    <button type="button" class="queue-chip" class:queue-chip-hot={conflictCount > 0} class:queue-chip-selected={selectedInstallFilter === "conflicts"} on:click={showLocalConflicts}>
+                        <b>{conflictCount}</b>
+                        <span>
+                            <span>Conflicts</span>
+                            <small>Duplicate installs</small>
+                        </span>
+                    </button>
+                </div>
+            {:else}
+                <div class="action-queue-empty" aria-label="Nexus action queue">
+                    <b>Queue clear</b>
+                    <span>No endorsements, tracked gaps, updates, disabled mods, or conflicts.</span>
+                </div>
+            {/if}
 
             <div class="nexus-filter-row" class:compact-filter-row={!showEmbeddedSearch}>
                 {#if showEmbeddedSearch}
@@ -8340,6 +8364,11 @@
         font-size: 1em;
     }
 
+    .nexus-page.nexus-catalog-tight .action-queue-empty {
+        min-height: 1.9em;
+        padding: 0.26em 0.55em;
+    }
+
     .nexus-page.nexus-catalog-tight .nexus-filter-row select,
     .nexus-page.nexus-catalog-tight .nexus-filter-row .key-input {
         min-height: 2.28em;
@@ -8861,6 +8890,41 @@
 
     .queue-chip-selected b {
         color: #62f09b;
+    }
+
+    .action-queue-empty {
+        align-items: center;
+        background: rgba(15, 15, 15, 0.62);
+        border: 1px solid rgba(98, 240, 155, 0.18);
+        box-sizing: border-box;
+        color: #8fa2b2;
+        display: flex;
+        flex: 0 0 auto;
+        gap: 0.7em;
+        justify-content: space-between;
+        min-height: 2.25em;
+        min-width: 0;
+        padding: 0.35em 0.7em;
+        text-transform: uppercase;
+    }
+
+    .action-queue-empty b {
+        color: #62f09b;
+        flex: 0 0 auto;
+        font-size: 0.78em;
+        font-weight: 900;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+    }
+
+    .action-queue-empty span {
+        font-size: 0.72em;
+        font-weight: 800;
+        min-width: 0;
+        overflow: hidden;
+        text-align: right;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .nexus-filter-row {
