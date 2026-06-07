@@ -138,6 +138,15 @@
         label: string;
         value: string;
     };
+    type AuthorInstructionKind = "install" | "configure" | "usage" | "warning" | "requirement";
+    type AuthorInstructionHint = {
+        key: string;
+        source: string;
+        title: string;
+        detail: string;
+        kind: AuthorInstructionKind;
+        target: DetailSectionTarget;
+    };
 
     let session: NexusSession = { is_connected: false };
     let apiKey = "";
@@ -199,6 +208,7 @@
     let selectedDependencies: NexusModDependency[] = [];
     let selectedDependencyMessage = "";
     let selectedAuthorRequirements: AuthorRequirementLink[] = [];
+    let selectedAuthorInstructions: AuthorInstructionHint[] = [];
     let authorRequirementReviewCount = 0;
     let authorRequirementDetectedCount = 0;
     let authorRequirementWarningCount = 0;
@@ -265,6 +275,7 @@
     const MAX_NESTED_DEPENDENCY_DEPTH = 2;
     const MAX_AUTHOR_REQUIREMENT_LINKS = 6;
     const MAX_AUTHOR_REQUIREMENT_HINTS = 8;
+    const MAX_AUTHOR_INSTRUCTION_HINTS = 5;
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
     const NEXUS_PLACEHOLDER_IMAGE = nexusFallbackImage;
     const NEXUS_DETAIL_PLACEHOLDER_IMAGE = nexusFallbackImage;
@@ -329,11 +340,13 @@
         selectedDetailDescription = selectedDetailDescriptionText();
         selectedDetailDescriptionHtml = selectedDetailDescriptionMarkup();
         selectedDetailDescriptionCanToggle = shouldOfferDetailDescriptionToggle(selectedDetailDescription, selectedDetailDescriptionSource());
+        const authorSources = selectedAuthorRequirementSources();
         selectedAuthorRequirements = extractAuthorRequirements(
-            selectedAuthorRequirementSources(),
+            authorSources,
             selectedModDetails?.mod_id ?? selectedMod?.mod_id,
             inventory
         );
+        selectedAuthorInstructions = extractAuthorInstructions(authorSources);
         if (!selectedDetailDescriptionCanToggle && detailDescriptionExpanded) {
             detailDescriptionExpanded = false;
         }
@@ -1636,6 +1649,196 @@
         const structuralWeight = (normalized.match(/\[\*\]/g)?.length ?? 0)
             + (normalized.match(/\[(?:img|quote|code|spoiler|heading|h[1-6]|hr|youtube|video|table|tr|olist|indent|columns|cols|tabs|note|info|warning|important|tip)\b/gi)?.length ?? 0) * 2;
         return description.length > 900 || description.split("\n").length > 12 || structuralWeight >= 8;
+    }
+
+    function extractAuthorInstructions(sources: AuthorRequirementSource[]): AuthorInstructionHint[] {
+        const hints: AuthorInstructionHint[] = [];
+        const seen = new Set<string>();
+
+        for (const source of sources) {
+            const text = plainText(source.value);
+            if (!text) {
+                continue;
+            }
+
+            const blocks = authorInstructionBlocks(text);
+            for (let index = 0; index < blocks.length; index += 1) {
+                if (hints.length >= MAX_AUTHOR_INSTRUCTION_HINTS) {
+                    return hints;
+                }
+
+                const current = blocks[index];
+                if (!current) {
+                    continue;
+                }
+
+                const next = blocks[index + 1] ?? "";
+                const kind = authorInstructionKind(current, next);
+                if (!kind) {
+                    continue;
+                }
+
+                if (source.key.includes("changelog") && !authorInstructionHeadingLike(current)) {
+                    continue;
+                }
+
+                const detail = authorInstructionExcerpt(current, next, kind);
+                if (!detail || detail.length < 18) {
+                    continue;
+                }
+
+                const dedupeKey = detail.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ").trim().slice(0, 180);
+                if (!dedupeKey || seen.has(dedupeKey)) {
+                    continue;
+                }
+
+                seen.add(dedupeKey);
+                hints.push({
+                    key: `${source.key}:${index}:${dedupeKey}`,
+                    source: source.label,
+                    title: authorInstructionTitle(kind, current),
+                    detail,
+                    kind,
+                    target: authorInstructionTarget(source.key)
+                });
+            }
+        }
+
+        return hints;
+    }
+
+    function authorInstructionBlocks(text: string): string[] {
+        return text
+            .replace(/\n\s*[-*]\s+/g, "\n- ")
+            .split(/\n{2,}|\n(?=(?:install(?:ation)?|setup|usage|how to|requirements?|warning|important|配置|安装|使用|说明|要求|注意)[:：]?)/i)
+            .map(block => block.replace(/\s+/g, " ").trim())
+            .filter(Boolean);
+    }
+
+    function authorInstructionKind(block: string, nextBlock: string): AuthorInstructionKind | null {
+        const headingLike = authorInstructionHeadingLike(block);
+        const value = headingLike ? `${block} ${nextBlock.slice(0, 180)}` : block;
+
+        if (/^(?:install(?:ation|ing)?|setup|how to install|deploy|安装|安装步骤|安装方法|部署)\b|(?:\b(?:extract|copy|place|put|drop|move|drag)\b.{0,80}\b(?:plugins?|mods?|libs?|folder|directory|game folder|\.dll|zip)\b)|(?:\bdownload\b.{0,80}\b(?:bepinex|redloader|zip|archive|\.dll)\b)|(?:下载.{0,80}(?:BepInEx|RedLoader|zip|\.dll|压缩包)|解压|(?:复制|移动).{0,80}(?:文件夹|目录|BepInEx|RedLoader|plugins?|mods?|\.dll)|放入|放到|拖入|找到游戏文件夹)/i.test(value)) {
+            return "install";
+        }
+
+        if (/^(?:usage|use|how to use|controls?|使用|说明|教程)\b|(?:\b(?:press|open menu|launch|start|toggle|command)\b.{0,80}\b(?:menu|game|mod|feature|tab|key)\b)|(?:按.{0,12}打开|启动|切换|命令)/i.test(value)) {
+            return "usage";
+        }
+
+        if (/\b(?:warning|important|caution|do not|don't|dont|must not|should not|before installing|before install|remove before|delete before|uninstall|disable)\b|(?:注意|警告|重要|请勿|不要|不可|先删除|先移除|卸载|禁用)/i.test(value)) {
+            return "warning";
+        }
+
+        if (/^(?:requirements?|dependencies?|prereq(?:uisites?)?|要求|依赖|前置)\b|(?:\b(?:requires?|needed|must have|needs)\b.{0,80}\b(?:runtime|framework|library|bepinex|redloader|sonssdk|harmony|\.net|dotnet)\b)|(?:需要.{0,30}(?:运行库|框架|BepInEx|RedLoader|SonsSdk))/i.test(value)) {
+            return "requirement";
+        }
+
+        if (/^(?:config(?:ure|uration)?|settings?|options?|配置|设置|选项)\b|(?:\b(?:ini|json|toml|yaml|keybind|hotkey)\b)|(?:快捷键|热键)/i.test(value)) {
+            return "configure";
+        }
+
+        return null;
+    }
+
+    function authorInstructionHeadingLike(block: string): boolean {
+        return block.length <= 90
+            && /^(?:install(?:ation|ing)?|setup|usage|use|how to|requirements?|dependencies?|config(?:ure|uration)?|settings?|warning|important|note|安装|部署|使用|说明|教程|要求|依赖|前置|配置|设置|注意|警告|重要)[:：]?$/i.test(block.trim());
+    }
+
+    function authorInstructionExcerpt(block: string, nextBlock: string, kind: AuthorInstructionKind): string {
+        const headingLike = authorInstructionHeadingLike(block);
+        const value = headingLike && nextBlock
+            ? `${block.replace(/[:：]?\s*$/, "")}: ${nextBlock}`
+            : block;
+        const context = !headingLike && value.length > 320
+            ? authorInstructionContext(value, kind)
+            : value;
+        return context
+            .replace(/\s+-\s+/g, "; ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 260);
+    }
+
+    function authorInstructionContext(value: string, kind: AuthorInstructionKind): string {
+        const pattern = {
+            configure: /\b(?:config(?:ure|uration)?|settings?|options?|ini|json|toml|yaml|keybind|hotkey)\b|(?:配置|设置|选项|快捷键|热键)/i,
+            install: /\b(?:install(?:ation|ing)?|setup|deploy|extract|copy|place|put|drop|move|drag)\b.{0,90}\b(?:plugins?|mods?|libs?|folder|directory|game folder|\.dll|zip)\b|(?:安装步骤|安装方法|部署|下载.{0,80}(?:BepInEx|RedLoader|zip|\.dll|压缩包)|解压|(?:复制|移动).{0,80}(?:文件夹|目录|BepInEx|RedLoader|plugins?|mods?|\.dll)|放入|放到|拖入|找到游戏文件夹)/i,
+            requirement: /\b(?:requirements?|dependencies?|requires?|needed|must have|runtime|framework|library|bepinex|redloader|sonssdk|harmony|\.net|dotnet)\b|(?:要求|依赖|前置|需要|运行库|框架)/i,
+            usage: /\b(?:usage|use|how to|controls?|open menu|press|launch|start|toggle|command)\b|(?:使用|说明|教程|按.{0,12}打开|启动|切换|命令)/i,
+            warning: /\b(?:warning|important|caution|do not|don't|dont|must not|before install|uninstall|disable)\b|(?:注意|警告|重要|请勿|不要|不可|卸载|禁用)/i
+        }[kind];
+        const match = value.match(pattern);
+        const index = match?.index ?? -1;
+        if (index < 0) {
+            return value;
+        }
+
+        const sentence = authorInstructionSentenceContext(value, index, match?.[0]?.length ?? 0);
+        if (sentence) {
+            return sentence;
+        }
+
+        const start = Math.max(0, index - 60);
+        const end = Math.min(value.length, index + (match?.[0]?.length ?? 0) + 160);
+        return `${start > 0 ? "... " : ""}${value.slice(start, end)}${end < value.length ? " ..." : ""}`;
+    }
+
+    function authorInstructionSentenceContext(value: string, index: number, matchLength: number): string | null {
+        const before = value.slice(0, index);
+        const startBoundary = Math.max(
+            before.lastIndexOf("。"),
+            before.lastIndexOf("."),
+            before.lastIndexOf(";"),
+            before.lastIndexOf("；"),
+            before.lastIndexOf("\n")
+        );
+        const afterStart = index + matchLength;
+        const after = value.slice(afterStart);
+        const endMatch = after.match(/[。.!?；;]\s*/);
+        const start = Math.max(0, startBoundary + 1);
+        const end = endMatch?.index !== undefined
+            ? Math.min(value.length, afterStart + endMatch.index + endMatch[0].length)
+            : Math.min(value.length, afterStart + 150);
+        const sentence = value.slice(start, end).trim();
+        return sentence.length >= 16 ? sentence : null;
+    }
+
+    function authorInstructionTitle(kind: AuthorInstructionKind, block: string): string {
+        const label = block
+            .replace(/[:：].*$/, "")
+            .replace(/^\W+|\W+$/g, "")
+            .trim();
+        if (label && label.length <= 42 && authorInstructionKind(label, "")) {
+            return label;
+        }
+
+        switch (kind) {
+            case "configure":
+                return "Configuration note";
+            case "usage":
+                return "Usage note";
+            case "warning":
+                return "Author warning";
+            case "requirement":
+                return "Requirement note";
+            default:
+                return "Install instruction";
+        }
+    }
+
+    function authorInstructionTarget(sourceKey: string): DetailSectionTarget {
+        if (sourceKey.startsWith("selected-file")) {
+            return "files";
+        }
+
+        if (sourceKey.startsWith("mod-changelog")) {
+            return "changelog";
+        }
+
+        return "description";
     }
 
     function extractAuthorRequirements(sources: AuthorRequirementSource[], currentModId: number | undefined, entries: InstalledInventoryEntry[]): AuthorRequirementLink[] {
@@ -7471,6 +7674,7 @@
                             <span>Size <b>{selectedFileSizeLabel}</b></span>
                             <span>API deps <b title={apiDependencyReadinessLabel()}>{resolvedDependencies.length}</b></span>
                             <span>Author hints <b title={authorRequirementReadinessLabel()}>{authorRequirementReadinessLabel()}</b></span>
+                            <span>Instructions <b>{selectedAuthorInstructions.length > 0 ? `${selectedAuthorInstructions.length} found` : "Review text"}</b></span>
                             <span class="install-plan-file-fact">Nested <b title={nestedDependencyReadinessLabel()}>{nestedDependencyReadinessLabel()}</b></span>
                         </div>
                         <div class="install-plan-notes">
@@ -7478,6 +7682,30 @@
                                 <span>{note}</span>
                             {/each}
                         </div>
+                        {#if selectedAuthorInstructions.length > 0}
+                            <div class="author-instructions" aria-label="Author installation instructions">
+                                <div class="author-instructions-head">
+                                    <span class="detail-section-title">Author Instructions</span>
+                                    <b>{selectedAuthorInstructions.length}</b>
+                                </div>
+                                <div class="author-instruction-list">
+                                    {#each selectedAuthorInstructions as instruction (instruction.key)}
+                                        <button
+                                            type="button"
+                                            class="author-instruction-row"
+                                            class:author-instruction-warning={instruction.kind === "warning"}
+                                            class:author-instruction-requirement={instruction.kind === "requirement"}
+                                            title={`${instruction.source}: ${instruction.detail}`}
+                                            on:click={() => scrollDetailSection(instruction.target)}
+                                        >
+                                            <small>{instruction.source} · {instruction.kind}</small>
+                                            <span>{instruction.title}</span>
+                                            <p>{instruction.detail}</p>
+                                        </button>
+                                    {/each}
+                                </div>
+                            </div>
+                        {/if}
                     </div>
 
                     {#if selectedNxmUrl}
@@ -10289,6 +10517,98 @@
 
     .install-plan-ready .install-plan-notes span {
         color: #98d9af;
+    }
+
+    .author-instructions {
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        flex-direction: column;
+        gap: 0.45em;
+        margin-top: 0.65em;
+        padding-top: 0.55em;
+    }
+
+    .author-instructions-head {
+        align-items: center;
+        display: flex;
+        gap: 0.65em;
+        justify-content: space-between;
+        min-width: 0;
+    }
+
+    .author-instructions-head b {
+        background: rgba(120, 217, 244, 0.08);
+        border: 1px solid rgba(120, 217, 244, 0.22);
+        color: #bdeefa;
+        flex: 0 0 auto;
+        font-size: 0.72em;
+        font-weight: 900;
+        padding: 0.2em 0.5em;
+        text-transform: uppercase;
+    }
+
+    .author-instruction-list {
+        display: grid;
+        gap: 0.38em;
+        max-height: clamp(9em, 18vh, 14em);
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    .author-instruction-row {
+        background: rgba(255, 255, 255, 0.035);
+        border: 1px solid rgba(120, 217, 244, 0.16);
+        box-shadow: none;
+        display: grid;
+        gap: 0.18em;
+        line-height: 1.24;
+        margin: 0;
+        min-width: 0;
+        padding: 0.48em 0.58em;
+        text-align: left;
+        text-transform: none;
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+
+    .author-instruction-row small {
+        color: #8d99a5;
+        font-size: 0.68em;
+        font-weight: 900;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .author-instruction-row span {
+        color: #dce4ea;
+        font-size: 0.78em;
+        font-weight: 900;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .author-instruction-row p {
+        color: #aeb9c2;
+        font-size: 0.74em;
+        font-weight: 700;
+        margin: 0;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .author-instruction-warning {
+        border-color: rgba(253, 198, 109, 0.35);
+    }
+
+    .author-instruction-requirement {
+        border-color: rgba(98, 240, 155, 0.22);
     }
 
     .selected-file-notes {
