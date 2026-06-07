@@ -426,6 +426,18 @@
         scroll-margin-top: 0.5em;
     }
 
+    .all-source-panel .source-section-head {
+        background:
+            linear-gradient(180deg, rgba(16, 16, 16, 0.98), rgba(9, 9, 9, 0.92)),
+            rgba(10, 10, 10, 0.96);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        margin: -0.52em -0.52em 0;
+        padding: 0.52em;
+        position: sticky;
+        top: -0.52em;
+        z-index: 4;
+    }
+
     .all-source-panel .source-section-body {
         height: var(--all-sotf-preview-height, clamp(23em, 43vh, 33em));
     }
