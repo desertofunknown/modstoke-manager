@@ -44,6 +44,7 @@
   - Added a compact in-drawer Nexus detail section rail for jumping to Description, Files, Dependencies, Install Plan, Changelog, and Deployment without hunting through split scroll panes.
   - Made Nexus catalog previews more resilient by accepting protocol-relative and common nested media URL fields, replacing the remote placeholder with a bundled local fallback image, and using clearer compact preview count/cycle controls.
   - Added compact open-preview actions to Nexus catalog thumbnails so already-loaded row images can be opened directly without adding Nexus API requests.
+  - Added a user-triggered Nexus catalog `Load preview` control for fallback thumbnails that fetches cached mod details for one row, then reuses the existing catalog carousel when real image URLs are found.
   - Added author requirement hints from Nexus description, selected-file notes, and changelog links when structured dependency rows are missing or incomplete, without extra Nexus requests.
   - Added compact icon preview controls in Nexus detail drawers, including a current-preview open action for single-image and multi-image detail media.
   - Enriched Nexus detail preview rails with safe image URLs found in API-provided descriptions, selected-file notes, and changelogs, so author-supplied screenshots can appear in the drawer without extra Nexus requests.

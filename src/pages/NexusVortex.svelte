@@ -165,6 +165,8 @@
     let knownNexusPreviewUrls: Record<number, string[]> = {};
     let catalogPreviewCacheVersion = 0;
     let catalogPreviewIndexes: Record<number, number> = {};
+    let activeCatalogPreviewLoadId: number | null = null;
+    let catalogPreviewLoadNotices: Record<number, string> = {};
     let selectedDetailPreviewIndex = 0;
     let detailDescriptionExpanded = false;
     let currentDetailPreviewUrls: string[] = [];
@@ -1610,6 +1612,73 @@
 
     async function openDownloadPage(mod: NexusMod) {
         await shell.open(getNexusModDownloadUrl(mod));
+    }
+
+    function catalogPreviewNotice(mod: NexusMod): string {
+        return catalogPreviewLoadNotices[mod.mod_id] ?? "";
+    }
+
+    function setCatalogPreviewNotice(modId: number, notice: string) {
+        catalogPreviewLoadNotices = {
+            ...catalogPreviewLoadNotices,
+            [modId]: notice
+        };
+    }
+
+    function clearCatalogPreviewNotice(modId: number) {
+        const next = { ...catalogPreviewLoadNotices };
+        delete next[modId];
+        catalogPreviewLoadNotices = next;
+    }
+
+    async function loadCatalogPreview(mod: NexusMod, event: Event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (activeCatalogPreviewLoadId === mod.mod_id) {
+            return;
+        }
+
+        activeCatalogPreviewLoadId = mod.mod_id;
+        setCatalogPreviewNotice(mod.mod_id, "Loading");
+
+        try {
+            const details = await fetchNexusModDetails(mod.mod_id);
+            const mergedDetails = {
+                ...mod,
+                ...details,
+                mod_id: details.mod_id ?? mod.mod_id
+            };
+            rememberNexusDetails(mergedDetails);
+            const previewUrls = catalogPreviewUrlsFromLoadedDetails(mergedDetails, null, []);
+
+            if (previewUrls.length === 0) {
+                setCatalogPreviewNotice(mod.mod_id, "No preview");
+                return;
+            }
+
+            clearCatalogPreviewNotice(mod.mod_id);
+            catalogPreviewIndexes = {
+                ...catalogPreviewIndexes,
+                [mod.mod_id]: 0
+            };
+            rememberNexusPreviewUrls(mod.mod_id, previewUrls);
+        } catch {
+            setCatalogPreviewNotice(mod.mod_id, "Preview failed");
+        } finally {
+            if (activeCatalogPreviewLoadId === mod.mod_id) {
+                activeCatalogPreviewLoadId = null;
+            }
+        }
+    }
+
+    async function handleCatalogThumbnailClick(mod: NexusMod, previewUrls: string[], event: MouseEvent) {
+        if (previewUrls.length === 0) {
+            await loadCatalogPreview(mod, event);
+            return;
+        }
+
+        await openModDetails(mod);
     }
 
     function catalogPreviewUrls(mod: NexusMod, cacheVersion = catalogPreviewCacheVersion): string[] {
@@ -7582,10 +7651,16 @@
                         {@const previewCacheVersion = catalogPreviewCacheVersion}
                         {@const previewUrls = catalogPreviewUrls(mod, previewCacheVersion)}
                         {@const previewIndex = catalogPreviewIndex(mod, previewUrls)}
+                        {@const previewNotice = catalogPreviewNotice(mod)}
                         {@const categoryBadge = nexusCategorySourceBadge(mod.category_source)}
                         <article class="nexus-card" class:nexus-installed={!!match} class:nexus-conflict={!!conflict}>
                             <div class="thumbnail-frame">
-                                <button class="thumbnail-button" aria-label={`Open ${mod.name} details`} on:click={() => openModDetails(mod)}>
+                                <button
+                                    class="thumbnail-button"
+                                    aria-label={previewUrls.length === 0 ? `Load preview image for ${mod.name}` : `Open ${mod.name} details`}
+                                    title={previewUrls.length === 0 ? "Load real preview from Nexus details" : `Open ${mod.name} details`}
+                                    on:click={(event) => handleCatalogThumbnailClick(mod, previewUrls, event)}
+                                >
                                     <img
                                         class="nexus-img"
                                         src={catalogPreviewImage(mod, previewUrls)}
@@ -7622,13 +7697,24 @@
                                     </div>
                                 {:else}
                                     <div
-                                        class="thumbnail-count"
+                                        class="thumbnail-count thumbnail-preview-fetch"
                                         class:thumbnail-count-fallback={previewUrls.length === 0}
-                                        aria-label={`${mod.name} uses the local fallback preview image`}
-                                        title="Local fallback preview"
+                                        aria-label={`${mod.name} uses the local fallback preview image. Load a real preview from cached Nexus details if available.`}
+                                        title="Load real preview from Nexus details"
                                     >
-                                        <LucideImages class="thumbnail-icon" aria-hidden="true" />
-                                        <span>Local</span>
+                                        <button
+                                            type="button"
+                                            disabled={activeCatalogPreviewLoadId === mod.mod_id}
+                                            on:pointerdown={(event) => loadCatalogPreview(mod, event)}
+                                            on:click={(event) => loadCatalogPreview(mod, event)}
+                                        >
+                                            {#if activeCatalogPreviewLoadId === mod.mod_id}
+                                                <SvgSpinnersBlocksWave class="thumbnail-icon" aria-hidden="true" />
+                                            {:else}
+                                                <LucideImages class="thumbnail-icon" aria-hidden="true" />
+                                            {/if}
+                                            <span>{previewNotice || "Load preview"}</span>
+                                        </button>
                                     </div>
                                 {/if}
                             </div>
@@ -7700,6 +7786,17 @@
                                         <button class="vortex-install-btn" disabled={activeNexusActionId === mod.mod_id} on:click={() => installRecommendedWithVortex(mod)}>
                                             {activeNexusActionId === mod.mod_id ? "Preparing..." : vortexActionLabel(mod)}
                                         </button>
+                                        {#if previewUrls.length === 0}
+                                            <button
+                                                class="preview-load-btn"
+                                                disabled={activeCatalogPreviewLoadId === mod.mod_id}
+                                                title="Load real preview from cached Nexus details"
+                                                on:pointerdown={(event) => loadCatalogPreview(mod, event)}
+                                                on:click={(event) => loadCatalogPreview(mod, event)}
+                                            >
+                                                {activeCatalogPreviewLoadId === mod.mod_id ? "Loading..." : previewNotice || "Preview"}
+                                            </button>
+                                        {/if}
                                         {#if conflict}
                                             <button class="conflict-review-btn" on:click={() => reviewLocalConflict(conflict)}>Review Conflict</button>
                                         {/if}
@@ -9803,6 +9900,11 @@
         min-width: 10.5em;
     }
 
+    .button-row .preview-load-btn {
+        color: #78d9f4;
+        min-width: 7.4em;
+    }
+
     .button-row .track-btn,
     .detail-actions .track-btn {
         color: #fdc66d;
@@ -10023,14 +10125,42 @@
         overflow: hidden;
         padding: 0.2em 0.45em;
         position: absolute;
+        pointer-events: auto;
         text-overflow: ellipsis;
         top: 0.45em;
         white-space: nowrap;
+        z-index: 2;
     }
 
     .thumbnail-count-action {
         gap: 0.32em;
         padding: 0.2em;
+    }
+
+    .thumbnail-preview-fetch {
+        padding: 0.18em;
+    }
+
+    .thumbnail-preview-fetch button {
+        flex: 1 1 auto;
+        gap: 0.28em;
+        height: auto;
+        justify-content: flex-start;
+        min-height: 2.15em;
+        padding: 0.24em 0.48em;
+        width: 100%;
+    }
+
+    .thumbnail-preview-fetch button span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .thumbnail-preview-fetch button:disabled {
+        cursor: progress;
+        opacity: 0.82;
     }
 
     .thumbnail-count-label {
