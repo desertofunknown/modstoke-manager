@@ -24,6 +24,20 @@ export type ModImage = {
     isThumbnail?: boolean;
 }
 
+export type ModVersion = {
+    id?: number;
+    version: string;
+    isLatest?: boolean;
+    changelog?: string;
+    filename?: string;
+    extension?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    _count?: {
+        downloads?: number;
+    };
+}
+
 export type Mod = {
     name: string;
     slug: string;
@@ -48,6 +62,7 @@ export type Mod = {
     lastWeekDownloads?: number;
     downloads?: number;
     dependencies: string[];
+    versions?: ModVersion[];
 
     isInstalled: boolean;
     installedMod?: InstalledMod;

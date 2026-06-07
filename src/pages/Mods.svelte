@@ -2,7 +2,7 @@
     import { createEventDispatcher, onDestroy, onMount, tick } from "svelte";
     import { isPathValid } from "../lib/store";
     import ModCard from "../lib/ModCard.svelte";
-    import type { Mod, ModCategory } from "../lib/mods";
+    import type { Mod, ModCategory, ModVersion } from "../lib/mods";
     import { ModDatabase, modDependencies, modPreviewUrls, Sorting } from "../lib/mods";
     import { renderStoreRichText } from "../lib/richText";
     import InfiniteScroll from "../lib/InfiniteScroll.svelte";
@@ -67,6 +67,8 @@
     let selectedDetailIsLoading = false;
     let selectedDetailLoadError = "";
     let selectedDetailDependencies: string[] = [];
+    let selectedDetailVersions: ModVersion[] = [];
+    let selectedDetailHiddenVersionCount = 0;
     let selectedDetailDependencyRows: DetailDependencyRow[] = [];
     let detailDependencyLookupToken = 0;
     let detailModLookupToken = 0;
@@ -103,6 +105,8 @@
         "No description is available from SOTF Mods for this entry."
     );
     $: selectedDetailDependencies = selectedDetailMod ? modDependencies(selectedDetailMod) : [];
+    $: selectedDetailVersions = selectedDetailMod ? detailVersions(selectedDetailMod) : [];
+    $: selectedDetailHiddenVersionCount = Math.max(0, (selectedDetailMod?.versions?.length ?? 0) - selectedDetailVersions.length);
     $: {
         visibleMods.length;
         filtered.length;
@@ -692,6 +696,40 @@
         return "Review";
     }
 
+    function detailVersions(mod: Mod): ModVersion[] {
+        return [...(mod.versions ?? [])]
+            .sort((left, right) => {
+                if (left.isLatest !== right.isLatest) {
+                    return left.isLatest ? -1 : 1;
+                }
+
+                return dateValue(right.createdAt ?? right.updatedAt) - dateValue(left.createdAt ?? left.updatedAt);
+            })
+            .slice(0, 5);
+    }
+
+    function dateValue(value?: string): number {
+        if (!value) {
+            return 0;
+        }
+
+        const time = new Date(value).getTime();
+        return Number.isFinite(time) ? time : 0;
+    }
+
+    function detailVersionDate(version: ModVersion): string {
+        return version.createdAt || version.updatedAt ? formatDetailDate(version.createdAt ?? version.updatedAt ?? "") : "-";
+    }
+
+    function detailVersionDownloads(version: ModVersion): string {
+        const downloads = version._count?.downloads;
+        return typeof downloads === "number" ? downloads.toLocaleString() : "-";
+    }
+
+    function detailVersionChangelogHtml(version: ModVersion): string {
+        return renderStoreRichText(version.changelog, "No changelog text.");
+    }
+
     function detailInstallStateLabel(mod: Mod): string {
         if (!mod.isInstalled) {
             return "Not installed";
@@ -944,6 +982,36 @@
                                     </div>
                                 {:else}
                                     <small>No storefront dependency records.</small>
+                                {/if}
+                            </div>
+
+                            <div class="sotf-detail-versions">
+                                <span class="sotf-detail-section-title">Versions</span>
+                                {#if selectedDetailVersions.length > 0}
+                                    <div class="sotf-detail-version-list">
+                                        {#each selectedDetailVersions as version}
+                                            <div class="sotf-detail-version-row" class:sotf-detail-version-latest={version.isLatest}>
+                                                <div class="sotf-detail-version-head">
+                                                    <span>{version.version}</span>
+                                                    <b>{version.isLatest ? "Latest" : detailVersionDate(version)}</b>
+                                                </div>
+                                                <small>
+                                                    {detailVersionDate(version)} · {detailVersionDownloads(version)} downloads
+                                                    {#if version.filename}
+                                                        · {version.filename}
+                                                    {/if}
+                                                </small>
+                                                <div class="sotf-version-rich-text">
+                                                    {@html detailVersionChangelogHtml(version)}
+                                                </div>
+                                            </div>
+                                        {/each}
+                                        {#if selectedDetailHiddenVersionCount > 0}
+                                            <small class="sotf-detail-version-more">+{selectedDetailHiddenVersionCount} older versions on SOTF Mods.</small>
+                                        {/if}
+                                    </div>
+                                {:else}
+                                    <small>No storefront version changelog records.</small>
                                 {/if}
                             </div>
                         </aside>
@@ -1451,6 +1519,7 @@
     .sotf-detail-facts,
     .sotf-detail-install-target,
     .sotf-detail-dependencies,
+    .sotf-detail-versions,
     .sotf-detail-footer {
         background: rgba(18, 18, 18, 0.88);
         border: 1px solid rgba(255, 255, 255, 0.12);
@@ -1698,7 +1767,8 @@
     }
 
     .sotf-detail-install-target,
-    .sotf-detail-dependencies {
+    .sotf-detail-dependencies,
+    .sotf-detail-versions {
         display: flex;
         flex: 0 0 auto;
         flex-direction: column;
@@ -1720,6 +1790,19 @@
     }
 
     .sotf-detail-dependencies small {
+        color: #9aa5af;
+        font-size: 0.82em;
+        font-weight: 800;
+    }
+
+    .sotf-detail-versions {
+        flex: 0 1 auto;
+        max-height: clamp(170px, 25vh, 310px);
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    .sotf-detail-versions > small {
         color: #9aa5af;
         font-size: 0.82em;
         font-weight: 800;
@@ -1815,6 +1898,100 @@
         flex: 0 0 auto;
         height: 0.9em;
         width: 0.9em;
+    }
+
+    .sotf-detail-version-list {
+        display: grid;
+        gap: 0.42em;
+        min-width: 0;
+    }
+
+    .sotf-detail-version-row {
+        background: rgba(255, 255, 255, 0.045);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #d6dde5;
+        display: grid;
+        gap: 0.32em;
+        min-width: 0;
+        padding: 0.48em 0.58em;
+    }
+
+    .sotf-detail-version-latest {
+        border-color: rgba(98, 240, 155, 0.28);
+    }
+
+    .sotf-detail-version-head {
+        align-items: center;
+        display: flex;
+        gap: 0.5em;
+        justify-content: space-between;
+        min-width: 0;
+    }
+
+    .sotf-detail-version-head span {
+        color: #eefcff;
+        font-size: 0.84em;
+        font-weight: 900;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .sotf-detail-version-head b {
+        color: #62f09b;
+        flex: 0 0 auto;
+        font-size: 0.68em;
+        font-weight: 900;
+        text-transform: uppercase;
+    }
+
+    .sotf-detail-version-row small,
+    .sotf-detail-version-more {
+        color: #9aa5af;
+        font-size: 0.74em;
+        font-weight: 800;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+    }
+
+    .sotf-version-rich-text {
+        color: #c2ccd5;
+        font-size: 0.78em;
+        line-height: 1.34;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .sotf-version-rich-text :global(p),
+    .sotf-version-rich-text :global(ul),
+    .sotf-version-rich-text :global(ol) {
+        margin: 0.36em 0 0;
+    }
+
+    .sotf-version-rich-text :global(p:first-child),
+    .sotf-version-rich-text :global(ul:first-child),
+    .sotf-version-rich-text :global(ol:first-child) {
+        margin-top: 0;
+    }
+
+    .sotf-version-rich-text :global(ul),
+    .sotf-version-rich-text :global(ol) {
+        padding-left: 1.2em;
+    }
+
+    .sotf-version-rich-text :global(a) {
+        color: #78d9f4;
+        font-weight: 800;
+        overflow-wrap: anywhere;
+    }
+
+    .sotf-version-rich-text :global(code) {
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 4px;
+        color: #e8f4ff;
+        font-family: Consolas, "Liberation Mono", monospace;
+        padding: 0.04em 0.22em;
     }
 
     .sotf-detail-footer {
