@@ -302,10 +302,23 @@
     }
 
     .all-source-panel {
-        gap: 0.75em;
+        gap: 0.55em;
         overflow-y: auto;
         padding-right: 0.28em;
         scrollbar-gutter: stable;
+    }
+
+    .all-source-panel .source-section {
+        padding: 0.52em;
+        scroll-margin-top: 0.5em;
+    }
+
+    .all-source-panel .source-section-body {
+        height: clamp(23em, 43vh, 33em);
+    }
+
+    .all-source-panel .nexus-source-section-body {
+        height: clamp(34em, 58vh, 45em);
     }
 
     .source-section {
@@ -407,6 +420,11 @@
         .nexus-source-section-body {
             height: clamp(34em, 86vh, 54em);
         }
+
+        .all-source-panel .source-section-body,
+        .all-source-panel .nexus-source-section-body {
+            height: clamp(32em, 82vh, 52em);
+        }
     }
 
     @media (max-height: 720px) {
@@ -418,6 +436,22 @@
         .hub-search input {
             height: 2.05em;
             min-height: 2.05em;
+        }
+
+        .all-source-panel {
+            gap: 0.42em;
+        }
+
+        .all-source-panel .source-section {
+            padding: 0.44em;
+        }
+
+        .all-source-panel .source-section-body {
+            height: clamp(20em, 39vh, 28em);
+        }
+
+        .all-source-panel .nexus-source-section-body {
+            height: clamp(29em, 53vh, 38em);
         }
     }
 </style>
