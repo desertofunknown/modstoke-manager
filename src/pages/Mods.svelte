@@ -24,6 +24,8 @@
         message?: string;
     };
 
+    type SotfCatalogSort = "updated" | "downloads" | "favorites" | "comments" | "rating" | "name";
+
     export let sharedSearchTerm = "";
     export let sharedSearchVersion = 0;
     export let showEmbeddedSearch = true;
@@ -37,9 +39,11 @@
     let selectedCategory = "all";
     let selectedType = "all";
     let selectedCompatibility = "all";
+    let selectedSort: SotfCatalogSort = "updated";
     let categories: ModCategory[] = [];
     let visibleMods: Mod[] = [];
     let hasActiveModFilters = false;
+    let hasActiveModViewOptions = false;
 
     let onlineSelected = true;
     let installedSelected = false;
@@ -82,7 +86,8 @@
         selectedCategory;
         selectedType;
         selectedCompatibility;
-        visibleMods = filtered.filter(matchesClientFilters);
+        selectedSort;
+        visibleMods = sortVisibleMods(filtered.filter(matchesClientFilters));
     }
     $: if (sharedSearchVersion > 0 && sharedSearchVersion !== lastAppliedSharedSearchVersion) {
         lastAppliedSharedSearchVersion = sharedSearchVersion;
@@ -92,6 +97,7 @@
         || selectedCategory !== "all"
         || selectedType !== "all"
         || selectedCompatibility !== "all";
+    $: hasActiveModViewOptions = hasActiveModFilters || selectedSort !== "updated";
     $: selectedDetailPreviewUrls = selectedDetailMod ? modPreviewUrls(selectedDetailMod) : [];
     $: if (selectedDetailPreviewIndex >= selectedDetailPreviewUrls.length) {
         selectedDetailPreviewIndex = 0;
@@ -367,6 +373,7 @@
         selectedCategory = "all";
         selectedType = "all";
         selectedCompatibility = "all";
+        selectedSort = "updated";
         dispatch("searchChange", "");
 
         if (onlineSelected) {
@@ -730,6 +737,63 @@
         return renderStoreRichText(version.changelog, "No changelog text.");
     }
 
+    function sortVisibleMods(mods: Mod[]): Mod[] {
+        return [...mods].sort(compareModsBySort);
+    }
+
+    function compareModsBySort(left: Mod, right: Mod): number {
+        let result = 0;
+
+        if (selectedSort === "downloads") {
+            result = numericModValue(right.downloads ?? right.lastWeekDownloads) - numericModValue(left.downloads ?? left.lastWeekDownloads);
+        } else if (selectedSort === "favorites") {
+            result = numericModValue(right.favoritesCount) - numericModValue(left.favoritesCount);
+        } else if (selectedSort === "comments") {
+            result = numericModValue(right.commentsCount) - numericModValue(left.commentsCount);
+        } else if (selectedSort === "rating") {
+            result = numericModValue(right.averageRating) - numericModValue(left.averageRating)
+                || numericModValue(right.reviewsCount) - numericModValue(left.reviewsCount);
+        } else if (selectedSort === "name") {
+            result = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+        } else {
+            result = dateValue(right.lastReleasedAt) - dateValue(left.lastReleasedAt);
+        }
+
+        return result || sortTieBreak(left, right);
+    }
+
+    function numericModValue(value?: number): number {
+        return typeof value === "number" && Number.isFinite(value) ? value : 0;
+    }
+
+    function sortTieBreak(left: Mod, right: Mod): number {
+        return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+    }
+
+    function selectedSortLabel(): string {
+        if (selectedSort === "downloads") {
+            return "downloads";
+        }
+
+        if (selectedSort === "favorites") {
+            return "favorites";
+        }
+
+        if (selectedSort === "comments") {
+            return "comments";
+        }
+
+        if (selectedSort === "rating") {
+            return "rating";
+        }
+
+        if (selectedSort === "name") {
+            return "name";
+        }
+
+        return "recent updates";
+    }
+
     function detailCount(value?: number): string {
         return typeof value === "number" ? value.toLocaleString() : "-";
     }
@@ -823,7 +887,7 @@
 <div
     class="column mods-page"
     class:sotf-embedded-store-preview={embeddedStorePreview}
-    class:sotf-embedded-controls-needed={embeddedStorePreview && (installedSelected || selectedCategory !== "all" || selectedType !== "all" || selectedCompatibility !== "all")}
+    class:sotf-embedded-controls-needed={embeddedStorePreview && (installedSelected || hasActiveModViewOptions)}
     bind:this={modsPageElement}
 >
     {#if $isPathValid}
@@ -869,7 +933,18 @@
                     <option value="client">Client-side</option>
                 </select>
             </label>
-            <button class="filter-clear" disabled={!hasActiveModFilters || isLoading} on:click={clearModFilters}>Clear</button>
+            <label>
+                <span>Sort loaded</span>
+                <select bind:value={selectedSort}>
+                    <option value="updated">Recently updated</option>
+                    <option value="downloads">Downloads</option>
+                    <option value="favorites">Favorites</option>
+                    <option value="comments">Comments</option>
+                    <option value="rating">Rating</option>
+                    <option value="name">Name</option>
+                </select>
+            </label>
+            <button class="filter-clear" disabled={!hasActiveModViewOptions || isLoading} on:click={clearModFilters}>Clear</button>
         </div>
 
         <div class="mods-note">
@@ -877,6 +952,9 @@
             <span>Compact list.</span>
             {#if categories.length > 0}
                 <span>{categories.length} categories.</span>
+            {/if}
+            {#if selectedSort !== "updated"}
+                <span>Sorted loaded rows by {selectedSortLabel()}.</span>
             {/if}
             {#if hasActiveModFilters}
                 <span>Filters active.</span>
@@ -1228,7 +1306,7 @@
     .filter-row {
         display: grid;
         gap: 0.6em;
-        grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(7em, 0.45fr);
+        grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(7em, 0.45fr);
         margin: 0;
         width: 100%;
     }
