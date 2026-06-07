@@ -203,6 +203,7 @@
     let trackedMissingCount = 0;
     let showFullActionQueue = true;
     let resolvedDependencies: ResolvedDependency[] = [];
+    let detailDependenciesFirst = false;
     let hasActiveNexusFilters = false;
     let isLoading = false;
     let isDetailLoading = false;
@@ -512,6 +513,12 @@
     $: authorRequirementWarningCount = selectedAuthorRequirements.filter(requirement => requirement.status === "warning").length;
     $: totalDependencyIssueCount = dependencyIssueCount + nestedDependencyIssueCount;
     $: totalDependencyReviewCount = dependencyReviewCount + nestedDependencyReviewCount + authorRequirementReviewCount + authorRequirementWarningCount;
+    $: detailDependenciesFirst = totalDependencyIssueCount > 0
+        || totalDependencyReviewCount > 0
+        || resolvedDependencies.length > 0
+        || resolvedNestedDependencies.length > 0
+        || selectedAuthorRequirements.length > 0
+        || isResolvingNestedDependencies;
     $: detailDependencyNavText = describeDetailDependencyNav(
         totalDependencyIssueCount,
         totalDependencyReviewCount,
@@ -7925,7 +7932,7 @@
                     {/if}
                 </div>
 
-                <div class="detail-side">
+                <div class="detail-side" class:detail-side-dependencies-first={detailDependenciesFirst}>
                     <div class="detail-facts">
                         <span>Version <b>{selectedModDetails?.version ?? "-"}</b></span>
                         <span>Type <b>{selectedModDetails?.loader_type ?? "Unknown"}</b></span>
@@ -8161,188 +8168,200 @@
                         {/each}
                     </div>
 
-                    {#if selectedFileNotesAvailable}
-                        <div class="selected-file-notes">
-                            <div class="selected-file-notes-head">
-                                <span class="detail-section-title">Selected File Notes</span>
-                                <b>{selectedFileVersionLabel}</b>
-                            </div>
-                            <span class="selected-file-notes-subtitle" title={selectedInstallFileLabel}>{selectedInstallFileLabel}</span>
-                            {#if selectedFileDescriptionHtml}
-                                <div class="nexus-rich-text selected-file-rich-text">
-                                    {@html selectedFileDescriptionHtml}
+                    {#snippet selectedFileNotesBlock()}
+                        {#if selectedFileNotesAvailable}
+                            <div class="selected-file-notes">
+                                <div class="selected-file-notes-head">
+                                    <span class="detail-section-title">Selected File Notes</span>
+                                    <b>{selectedFileVersionLabel}</b>
                                 </div>
-                            {/if}
-                            {#if selectedFileChangelogHtml}
-                                <div class="selected-file-changelog">
-                                    <span>File changelog</span>
+                                <span class="selected-file-notes-subtitle" title={selectedInstallFileLabel}>{selectedInstallFileLabel}</span>
+                                {#if selectedFileDescriptionHtml}
                                     <div class="nexus-rich-text selected-file-rich-text">
-                                        {@html selectedFileChangelogHtml}
+                                        {@html selectedFileDescriptionHtml}
                                     </div>
-                                </div>
-                            {/if}
-                        </div>
-                    {/if}
-
-                    <div class="dependency-box" bind:this={detailDependenciesSectionElement}>
-                        <div class="dependency-box-head">
-                            <span class="detail-section-title">Dependencies</span>
-                            <button
-                                type="button"
-                                disabled={!nestedDependencyCheckAvailable() || isResolvingNestedDependencies}
-                                title={nestedDependencyCheckAvailable()
-                                    ? `Check up to ${MAX_NESTED_DEPENDENCY_FILES} dependency files across ${MAX_NESTED_DEPENDENCY_DEPTH} nested levels`
-                                    : "No dependency file IDs were returned for recursive checks"}
-                                on:click={resolveNestedDependencies}
-                            >
-                                {isResolvingNestedDependencies ? "Checking..." : "Check Nested"}
-                            </button>
-                        </div>
-                        <div class="dependency-readiness-grid" aria-label="Dependency readiness summary">
-                            <span
-                                class="dependency-readiness-chip"
-                                class:dependency-readiness-ok={resolvedDependencies.length > 0 && dependencyIssueCount === 0 && dependencyReviewCount === 0}
-                                class:dependency-readiness-warn={dependencyIssueCount > 0}
-                                class:dependency-readiness-review={dependencyReviewCount > 0 && dependencyIssueCount === 0}
-                                title={apiDependencyReadinessLabel()}
-                            >
-                                <small>API</small>
-                                <b>{resolvedDependencies.length}</b>
-                                <span>{apiDependencyReadinessLabel()}</span>
-                            </span>
-                            <span
-                                class="dependency-readiness-chip"
-                                class:dependency-readiness-ok={selectedAuthorRequirements.length > 0 && authorRequirementWarningCount === 0 && authorRequirementReviewCount === 0}
-                                class:dependency-readiness-warn={authorRequirementWarningCount > 0}
-                                class:dependency-readiness-review={authorRequirementReviewCount > 0 && authorRequirementWarningCount === 0}
-                                title={authorRequirementReadinessLabel()}
-                            >
-                                <small>Author</small>
-                                <b>{selectedAuthorRequirements.length}</b>
-                                <span>{authorRequirementReadinessLabel()}</span>
-                            </span>
-                            <span
-                                class="dependency-readiness-chip"
-                                class:dependency-readiness-ok={resolvedNestedDependencies.length > 0 && nestedDependencyIssueCount === 0 && nestedDependencyReviewCount === 0}
-                                class:dependency-readiness-warn={nestedDependencyIssueCount > 0}
-                                class:dependency-readiness-review={(isResolvingNestedDependencies || nestedDependencyReviewCount > 0 || (resolvedNestedDependencies.length === 0 && nestedDependencyCheckAvailable())) && nestedDependencyIssueCount === 0}
-                                title={nestedDependencyReadinessLabel()}
-                            >
-                                <small>Nested</small>
-                                <b>{resolvedNestedDependencies.length}</b>
-                                <span>{nestedDependencyReadinessLabel()}</span>
-                            </span>
-                        </div>
-                        {#if nestedDependencySummary}
-                            <span class="dependency-empty">{nestedDependencySummary}</span>
-                        {/if}
-                        {#if selectedDependencyMessage}
-                            <span class="dependency-empty">{selectedDependencyMessage}</span>
-                        {/if}
-                        {#if resolvedDependencies.length === 0}
-                            <span class="dependency-empty">{selectedDependencyMessage ? "Still review the author directions for manual requirements." : "No API-listed dependencies for the selected file. Still review the author directions for manual requirements."}</span>
-                        {:else}
-                            {#each resolvedDependencies as dependency}
-                                <div
-                                    class="dependency-row"
-                                    class:dependency-installed={dependency.status === "installed"}
-                                    class:dependency-missing={dependency.status === "missing"}
-                                    class:dependency-mismatch={dependency.status === "version-mismatch"}
-                                    class:dependency-review={dependency.status === "review"}
-                                >
-                                    <div class="dependency-head">
-                                        <span>{dependency.mod_name}</span>
-                                        <b>{dependency.status === "installed" ? "Installed" : dependency.status === "missing" ? "Missing" : dependency.status === "version-mismatch" ? "Version" : "Review"}</b>
-                                    </div>
-                                    <small>{dependency.file_name ?? dependency.group_name ?? "Candidate file"} {dependencyRequirementLabel(dependency) ? `· ${dependencyRequirementLabel(dependency)}` : ""}</small>
-                                    <small>{dependencyStatusLabel(dependency)}</small>
-                                    <div class="dependency-actions">
-                                        {#if dependency.mod_id}
-                                            <button
-                                                class="dependency-primary-action"
-                                                class:dependency-primary-warn={dependency.status === "missing" || dependency.status === "version-mismatch"}
-                                                title={dependencyPrimaryActionTitle(dependency)}
-                                                on:click={() => openDependencyDetails(dependency)}
-                                            >
-                                                {dependencyPrimaryActionLabel(dependency)}
-                                            </button>
-                                            <button on:click={() => openDependencyPage(dependency)}>Nexus</button>
-                                        {/if}
-                                        {#if dependency.match}
-                                            <button on:click={() => openDependencyLocation(dependency)}>Open Folder</button>
-                                        {/if}
-                                    </div>
-                                </div>
-                            {/each}
-                        {/if}
-                        {#if selectedAuthorRequirements.length > 0}
-                            <div class="author-requirement-section">
-                                <span class="dependency-subtitle">Author requirement hints</span>
-                                <span class="dependency-empty">These came from Nexus author text, selected file notes, or changelog text and are not API dependency rows.</span>
-                                {#each selectedAuthorRequirements as requirement (requirement.key)}
-                                    <div
-                                        class="author-requirement-row"
-                                        class:author-requirement-detected={requirement.status === "detected"}
-                                        class:author-requirement-warning={requirement.status === "warning"}
-                                    >
-                                        <div class="author-requirement-main">
-                                            <span>{requirement.label}</span>
-                                            <small>{requirement.source}{requirement.mod_id ? ` · Mod ${requirement.mod_id}` : ""} · {requirement.status === "detected" ? "Detected locally" : requirement.status === "warning" ? "Compatibility warning" : "Review manually"}</small>
-                                            {#if requirement.detail}
-                                                <small>{requirement.detail}</small>
-                                            {/if}
-                                            {#if requirement.excerpt}
-                                                <small class="author-requirement-excerpt">Matched: {requirement.excerpt}</small>
-                                            {/if}
+                                {/if}
+                                {#if selectedFileChangelogHtml}
+                                    <div class="selected-file-changelog">
+                                        <span>File changelog</span>
+                                        <div class="nexus-rich-text selected-file-rich-text">
+                                            {@html selectedFileChangelogHtml}
                                         </div>
-                                        {#if requirement.mod_id || requirement.url || requirement.match}
-                                            <button on:click={() => openAuthorRequirement(requirement)}>
-                                                {requirement.mod_id ? "Details" : requirement.match ? "Folder" : "Open"}
-                                            </button>
-                                        {/if}
                                     </div>
-                                {/each}
+                                {/if}
                             </div>
                         {/if}
-                        {#if resolvedNestedDependencies.length > 0}
-                            <div class="dependency-nested-section">
-                                <span class="dependency-subtitle">Nested dependencies</span>
-                                {#each resolvedNestedDependencies as source (source.key)}
+                    {/snippet}
+
+                    {#snippet dependencyBoxBlock()}
+                        <div class="dependency-box" bind:this={detailDependenciesSectionElement}>
+                            <div class="dependency-box-head">
+                                <span class="detail-section-title">Dependencies</span>
+                                <button
+                                    type="button"
+                                    disabled={!nestedDependencyCheckAvailable() || isResolvingNestedDependencies}
+                                    title={nestedDependencyCheckAvailable()
+                                        ? `Check up to ${MAX_NESTED_DEPENDENCY_FILES} dependency files across ${MAX_NESTED_DEPENDENCY_DEPTH} nested levels`
+                                        : "No dependency file IDs were returned for recursive checks"}
+                                    on:click={resolveNestedDependencies}
+                                >
+                                    {isResolvingNestedDependencies ? "Checking..." : "Check Nested"}
+                                </button>
+                            </div>
+                            <div class="dependency-readiness-grid" aria-label="Dependency readiness summary">
+                                <span
+                                    class="dependency-readiness-chip"
+                                    class:dependency-readiness-ok={resolvedDependencies.length > 0 && dependencyIssueCount === 0 && dependencyReviewCount === 0}
+                                    class:dependency-readiness-warn={dependencyIssueCount > 0}
+                                    class:dependency-readiness-review={dependencyReviewCount > 0 && dependencyIssueCount === 0}
+                                    title={apiDependencyReadinessLabel()}
+                                >
+                                    <small>API</small>
+                                    <b>{resolvedDependencies.length}</b>
+                                    <span>{apiDependencyReadinessLabel()}</span>
+                                </span>
+                                <span
+                                    class="dependency-readiness-chip"
+                                    class:dependency-readiness-ok={selectedAuthorRequirements.length > 0 && authorRequirementWarningCount === 0 && authorRequirementReviewCount === 0}
+                                    class:dependency-readiness-warn={authorRequirementWarningCount > 0}
+                                    class:dependency-readiness-review={authorRequirementReviewCount > 0 && authorRequirementWarningCount === 0}
+                                    title={authorRequirementReadinessLabel()}
+                                >
+                                    <small>Author</small>
+                                    <b>{selectedAuthorRequirements.length}</b>
+                                    <span>{authorRequirementReadinessLabel()}</span>
+                                </span>
+                                <span
+                                    class="dependency-readiness-chip"
+                                    class:dependency-readiness-ok={resolvedNestedDependencies.length > 0 && nestedDependencyIssueCount === 0 && nestedDependencyReviewCount === 0}
+                                    class:dependency-readiness-warn={nestedDependencyIssueCount > 0}
+                                    class:dependency-readiness-review={(isResolvingNestedDependencies || nestedDependencyReviewCount > 0 || (resolvedNestedDependencies.length === 0 && nestedDependencyCheckAvailable())) && nestedDependencyIssueCount === 0}
+                                    title={nestedDependencyReadinessLabel()}
+                                >
+                                    <small>Nested</small>
+                                    <b>{resolvedNestedDependencies.length}</b>
+                                    <span>{nestedDependencyReadinessLabel()}</span>
+                                </span>
+                            </div>
+                            {#if nestedDependencySummary}
+                                <span class="dependency-empty">{nestedDependencySummary}</span>
+                            {/if}
+                            {#if selectedDependencyMessage}
+                                <span class="dependency-empty">{selectedDependencyMessage}</span>
+                            {/if}
+                            {#if resolvedDependencies.length === 0}
+                                <span class="dependency-empty">{selectedDependencyMessage ? "Still review the author directions for manual requirements." : "No API-listed dependencies for the selected file. Still review the author directions for manual requirements."}</span>
+                            {:else}
+                                {#each resolvedDependencies as dependency}
                                     <div
                                         class="dependency-row"
-                                        class:dependency-installed={source.dependency.status === "installed"}
-                                        class:dependency-missing={source.dependency.status === "missing"}
-                                        class:dependency-mismatch={source.dependency.status === "version-mismatch"}
-                                        class:dependency-review={source.dependency.status === "review"}
+                                        class:dependency-installed={dependency.status === "installed"}
+                                        class:dependency-missing={dependency.status === "missing"}
+                                        class:dependency-mismatch={dependency.status === "version-mismatch"}
+                                        class:dependency-review={dependency.status === "review"}
                                     >
                                         <div class="dependency-head">
-                                            <span>{source.dependency.mod_name}</span>
-                                            <b>{source.dependency.status === "installed" ? "Installed" : source.dependency.status === "missing" ? "Missing" : source.dependency.status === "version-mismatch" ? "Version" : "Review"}</b>
+                                            <span>{dependency.mod_name}</span>
+                                            <b>{dependency.status === "installed" ? "Installed" : dependency.status === "missing" ? "Missing" : dependency.status === "version-mismatch" ? "Version" : "Review"}</b>
                                         </div>
-                                        <small>From {source.parentName} · depth {source.depth}</small>
-                                        <small>{source.dependency.file_name ?? source.dependency.group_name ?? "Candidate file"} {dependencyRequirementLabel(source.dependency) ? `· ${dependencyRequirementLabel(source.dependency)}` : ""}</small>
-                                        <small>{nestedDependencyStatusLabel(source)}</small>
+                                        <small>{dependency.file_name ?? dependency.group_name ?? "Candidate file"} {dependencyRequirementLabel(dependency) ? `· ${dependencyRequirementLabel(dependency)}` : ""}</small>
+                                        <small>{dependencyStatusLabel(dependency)}</small>
                                         <div class="dependency-actions">
-                                            {#if source.dependency.mod_id}
+                                            {#if dependency.mod_id}
                                                 <button
                                                     class="dependency-primary-action"
-                                                    class:dependency-primary-warn={source.dependency.status === "missing" || source.dependency.status === "version-mismatch"}
-                                                    title={dependencyPrimaryActionTitle(source.dependency)}
-                                                    on:click={() => openDependencyDetails(source.dependency)}
+                                                    class:dependency-primary-warn={dependency.status === "missing" || dependency.status === "version-mismatch"}
+                                                    title={dependencyPrimaryActionTitle(dependency)}
+                                                    on:click={() => openDependencyDetails(dependency)}
                                                 >
-                                                    {dependencyPrimaryActionLabel(source.dependency)}
+                                                    {dependencyPrimaryActionLabel(dependency)}
                                                 </button>
-                                                <button on:click={() => openDependencyPage(source.dependency)}>Nexus</button>
+                                                <button on:click={() => openDependencyPage(dependency)}>Nexus</button>
                                             {/if}
-                                            {#if source.dependency.match}
-                                                <button on:click={() => openDependencyLocation(source.dependency)}>Open Folder</button>
+                                            {#if dependency.match}
+                                                <button on:click={() => openDependencyLocation(dependency)}>Open Folder</button>
                                             {/if}
                                         </div>
                                     </div>
                                 {/each}
-                            </div>
-                        {/if}
-                    </div>
+                            {/if}
+                            {#if selectedAuthorRequirements.length > 0}
+                                <div class="author-requirement-section">
+                                    <span class="dependency-subtitle">Author requirement hints</span>
+                                    <span class="dependency-empty">These came from Nexus author text, selected file notes, or changelog text and are not API dependency rows.</span>
+                                    {#each selectedAuthorRequirements as requirement (requirement.key)}
+                                        <div
+                                            class="author-requirement-row"
+                                            class:author-requirement-detected={requirement.status === "detected"}
+                                            class:author-requirement-warning={requirement.status === "warning"}
+                                        >
+                                            <div class="author-requirement-main">
+                                                <span>{requirement.label}</span>
+                                                <small>{requirement.source}{requirement.mod_id ? ` · Mod ${requirement.mod_id}` : ""} · {requirement.status === "detected" ? "Detected locally" : requirement.status === "warning" ? "Compatibility warning" : "Review manually"}</small>
+                                                {#if requirement.detail}
+                                                    <small>{requirement.detail}</small>
+                                                {/if}
+                                                {#if requirement.excerpt}
+                                                    <small class="author-requirement-excerpt">Matched: {requirement.excerpt}</small>
+                                                {/if}
+                                            </div>
+                                            {#if requirement.mod_id || requirement.url || requirement.match}
+                                                <button on:click={() => openAuthorRequirement(requirement)}>
+                                                    {requirement.mod_id ? "Details" : requirement.match ? "Folder" : "Open"}
+                                                </button>
+                                            {/if}
+                                        </div>
+                                    {/each}
+                                </div>
+                            {/if}
+                            {#if resolvedNestedDependencies.length > 0}
+                                <div class="dependency-nested-section">
+                                    <span class="dependency-subtitle">Nested dependencies</span>
+                                    {#each resolvedNestedDependencies as source (source.key)}
+                                        <div
+                                            class="dependency-row"
+                                            class:dependency-installed={source.dependency.status === "installed"}
+                                            class:dependency-missing={source.dependency.status === "missing"}
+                                            class:dependency-mismatch={source.dependency.status === "version-mismatch"}
+                                            class:dependency-review={source.dependency.status === "review"}
+                                        >
+                                            <div class="dependency-head">
+                                                <span>{source.dependency.mod_name}</span>
+                                                <b>{source.dependency.status === "installed" ? "Installed" : source.dependency.status === "missing" ? "Missing" : source.dependency.status === "version-mismatch" ? "Version" : "Review"}</b>
+                                            </div>
+                                            <small>From {source.parentName} · depth {source.depth}</small>
+                                            <small>{source.dependency.file_name ?? source.dependency.group_name ?? "Candidate file"} {dependencyRequirementLabel(source.dependency) ? `· ${dependencyRequirementLabel(source.dependency)}` : ""}</small>
+                                            <small>{nestedDependencyStatusLabel(source)}</small>
+                                            <div class="dependency-actions">
+                                                {#if source.dependency.mod_id}
+                                                    <button
+                                                        class="dependency-primary-action"
+                                                        class:dependency-primary-warn={source.dependency.status === "missing" || source.dependency.status === "version-mismatch"}
+                                                        title={dependencyPrimaryActionTitle(source.dependency)}
+                                                        on:click={() => openDependencyDetails(source.dependency)}
+                                                    >
+                                                        {dependencyPrimaryActionLabel(source.dependency)}
+                                                    </button>
+                                                    <button on:click={() => openDependencyPage(source.dependency)}>Nexus</button>
+                                                {/if}
+                                                {#if source.dependency.match}
+                                                    <button on:click={() => openDependencyLocation(source.dependency)}>Open Folder</button>
+                                                {/if}
+                                            </div>
+                                        </div>
+                                    {/each}
+                                </div>
+                            {/if}
+                        </div>
+                    {/snippet}
+
+                    {#if detailDependenciesFirst}
+                        {@render dependencyBoxBlock()}
+                        {@render selectedFileNotesBlock()}
+                    {:else}
+                        {@render selectedFileNotesBlock()}
+                        {@render dependencyBoxBlock()}
+                    {/if}
 
                 </div>
             </div>
@@ -10150,6 +10169,14 @@
     }
 
     .dependency-box {
+        order: 4;
+    }
+
+    .detail-side-dependencies-first .dependency-box {
+        order: 3;
+    }
+
+    .detail-side-dependencies-first .selected-file-notes {
         order: 4;
     }
 

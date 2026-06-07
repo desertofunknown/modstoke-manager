@@ -23,6 +23,8 @@ The install plan now also shows dependency handoff readiness in the deployment a
 
 Inferred author runtime/library hints now require requirement, install, dependency, runtime/framework/library, or incompatibility warning context, so ordinary support/compatibility descriptions and credits/attribution text do not become dependency review items.
 
+Detail drawers now move the Dependencies section above selected-file notes whenever dependency warnings, reviews, nested checks, or author hints exist, keeping requirement work visible in both layout and navigation order before long file changelogs or notes consume the side pane.
+
 The Files panel now exposes `Use Recommended` whenever a nonrecommended file is selected, adds All/current-Main/Review/Selected filters for mixed file sets, and the deployment footer shows `Review File Choice` when the selected file is archived, old, or removed so users can recover before Vortex handoff without leaving the detail drawer.
 
 The Nexus/Vortex detail and account actions now include a local-only `Refresh Inventory` scan that reconciles Vortex-managed packages, native installs, and manual/local installs after the user finishes deployment in Vortex without making another Nexus API request.
