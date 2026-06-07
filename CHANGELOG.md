@@ -11,6 +11,7 @@
   - Compacted the All Stores Nexus/Vortex preview by hiding low-priority account actions, rate meters, summary cards, feed/filter controls, and empty queue chrome so the merged workspace shows actionable Nexus rows sooner while keeping the full controls in the dedicated Nexus/Vortex source.
   - Tightened embedded Nexus/Vortex catalog rows so All Stores previews show the Nexus mod identity, preview image, install/detail/open actions, and local install state without pushing primary row actions below the lower frame.
   - Added bottom safe-area spacing to the Mods workspace and catalog scrollers so the last visible rows and action buttons can scroll above the ragged lower frame edge instead of being clipped by the transparent window bleed.
+  - Added row-aware proximity snapping to SOTF Mods and Nexus/Vortex catalog scrollers so the merged All Stores workspace is less likely to stop with row titles or install/detail actions clipped under an embedded section header.
   - Tightened the Nexus catalog bottom scroll guard so the measured list viewport stops above the lower frame mask and keeps row install/detail/open controls readable while scrolling.
   - Added a shared Mods workspace search box that drives both the SOTF Mods and Nexus/Vortex sources, carries the search term across source switches, and hides the duplicate embedded search fields.
   - Guarded SOTF Mods online catalog reloads so clearing the shared All Stores search immediately restores the catalog and stale empty search responses cannot overwrite the cleared results.

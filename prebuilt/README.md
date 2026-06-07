@@ -13,6 +13,8 @@ Nexus catalog thumbnails now expose compact open-preview actions for already-loa
 
 Nexus catalog scrolling now reserves a measured bottom guard inside the list viewport so row install/detail/open controls stay above the lower frame mask in both dedicated Nexus/Vortex and All Stores layouts.
 
+SOTF Mods and Nexus/Vortex catalog rows now use row-aware proximity snapping so the merged All Stores workspace is less likely to stop with row titles or install/detail actions clipped under an embedded section header after wheel scrolling.
+
 The All Stores Nexus/Vortex preview keeps the full controls in the dedicated source while hiding low-priority account actions, rate meters, summary cards, feed/filter controls, and empty queue chrome in the merged preview so Nexus rows appear sooner.
 
 Embedded Nexus/Vortex rows in All Stores also use tighter thumbnails, one-line summaries, and preview-scoped primary actions so install/detail/open controls remain visible in the shared workspace instead of dropping below the lower frame.

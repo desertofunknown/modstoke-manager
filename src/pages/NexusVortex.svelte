@@ -8538,6 +8538,10 @@
         gap: 0.34em;
     }
 
+    .nexus-embedded-store-preview .nexus-scroller {
+        scroll-snap-type: y mandatory;
+    }
+
     .nexus-embedded-store-preview .api-note {
         padding: 0.28em 0.55em;
     }
@@ -9483,9 +9487,12 @@
         height: var(--nexus-scroller-target-height);
         max-height: var(--nexus-scroller-target-height);
         min-height: min(var(--nexus-scroller-target-height), 100%);
+        overscroll-behavior-y: auto;
         overflow-y: auto;
         padding: 0 0.45em var(--nexus-scroll-bottom-guard) 0;
         scroll-padding-bottom: var(--nexus-scroll-bottom-guard);
+        scroll-padding-top: 0.3em;
+        scroll-snap-type: y proximity;
         scrollbar-gutter: stable;
     }
 
@@ -9500,6 +9507,9 @@
         grid-template-columns: var(--nexus-thumb-width) minmax(0, 1fr);
         min-height: var(--nexus-card-min-height);
         overflow: hidden;
+        scroll-margin-top: 0.3em;
+        scroll-snap-align: start;
+        scroll-snap-stop: always;
     }
 
     .nexus-installed {

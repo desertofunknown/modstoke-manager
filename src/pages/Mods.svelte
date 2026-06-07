@@ -941,7 +941,9 @@
     }
 
     .sotf-embedded-store-preview .scroller {
+        overscroll-behavior-y: auto;
         padding-bottom: clamp(0.45em, 2.2vh, 1em);
+        scroll-snap-type: y mandatory;
     }
 
     .sotf-embedded-store-preview :global(.description) {
@@ -992,8 +994,16 @@
         padding-bottom: calc(0.6em + var(--app-bottom-safe-area, 42px));
         position: relative;
         scroll-padding-bottom: var(--app-bottom-safe-area, 42px);
+        scroll-padding-top: 0.3em;
+        scroll-snap-type: y proximity;
         scrollbar-gutter: stable;
         width: 100%;
+    }
+
+    .scroller :global(.feature-container) {
+        scroll-margin-top: 0.3em;
+        scroll-snap-align: start;
+        scroll-snap-stop: always;
     }
 
     .grid {
