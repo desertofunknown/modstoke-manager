@@ -7,6 +7,7 @@
   - Merged the SOTF Mods and Nexus/Vortex storefronts into one top-level Mods workspace with a local source switch.
   - Added an All Stores Mods workspace mode that stacks SOTF Mods and Nexus/Vortex in one shared search surface while keeping each source's download/install actions reachable.
   - Balanced All Stores section heights so SOTF Mods and Nexus/Vortex are both discoverable in the shared Mods workspace before switching into a dedicated source view.
+  - Added measured All Stores preview sizing and compact embedded SOTF Mods rows so complete native install/detail rows and Nexus install/detail/open actions are visible in the merged workspace while full SOTF filters and facts remain in the dedicated source.
   - Compacted the All Stores Nexus/Vortex preview by hiding low-priority account actions, rate meters, summary cards, feed/filter controls, and empty queue chrome so the merged workspace shows actionable Nexus rows sooner while keeping the full controls in the dedicated Nexus/Vortex source.
   - Tightened embedded Nexus/Vortex catalog rows so All Stores previews show the Nexus mod identity, preview image, install/detail/open actions, and local install state without pushing primary row actions below the lower frame.
   - Added bottom safe-area spacing to the Mods workspace and catalog scrollers so the last visible rows and action buttons can scroll above the ragged lower frame edge instead of being clipped by the transparent window bleed.

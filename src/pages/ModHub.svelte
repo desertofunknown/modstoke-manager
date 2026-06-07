@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onDestroy, onMount, tick } from "svelte";
     import SOTFMods from "./Mods.svelte";
     import NexusVortex from "./NexusVortex.svelte";
     import LucideCloudDownload from "~icons/lucide/cloud-download";
@@ -17,6 +17,11 @@
     let activeSource: ModHubSource = "all";
     let sharedSearchTerm = "";
     let sharedSearchVersion = 0;
+    let modHubElement: HTMLDivElement | null = null;
+    let sourcePanelElement: HTMLDivElement | null = null;
+    let hubLayoutObserver: ResizeObserver | null = null;
+    let hubLayoutFrame: number | null = null;
+    let hubWindowResizeHandler: (() => void) | null = null;
 
     onMount(() => {
         const savedSource = localStorage.getItem(MOD_HUB_SOURCE_KEY);
@@ -29,7 +34,20 @@
             sharedSearchTerm = savedSearch;
             sharedSearchVersion += 1;
         }
+
+        setupHubLayoutObserver();
+        void measureHubLayoutAfterTick();
     });
+
+    onDestroy(() => {
+        cleanupHubLayoutObserver();
+    });
+
+    $: {
+        activeSource;
+        sharedSearchTerm;
+        void measureHubLayoutAfterTick();
+    }
 
     function selectSource(source: ModHubSource) {
         activeSource = source;
@@ -49,9 +67,98 @@
     function clearSharedSearch() {
         setSharedSearchTerm("");
     }
+
+    function setupHubLayoutObserver() {
+        hubWindowResizeHandler = () => scheduleHubLayoutMeasure();
+        window.addEventListener("resize", hubWindowResizeHandler);
+
+        if ("ResizeObserver" in window) {
+            hubLayoutObserver = new ResizeObserver(() => scheduleHubLayoutMeasure());
+            if (modHubElement) {
+                hubLayoutObserver.observe(modHubElement);
+            }
+            if (sourcePanelElement) {
+                hubLayoutObserver.observe(sourcePanelElement);
+            }
+        }
+
+        scheduleHubLayoutMeasure();
+    }
+
+    function cleanupHubLayoutObserver() {
+        if (hubWindowResizeHandler) {
+            window.removeEventListener("resize", hubWindowResizeHandler);
+            hubWindowResizeHandler = null;
+        }
+
+        hubLayoutObserver?.disconnect();
+        hubLayoutObserver = null;
+
+        if (hubLayoutFrame !== null) {
+            window.cancelAnimationFrame(hubLayoutFrame);
+            hubLayoutFrame = null;
+        }
+    }
+
+    async function measureHubLayoutAfterTick() {
+        await tick();
+        if (hubLayoutObserver) {
+            hubLayoutObserver.disconnect();
+            if (modHubElement) {
+                hubLayoutObserver.observe(modHubElement);
+            }
+            if (sourcePanelElement) {
+                hubLayoutObserver.observe(sourcePanelElement);
+            }
+        }
+        scheduleHubLayoutMeasure();
+    }
+
+    function scheduleHubLayoutMeasure() {
+        if (hubLayoutFrame !== null) {
+            return;
+        }
+
+        hubLayoutFrame = window.requestAnimationFrame(() => {
+            hubLayoutFrame = null;
+            measureHubLayout();
+        });
+    }
+
+    function measureHubLayout() {
+        const panel = sourcePanelElement;
+        if (!panel || activeSource !== "all") {
+            return;
+        }
+
+        const panelRect = panel.getBoundingClientRect();
+        const panelStyle = getComputedStyle(panel);
+        const panelGap = cssPixels(panelStyle.rowGap || panelStyle.gap);
+        const width = Math.max(320, panelRect.width);
+        const height = Math.max(360, panelRect.height);
+        const isShort = height < 720;
+        const isNarrow = width < 860;
+        const sectionChrome = isNarrow ? 94 : 82;
+        const usableHeight = Math.max(320, height - panelGap - (sectionChrome * 2));
+        const sotfRatio = isShort ? 0.46 : 0.5;
+        const sotfHeight = clampNumber(usableHeight * sotfRatio, isNarrow ? 315 : 330, isShort ? 365 : 430);
+        const nexusHeight = clampNumber(usableHeight - sotfHeight, isNarrow ? 300 : 320, isShort ? 420 : 520);
+
+        panel.style.setProperty("--all-sotf-preview-height", `${Math.round(sotfHeight)}px`);
+        panel.style.setProperty("--all-nexus-preview-height", `${Math.round(nexusHeight)}px`);
+    }
+
+    function cssPixels(value: string): number {
+        const parsed = Number.parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function clampNumber(value: number, min: number, max: number): number {
+        return Math.min(max, Math.max(min, value));
+    }
 </script>
 
-<div class="mod-hub">
+<div class="mod-hub" bind:this={modHubElement}>
     <div class="hub-toolbar">
         <div class="source-switch" aria-label="Mod source">
             <button
@@ -107,7 +214,7 @@
         </label>
     </div>
 
-    <div class="source-panel" class:all-source-panel={activeSource === "all"}>
+    <div class="source-panel" class:all-source-panel={activeSource === "all"} bind:this={sourcePanelElement}>
         {#if activeSource === "sotf"}
             <SOTFMods
                 sharedSearchTerm={sharedSearchTerm}
@@ -125,6 +232,7 @@
                 </div>
                 <div class="source-section-body">
                     <SOTFMods
+                        embeddedStorePreview={true}
                         sharedSearchTerm={sharedSearchTerm}
                         sharedSearchVersion={sharedSearchVersion}
                         showEmbeddedSearch={false}
@@ -317,11 +425,11 @@
     }
 
     .all-source-panel .source-section-body {
-        height: clamp(23em, 43vh, 33em);
+        height: var(--all-sotf-preview-height, clamp(23em, 43vh, 33em));
     }
 
     .all-source-panel .nexus-source-section-body {
-        height: clamp(34em, 58vh, 45em);
+        height: var(--all-nexus-preview-height, clamp(34em, 58vh, 45em));
     }
 
     .source-section {
@@ -426,7 +534,11 @@
 
         .all-source-panel .source-section-body,
         .all-source-panel .nexus-source-section-body {
-            height: clamp(32em, 82vh, 52em);
+            height: var(--all-sotf-preview-height, clamp(32em, 82vh, 52em));
+        }
+
+        .all-source-panel .nexus-source-section-body {
+            height: var(--all-nexus-preview-height, clamp(32em, 82vh, 52em));
         }
     }
 
@@ -450,11 +562,11 @@
         }
 
         .all-source-panel .source-section-body {
-            height: clamp(20em, 39vh, 28em);
+            height: var(--all-sotf-preview-height, clamp(20em, 39vh, 28em));
         }
 
         .all-source-panel .nexus-source-section-body {
-            height: clamp(29em, 53vh, 38em);
+            height: var(--all-nexus-preview-height, clamp(29em, 53vh, 38em));
         }
     }
 </style>

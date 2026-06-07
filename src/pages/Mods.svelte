@@ -26,6 +26,7 @@
     export let sharedSearchTerm = "";
     export let sharedSearchVersion = 0;
     export let showEmbeddedSearch = true;
+    export let embeddedStorePreview = false;
 
     const dispatch = createEventDispatcher<{ searchChange: string }>();
 
@@ -688,7 +689,12 @@
 
 </script>
 
-<div class="column mods-page" bind:this={modsPageElement}>
+<div
+    class="column mods-page"
+    class:sotf-embedded-store-preview={embeddedStorePreview}
+    class:sotf-embedded-controls-needed={embeddedStorePreview && (installedSelected || selectedCategory !== "all" || selectedType !== "all" || selectedCompatibility !== "all")}
+    bind:this={modsPageElement}
+>
     {#if $isPathValid}
         <div class="row-center mods-toolbar">
             {#if showEmbeddedSearch}
@@ -916,6 +922,63 @@
         height: 100%;
         justify-content: flex-start;
         min-height: 0;
+    }
+
+    .sotf-embedded-store-preview {
+        --sotf-thumb-height: clamp(58px, 6.4vh, 74px);
+        --sotf-thumb-width: clamp(108px, 11vw, 148px);
+        gap: clamp(0.24em, 0.45vh, 0.36em);
+    }
+
+    .sotf-embedded-store-preview:not(.sotf-embedded-controls-needed) .mods-toolbar,
+    .sotf-embedded-store-preview:not(.sotf-embedded-controls-needed) .filter-row {
+        display: none;
+    }
+
+    .sotf-embedded-store-preview .mods-note {
+        font-size: 0.7em;
+        padding: 0.28em 0.58em;
+    }
+
+    .sotf-embedded-store-preview .scroller {
+        padding-bottom: clamp(0.45em, 2.2vh, 1em);
+    }
+
+    .sotf-embedded-store-preview :global(.description) {
+        margin-bottom: 0.32em;
+        padding: 0.46em;
+    }
+
+    .sotf-embedded-store-preview :global(.mod-card-row) {
+        gap: 0.48em;
+        grid-template-columns: var(--sotf-thumb-width) minmax(0, 1fr) minmax(7.8em, 9.6em);
+    }
+
+    .sotf-embedded-store-preview :global(.description-content.header-desc) {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 1;
+        line-clamp: 1;
+        overflow: hidden;
+    }
+
+    .sotf-embedded-store-preview :global(.source-pill) {
+        font-size: 0.68em;
+        padding: 0.2em 0.42em;
+    }
+
+    .sotf-embedded-store-preview :global(.fact-row) {
+        display: none;
+    }
+
+    .sotf-embedded-store-preview :global(.mod-actions) {
+        gap: 0.28em;
+    }
+
+    .sotf-embedded-store-preview :global(.mod-actions button) {
+        font-size: 0.72em;
+        min-height: 2.12em;
+        padding: 0.34em 0.5em;
     }
 
     .scroller {
