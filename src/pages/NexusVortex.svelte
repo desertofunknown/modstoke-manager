@@ -7634,15 +7634,19 @@
                             on:error={(event) => handleNexusImageError(event, NEXUS_DETAIL_PLACEHOLDER_IMAGE)}
                             alt=""
                         />
-                        {#if currentDetailPreviewUrls.length > 1}
-                            <div class="detail-media-nav" aria-label={`${selectedMod.name} preview images`}>
-                                <button type="button" aria-label="Previous detail preview image" title="Previous preview image" on:click={(event) => cycleSelectedDetailPreview(currentDetailPreviewUrls, -1, event)}>
-                                    <LucideChevronLeft class="detail-media-icon" aria-hidden="true" />
-                                </button>
+                        {#if currentDetailPreviewUrls.length > 0}
+                            <div class="detail-media-nav" class:detail-media-nav-single={currentDetailPreviewUrls.length === 1} aria-label={`${selectedMod.name} preview images`}>
+                                {#if currentDetailPreviewUrls.length > 1}
+                                    <button type="button" aria-label="Previous detail preview image" title="Previous preview image" on:click={(event) => cycleSelectedDetailPreview(currentDetailPreviewUrls, -1, event)}>
+                                        <LucideChevronLeft class="detail-media-icon" aria-hidden="true" />
+                                    </button>
+                                {/if}
                                 <span><LucideImages class="detail-media-icon" aria-hidden="true" />{currentDetailPreviewIndex + 1}/{currentDetailPreviewUrls.length}</span>
-                                <button type="button" aria-label="Next detail preview image" title="Next preview image" on:click={(event) => cycleSelectedDetailPreview(currentDetailPreviewUrls, 1, event)}>
-                                    <LucideChevronRight class="detail-media-icon" aria-hidden="true" />
-                                </button>
+                                {#if currentDetailPreviewUrls.length > 1}
+                                    <button type="button" aria-label="Next detail preview image" title="Next preview image" on:click={(event) => cycleSelectedDetailPreview(currentDetailPreviewUrls, 1, event)}>
+                                        <LucideChevronRight class="detail-media-icon" aria-hidden="true" />
+                                    </button>
+                                {/if}
                                 <button type="button" aria-label="Open current detail preview image" title="Open current preview image" on:click={openSelectedDetailPreviewImage}>
                                     <LucideExternalLink class="detail-media-icon" aria-hidden="true" />
                                 </button>
@@ -9713,6 +9717,10 @@
         padding: 0;
         -webkit-mask-image: none;
         mask-image: none;
+    }
+
+    .detail-media-nav-single {
+        max-width: min(8.25em, calc(100% - 1.3em));
     }
 
     .detail-media-nav span {
