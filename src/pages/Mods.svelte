@@ -2280,6 +2280,188 @@
         min-height: 2.7em;
     }
 
+    @media (max-height: 820px) {
+        .sotf-detail-backdrop {
+            align-items: stretch;
+            padding: clamp(0.45em, 1.2vh, 0.9em);
+        }
+
+        .sotf-detail-panel {
+            gap: 0.52em;
+            max-height: calc(100vh - clamp(0.7em, 2vh, 1.4em));
+            min-height: 0;
+            padding: clamp(0.56em, 1.1vh, 0.8em);
+        }
+
+        .sotf-detail-header {
+            gap: 0.65em;
+        }
+
+        .sotf-detail-close,
+        .sotf-detail-open-page {
+            min-height: 2.35em;
+            min-width: 7.8em;
+            padding: 0.34em 0.62em;
+        }
+
+        .sotf-detail-grid {
+            gap: 0.52em;
+            grid-template-columns: minmax(0, 1.16fr) minmax(18em, 0.84fr);
+        }
+
+        .sotf-detail-main,
+        .sotf-detail-side {
+            gap: 0.52em;
+        }
+
+        .sotf-detail-media {
+            height: clamp(140px, 24vh, 220px);
+        }
+
+        .sotf-detail-preview-count {
+            left: 0.48em;
+            top: 0.48em;
+        }
+
+        .sotf-detail-preview-controls {
+            bottom: 0.48em;
+            right: 0.48em;
+        }
+
+        .sotf-detail-preview-controls button {
+            height: 1.95em;
+            min-width: 1.95em;
+        }
+
+        .sotf-detail-description,
+        .sotf-detail-facts,
+        .sotf-detail-community,
+        .sotf-detail-install-target,
+        .sotf-detail-dependencies,
+        .sotf-detail-versions,
+        .sotf-detail-footer {
+            padding: 0.55em;
+        }
+
+        .sotf-detail-description {
+            min-height: min(210px, 28vh);
+        }
+
+        .sotf-rich-text {
+            font-size: 0.86em;
+            line-height: 1.36;
+            margin-top: 0.42em;
+        }
+
+        .sotf-rich-text :global(p),
+        .sotf-rich-text :global(ul),
+        .sotf-rich-text :global(ol),
+        .sotf-rich-text :global(blockquote),
+        .sotf-rich-text :global(pre),
+        .sotf-rich-text :global(.store-rich-table-wrap) {
+            margin-top: 0.46em;
+        }
+
+        .sotf-rich-text :global(.store-rich-media img) {
+            max-height: 260px;
+        }
+
+        .sotf-detail-facts {
+            gap: 0.34em 0.48em;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .sotf-detail-community,
+        .sotf-detail-install-target,
+        .sotf-detail-dependencies,
+        .sotf-detail-versions {
+            gap: 0.4em;
+        }
+
+        .sotf-detail-community-grid {
+            gap: 0.32em 0.48em;
+        }
+
+        .sotf-detail-community-actions button,
+        .sotf-detail-dependency-actions button {
+            min-height: 1.95em;
+            padding: 0.3em 0.45em;
+        }
+
+        .sotf-detail-dependency-row,
+        .sotf-detail-version-row {
+            gap: 0.25em;
+            padding: 0.38em 0.46em;
+        }
+
+        .sotf-detail-versions {
+            max-height: clamp(108px, 17vh, 170px);
+        }
+
+        .sotf-version-rich-text {
+            font-size: 0.74em;
+            line-height: 1.28;
+        }
+
+        .sotf-detail-footer {
+            gap: 0.5em;
+            grid-template-columns: minmax(10em, 0.56fr) minmax(0, 1fr);
+        }
+
+        .sotf-detail-footer-copy {
+            gap: 0.2em;
+        }
+
+        .sotf-detail-footer-copy small {
+            font-size: 0.72em;
+            line-height: 1.18;
+        }
+
+        .sotf-detail-footer-actions {
+            gap: 0.42em;
+            grid-template-columns: minmax(0, 1fr) minmax(8em, auto);
+        }
+    }
+
+    @media (max-height: 700px) {
+        .sotf-detail-panel {
+            gap: 0.44em;
+        }
+
+        .sotf-detail-grid {
+            gap: 0.44em;
+        }
+
+        .sotf-detail-main,
+        .sotf-detail-side {
+            gap: 0.44em;
+        }
+
+        .sotf-detail-media {
+            height: clamp(112px, 20vh, 150px);
+        }
+
+        .sotf-detail-description {
+            min-height: min(160px, 25vh);
+        }
+
+        .sotf-detail-community small {
+            display: none;
+        }
+
+        .sotf-detail-versions {
+            max-height: 120px;
+        }
+
+        .sotf-detail-footer {
+            grid-template-columns: 1fr;
+        }
+
+        .sotf-detail-footer-copy {
+            display: none;
+        }
+    }
+
     @media (max-width: 850px) {
         .search-input {
             flex-basis: 100%;

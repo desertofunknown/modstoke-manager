@@ -39,6 +39,8 @@ SOTF Mods rows now show compact image counts and left/right preview controls whe
 
 SOTF Mods details now open in a native drawer that keeps the preview image, mod name, category/type/author context, and description first, then summarizes source state, install target, dependency records, and bottom deployment/page actions without moving install controls above the mod identity.
 
+SOTF Mods detail drawers now use short-height density rules on non-fullscreen windows, reducing preview media, card spacing, dependency/version row padding, and footer chrome together so the author description and bottom deployment actions stay usable.
+
 SOTF Mods detail descriptions now load the full author text on demand and preserve safe common BBCode/HTML/Markdown structure such as headings, emphasis, links, lists, quotes, code blocks, tables, divider lines, and bounded images, while compact native catalog rows strip markup into readable one-line summaries.
 
 SOTF Mods details also include compact version/changelog records from the per-mod detail endpoint, showing latest/older releases, dates, download counts, filenames, and safe formatted changelog text without moving deployment actions away from the bottom.
