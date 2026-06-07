@@ -24,7 +24,8 @@
     let hubWindowResizeHandler: (() => void) | null = null;
 
     onMount(() => {
-        const savedSource = localStorage.getItem(MOD_HUB_SOURCE_KEY);
+        localStorage.removeItem(MOD_HUB_SOURCE_KEY);
+        const savedSource = sessionStorage.getItem(MOD_HUB_SOURCE_KEY);
         if (savedSource === "all" || savedSource === "sotf" || savedSource === "nexus") {
             activeSource = savedSource;
         }
@@ -51,7 +52,8 @@
 
     function selectSource(source: ModHubSource) {
         activeSource = source;
-        localStorage.setItem(MOD_HUB_SOURCE_KEY, source);
+        localStorage.removeItem(MOD_HUB_SOURCE_KEY);
+        sessionStorage.setItem(MOD_HUB_SOURCE_KEY, source);
     }
 
     function setSharedSearchTerm(value: string) {

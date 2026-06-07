@@ -6,6 +6,7 @@
   - Refreshed the manager UI toward a darker Sons-style options shell with flatter controls and chromatic hover states.
   - Merged the SOTF Mods and Nexus/Vortex storefronts into one top-level Mods workspace with a local source switch.
   - Added an All Stores Mods workspace mode that stacks SOTF Mods and Nexus/Vortex in one shared search surface while keeping each source's download/install actions reachable.
+  - Made All Stores the fresh-launch Mods workspace default, while dedicated SOTF Mods or Nexus/Vortex source choices stay session-local instead of persisting across app restarts.
   - Balanced All Stores section heights so SOTF Mods and Nexus/Vortex are both discoverable in the shared Mods workspace before switching into a dedicated source view.
   - Let the frameless manager start wider and taller on larger monitors while keeping the same small-screen minimums, and widened the shared content/detail rails so catalog rows and drawers use that room without forcing fullscreen.
   - Added measured All Stores preview sizing and compact embedded SOTF Mods rows so complete native install/detail rows and Nexus install/detail/open actions are visible in the merged workspace while full SOTF filters and facts remain in the dedicated source.
