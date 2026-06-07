@@ -66,12 +66,22 @@
     type UpdateTone = "update" | "current" | "tracked" | "review" | "neutral";
     type InstallPlacement = "auto" | "bepinex-plugin" | "redloader-mod" | "redloader-library" | "manual-review";
     type VersionComparison = "same" | "remote-newer" | "local-newer" | "different" | "unknown";
+    type DetailSectionTarget = "description" | "files" | "dependencies" | "plan" | "changelog" | "deployment";
+    type DeploymentChecklistTone = "ready" | "review" | "blocked";
     type UpdateVerdict = {
         label: string;
         tone: UpdateTone;
         isUpdate: boolean;
         needsReview: boolean;
         reason: string;
+    };
+    type DeploymentChecklistItem = {
+        key: string;
+        label: string;
+        value: string;
+        detail: string;
+        tone: DeploymentChecklistTone;
+        target: DetailSectionTarget;
     };
     type NexusUiPreferences = {
         catalogMode: CatalogMode;
@@ -208,6 +218,7 @@
         tone: "blocked",
         notes: ["Select a Nexus file before handing it to Vortex."]
     };
+    let deploymentChecklistItems: DeploymentChecklistItem[] = [];
     let selectedInstallPlacement: InstallPlacement = "auto";
     let selectedInstallActionButtonLabel = "Choose File";
     let selectedNxmUrl = "";
@@ -503,6 +514,27 @@
     $: fileChoiceReadinessText = describeFileChoiceReadiness(selectedModFiles.length, selectedFileRecommendedCount, selectedFileReviewCount, isDetailLoading);
     $: selectedFileReadinessText = describeSelectedFileReadiness(selectedNexusFile, recommendedNexusFileId, selectedModFiles.length);
     $: fileReviewReadinessText = describeFileReviewReadiness(selectedModFiles.length, selectedFileReviewCount);
+    $: {
+        selectedNexusFile;
+        recommendedNexusFileId;
+        selectedInstallFileLabel;
+        selectedFileReadinessText;
+        selectedInstallPlan;
+        selectedInstallPlacement;
+        selectedDependencyMessage;
+        totalDependencyIssueCount;
+        totalDependencyReviewCount;
+        resolvedDependencies;
+        selectedAuthorRequirements;
+        resolvedNestedDependencies;
+        nestedDependencySources;
+        nestedDependencySummary;
+        isResolvingNestedDependencies;
+        vortexStagingPath;
+        selectedInstallConflict;
+        selectedInstallMatch;
+        deploymentChecklistItems = buildDeploymentChecklistItems();
+    }
     $: {
         selectedNexusFile;
         selectedFileDescriptionHtml = renderOptionalNexusRichText(selectedNexusFile?.description);
@@ -2022,7 +2054,7 @@
         }
     }
 
-    function scrollDetailSection(target: "description" | "files" | "dependencies" | "plan" | "changelog" | "deployment") {
+    function scrollDetailSection(target: DetailSectionTarget) {
         const element = {
             description: detailDescriptionSectionElement,
             files: detailFilesSectionElement,
@@ -2558,6 +2590,102 @@
         }
 
         return nestedDependencyCheckAvailable() ? "Nested check available" : "No nested file IDs";
+    }
+
+    function buildDeploymentChecklistItems(): DeploymentChecklistItem[] {
+        const dependencyLookupState = installPlanDependencyLookupState(selectedDependencyMessage);
+        const hasDependencyReview = totalDependencyIssueCount > 0
+            || totalDependencyReviewCount > 0
+            || dependencyLookupState === "checking"
+            || dependencyLookupState === "failed"
+            || nestedDependencyCheckAvailable();
+        const hasPlacementReview = selectedInstallPlacement === "manual-review"
+            || selectedInstallPlan.notes.some(note => /placement override|manual placement/i.test(note));
+        const hasDeploymentReview = !vortexStagingPath
+            || !!selectedInstallConflict
+            || !!(selectedInstallMatch && !selectedInstallMatch.enabled);
+
+        return [
+            {
+                key: "file",
+                label: "File",
+                value: selectedNexusFile
+                    ? isReviewNexusFile(selectedNexusFile) ? "Review" : "Ready"
+                    : "Choose",
+                detail: selectedNexusFile
+                    ? `${selectedInstallFileLabel}. ${selectedFileReadinessText}`
+                    : "Choose a Nexus file before handing it to Vortex.",
+                tone: selectedNexusFile
+                    ? isReviewNexusFile(selectedNexusFile) ? "review" : "ready"
+                    : "blocked",
+                target: "files"
+            },
+            {
+                key: "dependencies",
+                label: "Deps",
+                value: deploymentDependencyChecklistValue(),
+                detail: `${apiDependencyReadinessLabel()} · ${authorRequirementReadinessLabel()} · ${nestedDependencyReadinessLabel()}`,
+                tone: hasDependencyReview ? "review" : "ready",
+                target: "dependencies"
+            },
+            {
+                key: "target",
+                label: "Target",
+                value: selectedInstallPlan.placement,
+                detail: `Target ${selectedInstallPlan.target}. Action ${selectedInstallPlan.action}.`,
+                tone: selectedInstallPlan.tone === "blocked"
+                    ? "blocked"
+                    : hasPlacementReview ? "review" : "ready",
+                target: "plan"
+            },
+            {
+                key: "deploy",
+                label: "Deploy",
+                value: selectedInstallConflict
+                    ? "Conflict"
+                    : vortexStagingPath ? "Vortex" : "Review",
+                detail: selectedInstallConflict
+                    ? `Local conflict across ${selectedInstallConflict.entries.length} matching installs.`
+                    : vortexStagingPath
+                        ? `Vortex staging detected at ${vortexStagingPath}.`
+                        : "Vortex deployment metadata was not detected in this game folder yet.",
+                tone: hasDeploymentReview ? "review" : "ready",
+                target: selectedInstallConflict ? "deployment" : "plan"
+            }
+        ];
+    }
+
+    function deploymentDependencyChecklistValue(): string {
+        if (totalDependencyIssueCount > 0) {
+            return `${totalDependencyIssueCount} issue${totalDependencyIssueCount === 1 ? "" : "s"}`;
+        }
+
+        const reviewParts: string[] = [];
+        if (authorRequirementWarningCount > 0) {
+            reviewParts.push(`${authorRequirementWarningCount} warn`);
+        }
+
+        const nonWarningReviewCount = Math.max(0, totalDependencyReviewCount - authorRequirementWarningCount);
+        if (nonWarningReviewCount > 0) {
+            reviewParts.push(`${nonWarningReviewCount} rev`);
+        }
+
+        if (reviewParts.length > 0) {
+            return reviewParts.join(" · ");
+        }
+
+        if (resolvedDependencies.length > 0 || resolvedNestedDependencies.length > 0 || authorRequirementDetectedCount > 0) {
+            return "Ready";
+        }
+
+        switch (installPlanDependencyLookupState(selectedDependencyMessage)) {
+            case "checking":
+                return "Checking";
+            case "failed":
+                return "Failed";
+            default:
+                return "None";
+        }
     }
 
     function dependencyReadinessParts(
@@ -7664,6 +7792,23 @@
                     <small title={selectedInstallFileLabel}>{selectedInstallFileLabel}</small>
                 </div>
 
+                <div class="deployment-checklist" aria-label="Deployment readiness checklist">
+                    {#each deploymentChecklistItems as item (item.key)}
+                        <button
+                            type="button"
+                            class="deployment-check-item"
+                            class:deployment-check-ready={item.tone === "ready"}
+                            class:deployment-check-review={item.tone === "review"}
+                            class:deployment-check-blocked={item.tone === "blocked"}
+                            title={item.detail}
+                            on:click={() => scrollDetailSection(item.target)}
+                        >
+                            <small>{item.label}</small>
+                            <b>{item.value}</b>
+                        </button>
+                    {/each}
+                </div>
+
                 <div class="detail-actions">
                     {#if selectedFileFooterReviewVisible}
                         <button
@@ -8973,7 +9118,7 @@
         display: grid;
         flex: 0 0 auto;
         gap: 0.65em;
-        grid-template-columns: minmax(12em, 1fr) minmax(18em, auto);
+        grid-template-columns: minmax(10em, 0.65fr) minmax(26em, 1.35fr) minmax(18em, auto);
         padding: 0.65em 0.75em;
     }
 
@@ -8992,6 +9137,76 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    .deployment-checklist {
+        display: grid;
+        gap: 0.38em;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        min-width: 0;
+    }
+
+    .deployment-check-item {
+        background: rgba(255, 255, 255, 0.035);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: none;
+        display: flex;
+        flex-direction: column;
+        gap: 0.18em;
+        line-height: 1.12;
+        margin: 0;
+        min-height: 3.15em;
+        min-width: 0;
+        padding: 0.42em 0.5em;
+        text-align: left;
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+
+    .deployment-check-item small,
+    .deployment-check-item b {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .deployment-check-item small {
+        color: #8d99a5;
+        font-size: 0.62em;
+        font-weight: 900;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+    }
+
+    .deployment-check-item b {
+        color: #dce4ea;
+        font-size: 0.74em;
+        font-weight: 900;
+    }
+
+    .deployment-check-ready {
+        border-color: rgba(98, 240, 155, 0.24);
+    }
+
+    .deployment-check-ready b {
+        color: #62f09b;
+    }
+
+    .deployment-check-review {
+        border-color: rgba(253, 198, 109, 0.34);
+    }
+
+    .deployment-check-review b {
+        color: #fdc66d;
+    }
+
+    .deployment-check-blocked {
+        border-color: rgba(253, 155, 157, 0.38);
+    }
+
+    .deployment-check-blocked b {
+        color: #fd9b9d;
     }
 
     .detail-actions {
@@ -11002,6 +11217,11 @@
             padding: 0.5em 0.6em;
         }
 
+        .deployment-check-item {
+            min-height: 2.8em;
+            padding: 0.32em 0.45em;
+        }
+
         .detail-actions button,
         .detail-link-actions button {
             min-height: 2.3em;
@@ -11040,6 +11260,10 @@
         .vortex-summary,
         .detail-side {
             grid-template-columns: 1fr;
+        }
+
+        .deployment-checklist {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         .detail-header {

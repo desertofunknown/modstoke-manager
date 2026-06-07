@@ -32,6 +32,7 @@
   - Added dependency review shortcuts and status-aware dependency row actions so missing, mismatched, and review dependencies open as `Install`, `Update`, or `Review` instead of generic details.
   - Added direct Review Conflict actions on conflicted Nexus rows, installed rows, detail conflict panels, and the deployment footer so duplicate local deployments can jump straight to the installed conflict review panel.
   - Added local inventory refresh actions to the Nexus/Vortex account row and detail deployment footer so users can rescan Vortex/native/manual install state immediately after a Vortex handoff without making extra Nexus requests.
+  - Added a bottom deployment checklist in Nexus detail drawers that summarizes selected file, dependency, target placement, and Vortex deployment readiness before handoff.
   - Added live result counts to Nexus category, install-state, and mod-type filters, and disabled the online-only category dropdown while browsing installed inventory.
   - Canonicalized common Nexus category aliases into the local Sons Of The Forest taxonomy and marked local-taxonomy or inferred category sources in Nexus rows/details.
   - Improved Nexus description formatting fidelity with monospaced column-style line blocks, codebox/plain/fixed preformatted BBCode aliases, hidden/spoilerblock aliases, legacy horizontal-rule tags, and relative/point size hints.
