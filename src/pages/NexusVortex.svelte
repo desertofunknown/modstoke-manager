@@ -7190,7 +7190,7 @@
 
         {#if session.is_connected}
             <div class="account-actions">
-                <label class="auto-endorse-control">
+                <label class="auto-endorse-control" title={autoEndorseQueueLabel}>
                     <input type="checkbox" checked={autoEndorseDownloadedMods} on:change={toggleAutoEndorse} />
                     <span class="auto-endorse-label">
                         <span>Auto-endorse Vortex downloads</span>
@@ -8319,6 +8319,21 @@
         padding: 0.45em 0.75em;
     }
 
+    .nexus-page.nexus-catalog-tight .account-actions {
+        gap: 0.38em;
+    }
+
+    .nexus-page.nexus-catalog-tight .account-actions button,
+    .nexus-page.nexus-catalog-tight .auto-endorse-control {
+        font-size: 0.72em;
+        min-height: 2.2em;
+        padding: 0.26em 0.58em;
+    }
+
+    .nexus-page.nexus-catalog-tight .auto-endorse-label small {
+        display: none;
+    }
+
     .nexus-page.nexus-catalog-tight .panel-title {
         font-size: 0.98em;
     }
@@ -8495,6 +8510,15 @@
     .account-actions {
         flex-wrap: wrap;
         justify-content: flex-end;
+    }
+
+    .account-actions button {
+        font-size: 0.82em;
+        margin: 0;
+        min-height: 2.55em;
+        min-width: 8.2em;
+        padding: 0.42em 0.8em;
+        white-space: nowrap;
     }
 
     .auto-endorse-control {

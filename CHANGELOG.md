@@ -12,6 +12,7 @@
   - Added a shared Mods workspace search box that drives both the SOTF Mods and Nexus/Vortex sources, carries the search term across source switches, and hides the duplicate embedded search fields.
   - Guarded SOTF Mods online catalog reloads so clearing the shared All Stores search immediately restores the catalog and stale empty search responses cannot overwrite the cleared results.
   - Compacted SOTF Mods list rows with measured scroller sizing so more mods stay visible in the unified Mods workspace, and retired the unstable SOTF grid toggle.
+  - Compacted the connected Nexus account/action row in tight catalog layouts so auto-endorse, Nexus, Vortex staging, inventory refresh, and disconnect controls stay readable while leaving more vertical space for mod rows.
   - Added measured tight-density behavior to the Nexus catalog so account/status chrome, queue chips, filters, thumbnails, and row copy compress together when the actual mod-list pane would otherwise show only one row.
   - Collapsed the Nexus action queue into a slim `Queue clear` status strip when endorsement, tracking, update, disabled, and conflict counts are all zero, while restoring the full shortcut chips when an action exists or a queue filter is selected.
   - Improved compact Nexus detail drawers so the mod name, preview image, and formatted author description stay first, with deployment actions collected in a bottom footer.
