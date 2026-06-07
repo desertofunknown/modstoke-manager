@@ -228,8 +228,12 @@ const DEPENDENCY_SOURCE_KEYS = [
     "dependencies",
     "dependency_definitions",
     "dependencyDefinitions",
+    "dependency_definition",
+    "dependencyDefinition",
     "dependency_ranges",
     "dependencyRanges",
+    "range_definitions",
+    "rangeDefinitions",
     "items",
     "results",
     "nodes",
@@ -240,6 +244,12 @@ const DEPENDENCY_WRAPPER_KEYS = [
     "result",
     "payload",
     "response",
+    "file_dependencies",
+    "fileDependencies",
+    "mod_file_dependencies",
+    "modFileDependencies",
+    "mod_file_dependency_response",
+    "modFileDependencyResponse",
     "modFileDependencyRangesResponse",
     "modFileDependencyMaterializedResponse",
     "mod_file_dependency_ranges_response",
@@ -1038,6 +1048,8 @@ function isDependencyRecord(record: Record<string, unknown>): boolean {
         "gameScopedModId",
         "game_scoped_id",
         "gameScopedId",
+        "mod_game_scoped_id",
+        "modGameScopedId",
         "file_id",
         "fileId",
         "game_scoped_file_id",
@@ -1046,6 +1058,8 @@ function isDependencyRecord(record: Record<string, unknown>): boolean {
         "nexusFileId",
         "mod",
         "file",
+        "update_group_version",
+        "updateGroupVersion",
         "target",
         "target_file",
         "targetFile",
@@ -1092,7 +1106,8 @@ function normalizeDependencyRecord(dependency: Record<string, unknown>): NexusMo
     }
 
     const directRange = firstObjectFromFields(dependency, ["target_group", "targetGroup", "group", "update_group", "updateGroup"])
-        && firstObjectFromFields(dependency, ["min_version", "minVersion", "minimum_version", "minimumVersion"])
+        && (firstObjectFromFields(dependency, ["min_version", "minVersion", "minimum_version", "minimumVersion"])
+            || firstIdentifierFromFields(dependency, ["min_version_id", "minVersionId", "minimum_version_id", "minimumVersionId"]))
         ? dependencyFromRange(dependency, dependency)
         : null;
     if (directRange) {
@@ -1109,18 +1124,22 @@ function dependencyFromCandidateGroup(dependency: Record<string, unknown>, group
     const versions = objectArrayFromFields(group, [
         "candidate_versions",
         "candidateVersions",
+        "version_candidates",
+        "versionCandidates",
+        "latest_versions",
+        "latestVersions",
         "versions",
         "files",
         "candidate_files",
         "candidateFiles"
     ]);
     const version = versions[0];
-    const file = firstObjectFromFields(version, ["file", "mod_file", "modFile"])
-        ?? firstObjectFromFields(group, ["file", "mod_file", "modFile"])
+    const file = firstObjectFromFields(version, ["file", "mod_file", "modFile", "target_file", "targetFile"])
+        ?? firstObjectFromFields(group, ["file", "mod_file", "modFile", "target_file", "targetFile"])
         ?? (version && recordHasAnyField(version, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "id", "name", "file_name", "fileName"]) ? version : undefined);
     const modId = firstNumberFromFields(mod, ["game_scoped_id", "gameScopedId", "mod_id", "modId", "game_scoped_mod_id", "gameScopedModId", "id"])
-        ?? firstNumberFromFields(group, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId"])
-        ?? firstNumberFromFields(dependency, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId"]);
+        ?? firstNumberFromFields(group, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId", "mod_game_scoped_id", "modGameScopedId"])
+        ?? firstNumberFromFields(dependency, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId", "mod_game_scoped_id", "modGameScopedId"]);
     const fileId = firstNumberFromFields(file, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "game_scoped_file_id", "gameScopedFileId", "id"])
         ?? firstNumberFromFields(version, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "game_scoped_file_id", "gameScopedFileId", "id"])
         ?? firstNumberFromFields(group, ["file_id", "fileId", "game_scoped_file_id", "gameScopedFileId"])
@@ -1152,30 +1171,40 @@ function dependencyFromCandidateGroup(dependency: Record<string, unknown>, group
 }
 
 function dependencyFromRange(dependency: Record<string, unknown>, range: Record<string, unknown>): NexusModDependency | null {
-    const targetGroup = firstObjectFromFields(range, ["target_group", "targetGroup", "group", "update_group", "updateGroup"])
-        ?? firstObjectFromFields(dependency, ["target_group", "targetGroup", "group", "update_group", "updateGroup"]);
-    const mod = firstObjectFromFields(targetGroup, ["mod", "target_mod", "targetMod"])
-        ?? firstObjectFromFields(range, ["mod", "target_mod", "targetMod"])
-        ?? firstObjectFromFields(dependency, ["mod", "target_mod", "targetMod"]);
-    const minVersion = firstObjectFromFields(range, ["min_version", "minVersion", "minimum_version", "minimumVersion"])
-        ?? firstObjectFromFields(dependency, ["min_version", "minVersion", "minimum_version", "minimumVersion"]);
-    const maxVersion = firstObjectFromFields(range, ["max_version", "maxVersion", "maximum_version", "maximumVersion"])
-        ?? firstObjectFromFields(dependency, ["max_version", "maxVersion", "maximum_version", "maximumVersion"]);
-    const minFile = firstObjectFromFields(minVersion, ["file", "mod_file", "modFile"])
+    const targetGroup = firstObjectFromFields(range, ["target_group", "targetGroup", "group", "update_group", "updateGroup", "target_update_group", "targetUpdateGroup", "file_update_group", "fileUpdateGroup"])
+        ?? firstObjectFromFields(dependency, ["target_group", "targetGroup", "group", "update_group", "updateGroup", "target_update_group", "targetUpdateGroup", "file_update_group", "fileUpdateGroup"]);
+    const mod = firstObjectFromFields(targetGroup, ["mod", "target_mod", "targetMod", "game_mod", "gameMod"])
+        ?? firstObjectFromFields(range, ["mod", "target_mod", "targetMod", "game_mod", "gameMod"])
+        ?? firstObjectFromFields(dependency, ["mod", "target_mod", "targetMod", "game_mod", "gameMod"]);
+    const minVersion = firstObjectFromFields(range, ["min_version", "minVersion", "minimum_version", "minimumVersion", "lower_bound", "lowerBound"])
+        ?? firstObjectFromFields(dependency, ["min_version", "minVersion", "minimum_version", "minimumVersion", "lower_bound", "lowerBound"]);
+    const maxVersion = firstObjectFromFields(range, ["max_version", "maxVersion", "maximum_version", "maximumVersion", "upper_bound", "upperBound"])
+        ?? firstObjectFromFields(dependency, ["max_version", "maxVersion", "maximum_version", "maximumVersion", "upper_bound", "upperBound"]);
+    const minFile = firstObjectFromFields(minVersion, ["file", "mod_file", "modFile", "target_file", "targetFile"])
         ?? (minVersion && recordHasAnyField(minVersion, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "id", "name", "file_name", "fileName"]) ? minVersion : undefined);
-    const maxFile = firstObjectFromFields(maxVersion, ["file", "mod_file", "modFile"])
+    const maxFile = firstObjectFromFields(maxVersion, ["file", "mod_file", "modFile", "target_file", "targetFile"])
         ?? (maxVersion && recordHasAnyField(maxVersion, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "id", "name", "file_name", "fileName"]) ? maxVersion : undefined);
     const representativeFile = maxFile ?? minFile;
     const modId = firstNumberFromFields(mod, ["game_scoped_id", "gameScopedId", "mod_id", "modId", "game_scoped_mod_id", "gameScopedModId", "id"])
-        ?? firstNumberFromFields(targetGroup, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId"]);
-    const fileId = firstNumberFromFields(representativeFile, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "game_scoped_file_id", "gameScopedFileId", "id"]);
+        ?? firstNumberFromFields(targetGroup, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId", "mod_game_scoped_id", "modGameScopedId"])
+        ?? firstNumberFromFields(range, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId", "mod_game_scoped_id", "modGameScopedId"])
+        ?? firstNumberFromFields(dependency, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId", "mod_game_scoped_id", "modGameScopedId"]);
+    const fileId = firstNumberFromFields(representativeFile, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "game_scoped_file_id", "gameScopedFileId", "id"])
+        ?? firstNumberFromFields(range, ["file_id", "fileId", "game_scoped_file_id", "gameScopedFileId"])
+        ?? firstNumberFromFields(dependency, ["file_id", "fileId", "game_scoped_file_id", "gameScopedFileId"]);
     const nexusFileId = firstIdentifierFromFields(representativeFile, ["nexus_file_id", "nexusFileId", "uid", "uuid", "file_uid", "fileUid", "file_uuid", "fileUuid", "id"])
         ?? firstIdentifierFromFields(range, ["nexus_file_id", "nexusFileId"])
         ?? firstIdentifierFromFields(dependency, ["nexus_file_id", "nexusFileId"]);
     const modName = firstStringFromFields(mod, ["name", "mod_name", "modName", "title"])
+        ?? firstStringFromFields(range, ["mod_name", "modName", "name", "title"])
+        ?? firstStringFromFields(dependency, ["mod_name", "modName", "name", "title"])
         ?? firstStringFromFields(targetGroup, ["name", "group_name", "groupName", "label"]);
-    const minLabel = dependencyVersionLabel(minVersion, minFile);
-    const maxLabel = dependencyVersionLabel(maxVersion, maxFile);
+    const minLabel = dependencyVersionLabel(minVersion, minFile)
+        ?? dependencyVersionIdLabel(range, ["min_version_id", "minVersionId", "minimum_version_id", "minimumVersionId"])
+        ?? dependencyVersionIdLabel(dependency, ["min_version_id", "minVersionId", "minimum_version_id", "minimumVersionId"]);
+    const maxLabel = dependencyVersionLabel(maxVersion, maxFile)
+        ?? dependencyVersionIdLabel(range, ["max_version_id", "maxVersionId", "maximum_version_id", "maximumVersionId"])
+        ?? dependencyVersionIdLabel(dependency, ["max_version_id", "maxVersionId", "maximum_version_id", "maximumVersionId"]);
     const exactVersion = minLabel && maxLabel && normalizedDependencyVersion(minLabel) === normalizedDependencyVersion(maxLabel)
         ? minLabel
         : undefined;
@@ -1202,14 +1231,18 @@ function dependencyFromFlatRecord(dependency: Record<string, unknown>): NexusMod
     const file = firstObjectFromFields(dependency, ["file", "mod_file", "modFile", "target_file", "targetFile", "target"]);
     const group = firstObjectFromFields(dependency, ["group", "target_group", "targetGroup", "update_group", "updateGroup"]);
     const groupMod = firstObjectFromFields(group, ["mod", "target_mod", "targetMod"]);
-    const modId = firstNumberFromFields(dependency, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId"])
+    const dependencyLooksFileLike = dependencyRecordLooksLikeModFile(dependency);
+    const modId = firstNumberFromFields(dependency, ["mod_id", "modId", "game_scoped_mod_id", "gameScopedModId", "mod_game_scoped_id", "modGameScopedId"])
         ?? firstNumberFromFields(mod, ["game_scoped_id", "gameScopedId", "mod_id", "modId", "id"])
-        ?? firstNumberFromFields(groupMod, ["game_scoped_id", "gameScopedId", "mod_id", "modId", "id"]);
+        ?? firstNumberFromFields(groupMod, ["game_scoped_id", "gameScopedId", "mod_id", "modId", "id"])
+        ?? (!dependencyLooksFileLike ? firstNumberFromFields(dependency, ["game_scoped_id", "gameScopedId"]) : undefined);
     const fileId = firstNumberFromFields(dependency, ["file_id", "fileId", "game_scoped_file_id", "gameScopedFileId"])
-        ?? firstNumberFromFields(file, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "id"]);
+        ?? firstNumberFromFields(file, ["game_scoped_id", "gameScopedId", "file_id", "fileId", "id"])
+        ?? (dependencyLooksFileLike ? firstNumberFromFields(dependency, ["game_scoped_id", "gameScopedId"]) : undefined);
     const nexusFileId = firstIdentifierFromFields(file, ["nexus_file_id", "nexusFileId", "uid", "uuid", "file_uid", "fileUid", "file_uuid", "fileUuid", "id"])
-        ?? firstIdentifierFromFields(dependency, ["nexus_file_id", "nexusFileId"]);
-    const modName = firstStringFromFields(dependency, ["mod_name", "modName", "name", "title"])
+        ?? firstIdentifierFromFields(dependency, ["nexus_file_id", "nexusFileId"])
+        ?? (dependencyLooksFileLike ? firstIdentifierFromFields(dependency, ["uid", "uuid", "file_uid", "fileUid", "file_uuid", "fileUuid", "id"]) : undefined);
+    const modName = firstStringFromFields(dependency, dependencyLooksFileLike ? ["mod_name", "modName", "title"] : ["mod_name", "modName", "name", "title"])
         ?? firstStringFromFields(mod, ["name", "mod_name", "modName", "title"])
         ?? firstStringFromFields(groupMod, ["name", "mod_name", "modName", "title"])
         ?? firstStringFromFields(group, ["name", "group_name", "groupName", "label"]);
@@ -1225,7 +1258,8 @@ function dependencyFromFlatRecord(dependency: Record<string, unknown>): NexusMod
         nexus_file_id: nexusFileId,
         mod_name: modName ?? "Unknown dependency",
         file_name: firstStringFromFields(dependency, ["file_name", "fileName", "logical_filename", "logicalFilename"])
-            ?? firstStringFromFields(file, ["name", "file_name", "fileName", "logical_filename", "logicalFilename"]),
+            ?? firstStringFromFields(file, ["name", "file_name", "fileName", "logical_filename", "logicalFilename"])
+            ?? (dependencyLooksFileLike ? firstStringFromFields(dependency, ["name", "title"]) : undefined),
         version: firstStringFromFields(dependency, ["version", "file_version", "fileVersion", "required_version", "requiredVersion"])
             ?? firstStringFromFields(file, ["version", "file_version", "fileVersion"]),
         version_requirement: firstStringFromFields(dependency, ["version_requirement", "versionRequirement", "requirement", "version_range", "versionRange", "required_version_range", "requiredVersionRange"]),
@@ -1233,11 +1267,35 @@ function dependencyFromFlatRecord(dependency: Record<string, unknown>): NexusMod
     };
 }
 
+function dependencyRecordLooksLikeModFile(dependency: Record<string, unknown>): boolean {
+    return recordHasAnyField(dependency, [
+        "mod_game_scoped_id",
+        "modGameScopedId",
+        "file_category",
+        "fileCategory",
+        "uploaded_at",
+        "uploadedAt",
+        "uploaded_timestamp",
+        "uploadedTimestamp",
+        "update_group_version",
+        "updateGroupVersion",
+        "logical_filename",
+        "logicalFilename",
+        "file_name",
+        "fileName"
+    ]);
+}
+
 function dependencyVersionLabel(version: Record<string, unknown> | undefined, file: Record<string, unknown> | undefined): string | undefined {
     return firstStringFromFields(file, ["version", "file_version", "fileVersion"])
         ?? firstStringFromFields(version, ["version", "file_version", "fileVersion"])
         ?? firstStringFromFields(file, ["name", "file_name", "fileName", "logical_filename", "logicalFilename"])
         ?? firstStringFromFields(version, ["name"]);
+}
+
+function dependencyVersionIdLabel(source: Record<string, unknown> | undefined, keys: string[]): string | undefined {
+    const versionId = firstIdentifierFromFields(source, keys);
+    return versionId ? `version ID ${versionId}` : undefined;
 }
 
 function dependencyRequirementLabel(minVersion?: string, maxVersion?: string): string | undefined {

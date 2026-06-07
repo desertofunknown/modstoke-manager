@@ -81,7 +81,7 @@ Rich-text blocks, tables, and inline images are also bounded for narrow detail p
 
 It also recovers common Nexus shorthand such as thumbnail/image BBCode aliases, standalone `[img=...]` media tags, relative Nexus links, spaced labeled list markers, indented plain lists, anchor/bookmark/jump references, simple pipe-separated or BBCode-cell-only author note tables, labeled horizontal-rule sections, codebox/plain/fixed preformatted aliases, hidden/spoilerblock aliases, legacy horizontal-rule tags, relative/point size hints, HTML/CSS list marker styles, malformed nested closing tags, legacy `centre`/`colour`/strikethrough/newline aliases, and monospaced column-style line blocks so downloaded descriptions keep more of the original author layout.
 
-Dependency normalization also accepts alternate wrapped, camelCase, nodes, and edges payload shapes from supported Nexus dependency responses, preserves Nexus v3/global file IDs when the API exposes them, and falls back from materialized candidates to range definitions or original game-scoped file IDs when needed.
+Dependency normalization also accepts alternate wrapped, camelCase, nodes, edges, file-like, and version-boundary payload shapes from supported Nexus dependency responses, preserves Nexus v3/global file IDs when the API exposes them, and falls back from materialized candidates to range definitions or original game-scoped file IDs when needed.
 
 The Nexus detail drawer now allocates more height to Files, selected-file notes, Dependencies, and Changelog, stacks earlier on medium-width windows, and wraps status-badged Nexus page-section links below the primary deployment controls so the install action stays readable while unsupported community surfaces remain clear external links.
 
