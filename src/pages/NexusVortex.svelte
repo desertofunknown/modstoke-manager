@@ -7893,11 +7893,14 @@
                         </div>
                     </div>
 
-                    <div class="changelog-box" bind:this={detailChangelogSectionElement}>
-                        <span class="detail-section-title">Changelog</span>
-                        {#if selectedChangelogs.length === 0}
+                    {#if selectedChangelogs.length === 0}
+                        <div class="changelog-compact-note" bind:this={detailChangelogSectionElement}>
+                            <span class="detail-section-title">Changelog</span>
                             <span class="dependency-empty">No API-listed changelog entries were returned for this mod.</span>
-                        {:else}
+                        </div>
+                    {:else}
+                        <div class="changelog-box" bind:this={detailChangelogSectionElement}>
+                            <span class="detail-section-title">Changelog</span>
                             {#each selectedChangelogs as changelog}
                                 <div class="changelog-row">
                                     <span>{changelog.version}</span>
@@ -7906,8 +7909,8 @@
                                     </div>
                                 </div>
                             {/each}
-                        {/if}
-                    </div>
+                        </div>
+                    {/if}
                 </div>
 
                 <div class="detail-side">
@@ -10288,6 +10291,7 @@
 
     .detail-text,
     .changelog-box,
+    .changelog-compact-note,
     .file-picker,
     .selected-file-notes,
     .dependency-box,
@@ -11604,6 +11608,21 @@
         max-height: clamp(180px, 28vh, 340px);
         min-height: 8.5em;
         overflow-y: auto;
+    }
+
+    .changelog-compact-note {
+        align-items: center;
+        color: #8d99a5;
+        display: flex;
+        flex: 0 0 auto;
+        gap: 0.65em;
+        justify-content: space-between;
+        min-height: 2.7em;
+    }
+
+    .changelog-compact-note .dependency-empty {
+        margin: 0;
+        text-align: right;
     }
 
     .changelog-row {

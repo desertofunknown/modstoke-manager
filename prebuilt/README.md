@@ -33,6 +33,8 @@ Dependency normalization also accepts alternate wrapped, camelCase, nodes, and e
 
 The Nexus detail drawer now allocates more height to Files, selected-file notes, Dependencies, and Changelog, stacks earlier on medium-width windows, and wraps status-badged Nexus page-section links below the primary deployment controls so the install action stays readable while unsupported community surfaces remain clear external links.
 
+Empty Nexus changelog responses now collapse into a compact detail-drawer status strip instead of reserving a large empty changelog pane; real API changelog entries still render in the full formatted section.
+
 MSI builds are intentionally not published while the current MSI launch issue is investigated.
 
 These builds are signed with the OpenACAI Inc Azure Trusted Signing certificate. Windows SmartScreen and some browsers may still warn until publisher reputation builds, so keep checksums published and verify signatures before release.
