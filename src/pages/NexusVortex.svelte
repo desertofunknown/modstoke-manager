@@ -2132,6 +2132,16 @@
         };
     }
 
+    async function openCatalogPreviewImage(mod: NexusMod, urls: string[], event: MouseEvent) {
+        event.stopPropagation();
+        const url = urls[catalogPreviewIndex(mod, urls)];
+        if (!url) {
+            return;
+        }
+
+        await shell.open(url);
+    }
+
     function cycleSelectedDetailPreview(urls: string[], step: number, event: MouseEvent) {
         event.stopPropagation();
         if (urls.length < 2) {
@@ -7384,16 +7394,33 @@
                                         <button type="button" aria-label="Next preview image" title="Next preview image" on:click={(event) => cycleCatalogPreview(mod, previewUrls, 1, event)}>
                                             <LucideChevronRight class="thumbnail-icon" aria-hidden="true" />
                                         </button>
+                                        <button type="button" aria-label={`Open current preview image for ${mod.name}`} title="Open current preview image" on:click={(event) => openCatalogPreviewImage(mod, previewUrls, event)}>
+                                            <LucideExternalLink class="thumbnail-icon" aria-hidden="true" />
+                                        </button>
+                                    </div>
+                                {:else if previewUrls.length === 1}
+                                    <div
+                                        class="thumbnail-count thumbnail-count-action"
+                                        aria-label={`${mod.name} has one preview image`}
+                                        title="1 preview image"
+                                    >
+                                        <span class="thumbnail-count-label">
+                                            <LucideImages class="thumbnail-icon" aria-hidden="true" />
+                                            <span>1</span>
+                                        </span>
+                                        <button type="button" aria-label={`Open current preview image for ${mod.name}`} title="Open current preview image" on:click={(event) => openCatalogPreviewImage(mod, previewUrls, event)}>
+                                            <LucideExternalLink class="thumbnail-icon" aria-hidden="true" />
+                                        </button>
                                     </div>
                                 {:else}
                                     <div
                                         class="thumbnail-count"
                                         class:thumbnail-count-fallback={previewUrls.length === 0}
-                                        aria-label={previewUrls.length === 1 ? `${mod.name} has one preview image` : `${mod.name} uses the local fallback preview image`}
-                                        title={previewUrls.length === 1 ? "1 preview image" : "Local fallback preview"}
+                                        aria-label={`${mod.name} uses the local fallback preview image`}
+                                        title="Local fallback preview"
                                     >
                                         <LucideImages class="thumbnail-icon" aria-hidden="true" />
-                                        <span>{previewUrls.length === 1 ? "1" : "Local"}</span>
+                                        <span>Local</span>
                                     </div>
                                 {/if}
                             </div>
@@ -9410,7 +9437,8 @@
         right: 0.45em;
     }
 
-    .thumbnail-nav button {
+    .thumbnail-nav button,
+    .thumbnail-count button {
         align-items: center;
         background: rgba(255, 255, 255, 0.08);
         border: 1px solid rgba(255, 255, 255, 0.12);
@@ -9428,6 +9456,17 @@
         padding: 0;
         -webkit-mask-image: none;
         mask-image: none;
+    }
+
+    .thumbnail-count button {
+        background: rgba(128, 219, 180, 0.12);
+        border-color: rgba(128, 219, 180, 0.28);
+    }
+
+    .thumbnail-count button:hover,
+    .thumbnail-count button:focus-visible {
+        background: rgba(128, 219, 180, 0.2);
+        border-color: rgba(128, 219, 180, 0.5);
     }
 
     .thumbnail-nav span {
@@ -9491,6 +9530,19 @@
         text-overflow: ellipsis;
         top: 0.45em;
         white-space: nowrap;
+    }
+
+    .thumbnail-count-action {
+        gap: 0.32em;
+        padding: 0.2em;
+    }
+
+    .thumbnail-count-label {
+        align-items: center;
+        display: inline-flex;
+        gap: 0.28em;
+        min-width: 0;
+        padding: 0 0.16em;
     }
 
     .thumbnail-count-fallback {
