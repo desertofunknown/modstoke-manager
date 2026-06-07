@@ -25,13 +25,21 @@
     };
 
     type SotfCatalogSort = "updated" | "downloads" | "favorites" | "comments" | "rating" | "name";
+    type SourceSummaryEvent = {
+        visible: number;
+        total: number;
+        mode: string;
+        note: string;
+        activeFilters: boolean;
+        attention: number;
+    };
 
     export let sharedSearchTerm = "";
     export let sharedSearchVersion = 0;
     export let showEmbeddedSearch = true;
     export let embeddedStorePreview = false;
 
-    const dispatch = createEventDispatcher<{ searchChange: string }>();
+    const dispatch = createEventDispatcher<{ searchChange: string; summaryChange: SourceSummaryEvent }>();
 
     let filtered: Mod[] = [];
     let filterTerm: string = "";
@@ -103,6 +111,14 @@
     $: hasActiveModFilters = filterTerm.trim().length > 0 || hasActiveLocalModFilters;
     $: hasActiveLocalModViewOptions = hasActiveLocalModFilters || selectedSort !== "updated";
     $: hasActiveModViewOptions = hasActiveModFilters || selectedSort !== "updated";
+    $: dispatch("summaryChange", {
+        visible: visibleMods.length,
+        total: filtered.length,
+        mode: onlineSelected ? "Online" : "Installed",
+        note: sotfSummaryNote(),
+        activeFilters: installedSelected || hasActiveLocalModViewOptions,
+        attention: 0
+    });
     $: selectedDetailPreviewUrls = selectedDetailMod ? modPreviewUrls(selectedDetailMod) : [];
     $: if (selectedDetailPreviewIndex >= selectedDetailPreviewUrls.length) {
         selectedDetailPreviewIndex = 0;
@@ -837,6 +853,22 @@
         }
 
         return "";
+    }
+
+    function sotfSummaryNote(): string {
+        if (selectedSort !== "updated") {
+            return `Sorted by ${selectedSortLabel()}`;
+        }
+
+        if (hasActiveLocalModFilters) {
+            return "Source filters active";
+        }
+
+        if (filterTerm.trim().length > 0) {
+            return embeddedStorePreview ? "Shared search" : "Search active";
+        }
+
+        return onlineSelected ? "Live store" : "Local inventory";
     }
 
     function detailCount(value?: number): string {

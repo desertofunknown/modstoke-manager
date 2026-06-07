@@ -56,7 +56,16 @@
     export let showEmbeddedSearch = true;
     export let embeddedStorePreview = false;
 
-    const dispatch = createEventDispatcher<{ searchChange: string }>();
+    type SourceSummaryEvent = {
+        visible: number;
+        total: number;
+        mode: string;
+        note: string;
+        activeFilters: boolean;
+        attention: number;
+    };
+
+    const dispatch = createEventDispatcher<{ searchChange: string; summaryChange: SourceSummaryEvent }>();
 
     type CatalogMode = "online" | "installed";
     type InstallFilter = "all" | "attention" | "installed" | "missing" | "updates" | "disabled" | "vortex" | "native" | "manual" | "tracked" | "endorsements" | "conflicts";
@@ -451,6 +460,16 @@
         || (catalogMode === "online" && selectedNexusCategory !== "all")
         || selectedInstallFilter !== "all"
         || selectedModTypeFilter !== "all";
+    $: dispatch("summaryChange", {
+        visible: catalogMode === "online" ? visibleNexusMods.length : visibleInstalledEntries.length,
+        total: catalogMode === "online" ? mods.length : installedCount,
+        mode: catalogMode === "online" ? viewLabel(selectedView) : "Installed",
+        note: nexusSummaryNote(),
+        activeFilters: (catalogMode === "online" && selectedNexusCategory !== "all")
+            || selectedInstallFilter !== "all"
+            || selectedModTypeFilter !== "all",
+        attention: catalogMode === "online" ? onlineAttentionCount : installedAttentionCount
+    });
     $: {
         catalogMode;
         mods;
@@ -4247,6 +4266,35 @@
             detail: `The ${viewLabel(selectedView)} feed for ${modeLabel} did not return visible rows yet. Refresh the catalog or choose another feed.`,
             chips
         };
+    }
+
+    function nexusSummaryNote(): string {
+        const attentionCount = catalogMode === "online" ? onlineAttentionCount : installedAttentionCount;
+        if (attentionCount > 0) {
+            return `${attentionCount} need attention`;
+        }
+
+        if (selectedInstallFilter !== "all" || selectedModTypeFilter !== "all") {
+            return "Source filters active";
+        }
+
+        if (catalogMode === "online" && selectedNexusCategory !== "all") {
+            return "Category filter active";
+        }
+
+        if (nexusSearchTerm.trim().length > 0) {
+            return embeddedStorePreview ? "Shared search" : "Search active";
+        }
+
+        if (catalogMode === "installed") {
+            return `${vortexCount} Vortex / ${nativeCount} native / ${manualCount} manual`;
+        }
+
+        if (trackedModsLoaded && trackedCount > 0) {
+            return `${trackedCount} tracked`;
+        }
+
+        return "Cached Nexus feed";
     }
 
     function buildNexusEmptyChips(): string[] {

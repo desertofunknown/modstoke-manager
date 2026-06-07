@@ -10,6 +10,14 @@
     import LucideX from "~icons/lucide/x";
 
     type ModHubSource = "all" | "sotf" | "nexus";
+    type SourceSummary = {
+        visible: number;
+        total: number;
+        mode: string;
+        note: string;
+        activeFilters: boolean;
+        attention: number;
+    };
 
     const MOD_HUB_SOURCE_KEY = "openacai-mod-hub-source";
     const MOD_HUB_SEARCH_KEY = "openacai-mod-hub-search";
@@ -17,6 +25,8 @@
     let activeSource: ModHubSource = "all";
     let sharedSearchTerm = "";
     let sharedSearchVersion = 0;
+    let sotfSummary: SourceSummary | null = null;
+    let nexusSummary: SourceSummary | null = null;
     let modHubElement: HTMLDivElement | null = null;
     let sourcePanelElement: HTMLDivElement | null = null;
     let hubLayoutObserver: ResizeObserver | null = null;
@@ -68,6 +78,55 @@
 
     function clearSharedSearch() {
         setSharedSearchTerm("");
+    }
+
+    function updateSourceSummary(source: Exclude<ModHubSource, "all">, detail: SourceSummary) {
+        const summary = normalizeSourceSummary(detail);
+        if (source === "sotf") {
+            sotfSummary = summary;
+        } else {
+            nexusSummary = summary;
+        }
+    }
+
+    function normalizeSourceSummary(summary: SourceSummary): SourceSummary {
+        return {
+            visible: Math.max(0, Number(summary.visible) || 0),
+            total: Math.max(0, Number(summary.total) || 0),
+            mode: summary.mode || "Catalog",
+            note: summary.note || "",
+            activeFilters: Boolean(summary.activeFilters),
+            attention: Math.max(0, Number(summary.attention) || 0)
+        };
+    }
+
+    function sourceSummaryLine(summary: SourceSummary | null, fallback: string): string {
+        if (!summary) {
+            return fallback;
+        }
+
+        const countLabel = summary.total > 0
+            ? `${summary.visible}/${summary.total}`
+            : `${summary.visible}`;
+        const status = summary.attention > 0
+            ? `${summary.attention} attention`
+            : summary.activeFilters
+                ? "filters"
+                : summary.note;
+        return [countLabel, summary.mode, status].filter(Boolean).join(" · ");
+    }
+
+    function allStoresSummaryLine(left: SourceSummary | null, right: SourceSummary | null, searchTerm: string): string {
+        const visible = (left?.visible ?? 0) + (right?.visible ?? 0);
+        const total = (left?.total ?? 0) + (right?.total ?? 0);
+        const attention = (left?.attention ?? 0) + (right?.attention ?? 0);
+        if (total === 0) {
+            return searchTerm.trim() ? "Shared search" : "Unified catalogs";
+        }
+
+        return attention > 0
+            ? `${visible}/${total} shown · ${attention} attention`
+            : `${visible}/${total} shown`;
     }
 
     function setupHubLayoutObserver() {
@@ -186,7 +245,10 @@
                 title="Browse all stores"
             >
                 <LucideLayoutGrid aria-hidden="true" />
-                <span>All Stores</span>
+                <span class="source-switch-copy">
+                    <span>All Stores</span>
+                    <small>{allStoresSummaryLine(sotfSummary, nexusSummary, sharedSearchTerm)}</small>
+                </span>
             </button>
             <button
                 type="button"
@@ -196,7 +258,10 @@
                 title="Browse SOTF Mods"
             >
                 <LucideStore aria-hidden="true" />
-                <span>SOTF Mods</span>
+                <span class="source-switch-copy">
+                    <span>SOTF Mods</span>
+                    <small>{sourceSummaryLine(sotfSummary, "Native store")}</small>
+                </span>
             </button>
             <button
                 type="button"
@@ -206,7 +271,10 @@
                 title="Browse Nexus and Vortex"
             >
                 <LucideCloudDownload aria-hidden="true" />
-                <span>Nexus / Vortex</span>
+                <span class="source-switch-copy">
+                    <span>Nexus / Vortex</span>
+                    <small>{sourceSummaryLine(nexusSummary, "Nexus catalog")}</small>
+                </span>
             </button>
         </div>
 
@@ -238,11 +306,15 @@
                 sharedSearchVersion={sharedSearchVersion}
                 showEmbeddedSearch={false}
                 on:searchChange={(event) => setSharedSearchTerm(event.detail)}
+                on:summaryChange={(event) => updateSourceSummary("sotf", event.detail)}
             />
         {:else if activeSource === "all"}
             <section class="source-section">
                 <div class="source-section-head">
-                    <span><LucideStore aria-hidden="true" /> SOTF Mods</span>
+                    <span class="source-section-title">
+                        <span class="source-section-name"><LucideStore aria-hidden="true" /> SOTF Mods</span>
+                        <small>{sourceSummaryLine(sotfSummary, "Native store")}</small>
+                    </span>
                     <button type="button" on:click={() => selectSource("sotf")} title="Open SOTF Mods source" aria-label="Open SOTF Mods source">
                         <LucideMaximize2 aria-hidden="true" />
                     </button>
@@ -254,13 +326,17 @@
                         sharedSearchVersion={sharedSearchVersion}
                         showEmbeddedSearch={false}
                         on:searchChange={(event) => setSharedSearchTerm(event.detail)}
+                        on:summaryChange={(event) => updateSourceSummary("sotf", event.detail)}
                     />
                 </div>
             </section>
 
             <section class="source-section">
                 <div class="source-section-head">
-                    <span><LucideCloudDownload aria-hidden="true" /> Nexus / Vortex</span>
+                    <span class="source-section-title">
+                        <span class="source-section-name"><LucideCloudDownload aria-hidden="true" /> Nexus / Vortex</span>
+                        <small>{sourceSummaryLine(nexusSummary, "Nexus catalog")}</small>
+                    </span>
                     <button type="button" on:click={() => selectSource("nexus")} title="Open Nexus / Vortex source" aria-label="Open Nexus / Vortex source">
                         <LucideMaximize2 aria-hidden="true" />
                     </button>
@@ -272,6 +348,7 @@
                         sharedSearchVersion={sharedSearchVersion}
                         showEmbeddedSearch={false}
                         on:searchChange={(event) => setSharedSearchTerm(event.detail)}
+                        on:summaryChange={(event) => updateSourceSummary("nexus", event.detail)}
                     />
                 </div>
             </section>
@@ -281,6 +358,7 @@
                 sharedSearchVersion={sharedSearchVersion}
                 showEmbeddedSearch={false}
                 on:searchChange={(event) => setSharedSearchTerm(event.detail)}
+                on:summaryChange={(event) => updateSourceSummary("nexus", event.detail)}
             />
         {/if}
     </div>
@@ -319,9 +397,10 @@
     .source-switch button {
         align-items: center;
         color: #aeb6bb;
-        display: inline-flex;
+        display: grid;
         gap: 0.48em;
-        height: clamp(2.25em, 4.8vh, 2.75em);
+        grid-template-columns: auto minmax(0, auto);
+        height: clamp(2.45em, 5.2vh, 3em);
         justify-content: center;
         margin: 0;
         min-width: 0;
@@ -337,10 +416,29 @@
         stroke-width: 2.3;
     }
 
-    .source-switch button span {
+    .source-switch-copy {
+        display: grid;
+        gap: 0.08em;
+        min-width: 0;
+        overflow: hidden;
+        text-align: left;
+    }
+
+    .source-switch-copy span,
+    .source-switch-copy small {
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .source-switch-copy small {
+        color: #7f8992;
+        font-size: 0.64em;
+        font-weight: 800;
+        line-height: 1.05;
+        text-shadow: none;
+        text-transform: none;
     }
 
     .source-switch button.source-selected {
@@ -483,18 +581,39 @@
         min-width: 0;
     }
 
-    .source-section-head span {
+    .source-section-title {
         align-items: center;
         color: #d8e3ea;
-        display: inline-flex;
-        gap: 0.45em;
+        display: grid;
+        gap: 0.1em;
         font-size: 0.82em;
         font-weight: 900;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    .source-section-name {
+        align-items: center;
+        display: inline-flex;
+        gap: 0.45em;
         letter-spacing: 0.08em;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .source-section-title small {
+        color: #81909a;
+        font-size: 0.78em;
+        font-weight: 800;
+        letter-spacing: 0;
+        line-height: 1.1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-transform: none;
         white-space: nowrap;
     }
 
@@ -550,6 +669,10 @@
         .source-switch button {
             font-size: 0.82em;
             padding: 0 0.55em;
+        }
+
+        .source-switch-copy small {
+            display: none;
         }
 
         .source-section {
