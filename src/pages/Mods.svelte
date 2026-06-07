@@ -45,6 +45,8 @@
     let activeSortMetricLabel = "";
     let hasActiveModFilters = false;
     let hasActiveModViewOptions = false;
+    let hasActiveLocalModFilters = false;
+    let hasActiveLocalModViewOptions = false;
 
     let onlineSelected = true;
     let installedSelected = false;
@@ -95,10 +97,11 @@
         lastAppliedSharedSearchVersion = sharedSearchVersion;
         applySharedSearch(sharedSearchTerm);
     }
-    $: hasActiveModFilters = filterTerm.trim().length > 0
-        || selectedCategory !== "all"
+    $: hasActiveLocalModFilters = selectedCategory !== "all"
         || selectedType !== "all"
         || selectedCompatibility !== "all";
+    $: hasActiveModFilters = filterTerm.trim().length > 0 || hasActiveLocalModFilters;
+    $: hasActiveLocalModViewOptions = hasActiveLocalModFilters || selectedSort !== "updated";
     $: hasActiveModViewOptions = hasActiveModFilters || selectedSort !== "updated";
     $: selectedDetailPreviewUrls = selectedDetailMod ? modPreviewUrls(selectedDetailMod) : [];
     $: if (selectedDetailPreviewIndex >= selectedDetailPreviewUrls.length) {
@@ -929,7 +932,7 @@
 <div
     class="column mods-page"
     class:sotf-embedded-store-preview={embeddedStorePreview}
-    class:sotf-embedded-controls-needed={embeddedStorePreview && (installedSelected || hasActiveModViewOptions)}
+    class:sotf-embedded-controls-needed={embeddedStorePreview && (installedSelected || hasActiveLocalModViewOptions)}
     bind:this={modsPageElement}
 >
     {#if $isPathValid}
@@ -998,7 +1001,9 @@
             {#if selectedSort !== "updated"}
                 <span>Sorted loaded rows by {selectedSortLabel()}.</span>
             {/if}
-            {#if hasActiveModFilters}
+            {#if embeddedStorePreview && filterTerm.trim().length > 0 && !hasActiveLocalModViewOptions}
+                <span>Shared search active.</span>
+            {:else if hasActiveModFilters}
                 <span>Filters active.</span>
             {/if}
         </div>
