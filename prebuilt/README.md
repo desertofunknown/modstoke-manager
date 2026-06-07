@@ -13,6 +13,8 @@ Nexus catalog thumbnails now expose compact open-preview actions for already-loa
 
 Nexus catalog scrolling now reserves a measured bottom guard inside the list viewport so row install/detail/open controls stay above the lower frame mask in both dedicated Nexus/Vortex and All Stores layouts.
 
+The frameless desktop shell now starts with a larger comfort cap on roomy displays, keeping the same small-screen minimums while giving dense catalogs and detail drawers more width before users resort to fullscreen.
+
 SOTF Mods and Nexus/Vortex catalog rows now use row-aware proximity snapping so the merged All Stores workspace is less likely to stop with row titles or install/detail actions clipped under an embedded section header after wheel scrolling.
 
 The All Stores Nexus/Vortex preview keeps the full controls in the dedicated source while hiding low-priority account actions, rate meters, summary cards, feed/filter controls, and empty queue chrome in the merged preview so Nexus rows appear sooner.

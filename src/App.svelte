@@ -39,8 +39,8 @@
 
   const MIN_WINDOW_WIDTH = 980;
   const MIN_WINDOW_HEIGHT = 680;
-  const MAX_WINDOW_WIDTH = 1480;
-  const MAX_WINDOW_HEIGHT = 1060;
+  const MAX_WINDOW_WIDTH = 1920;
+  const MAX_WINDOW_HEIGHT = 1240;
 
   function selectTab(tab: TabId) {
     activeTab = tab;
@@ -135,7 +135,7 @@
       const maxWidth = Math.max(minWidth, Math.min(MAX_WINDOW_WIDTH, workArea.width - 16));
       const maxHeight = Math.max(minHeight, Math.min(MAX_WINDOW_HEIGHT, workArea.height - 16));
 
-      const targetWidth = Math.round(clampNumber(workArea.width * 0.88, minWidth, maxWidth));
+      const targetWidth = Math.round(clampNumber(workArea.width * 0.9, minWidth, maxWidth));
       const targetHeight = Math.round(clampNumber(workArea.height * 0.94, minHeight, maxHeight));
 
       await appWindow.setSizeConstraints({
