@@ -223,6 +223,14 @@
       return "Compatibility unknown";
     }
 
+    function formatCount(value?: number) {
+      return typeof value === "number" ? value.toLocaleString() : "-";
+    }
+
+    function downloadCount() {
+      return formatCount(mod.downloads ?? mod.lastWeekDownloads);
+    }
+
     function showDetails() {
       dispatch("details", mod);
     }
@@ -304,6 +312,7 @@
         <span>Author <b class="update">{mod.user.name}</b></span>
         <span>Version <b class="update">{mod.latestVersion}</b></span>
         <span>Updated <b class="update">{mod.lastReleasedAt?formatDate(mod.lastReleasedAt):"-"}</b></span>
+        <span>Downloads <b class="update">{downloadCount()}</b></span>
         <span>Category <b class="update">{mod.category?mod.category.name:"-"}</b></span>
       </div>
     </div>
@@ -474,7 +483,7 @@
   .fact-row {
     display: grid;
     gap: 0.18em 0.6em;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     min-width: 0;
   }
 

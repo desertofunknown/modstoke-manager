@@ -39,6 +39,8 @@ SOTF Mods detail drawers now surface API-returned community metadata, including 
 
 SOTF Mods catalog rows can now be sorted by recent updates, downloads, favorites, comments, rating, or name across the currently loaded results, using API-returned storefront metadata without implying a server-wide popularity feed when the API does not provide one.
 
+Dedicated SOTF Mods rows now show API-returned download counts in the row facts, and detail drawers format download totals with separators for easier scanning.
+
 SOTF Mods dependency fields are normalized when the live storefront returns either a single mod ID string or an array, keeping detail dependency rows and recursive dependency installs from splitting one ID into characters.
 
 SOTF Mods dependency rows now resolve matching store metadata in the detail drawer, show available/installed/review state, and expose Details/Open Page actions so users can inspect a dependency before installing it.

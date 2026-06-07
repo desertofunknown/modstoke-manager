@@ -1055,7 +1055,7 @@
                                 <span>Updated <b>{selectedDetailMod.lastReleasedAt ? formatDetailDate(selectedDetailMod.lastReleasedAt) : "-"}</b></span>
                                 <span>Category <b>{detailCategoryLabel(selectedDetailMod)}</b></span>
                                 <span>Compatibility <b>{detailCompatibilityLabel(selectedDetailMod)}</b></span>
-                                <span>Downloads <b>{selectedDetailMod.downloads ?? selectedDetailMod.lastWeekDownloads ?? "-"}</b></span>
+                                <span>Downloads <b>{detailCount(selectedDetailMod.downloads ?? selectedDetailMod.lastWeekDownloads)}</b></span>
                                 <span>Author <b>{detailAuthorName(selectedDetailMod)}</b></span>
                             </div>
 
