@@ -223,6 +223,10 @@
     function showDetails() {
       dispatch("details", mod);
     }
+
+    function openModPage() {
+      ModDatabase.openModPage(mod);
+    }
 </script>
 
 {#if detailActionsOnly}
@@ -283,7 +287,6 @@
     <div class="mod-info">
       <div class="title-line">
         <span class="mod-title">{mod.name}</span>
-        <a href={ModDatabase.getModPageUrl(mod)} target="_blank" rel="noreferrer" class="site-link">view on site</a>
       </div>
       <div class="meta-row">
         <span class="source-pill source-{mod.installedMod?.installSource ?? 'online'}">{sourceLabel()}</span>
@@ -319,6 +322,7 @@
       {#if showDetailsButton}
         <button class="details-button" type="button" on:click={showDetails}>Details</button>
       {/if}
+      <button class="open-page-button" type="button" on:click={openModPage}>Open Page</button>
     </div>
   </div>
 </div>
@@ -329,7 +333,7 @@
     align-items: stretch;
     display: grid;
     gap: clamp(0.5em, 0.75vw, 0.72em);
-    grid-template-columns: var(--sotf-thumb-width, clamp(136px, 15vw, 210px)) minmax(0, 1fr) minmax(8.4em, 11em);
+    grid-template-columns: var(--sotf-thumb-width, clamp(136px, 15vw, 210px)) minmax(0, 1fr) minmax(7.8em, 10.4em);
     min-width: 0;
     width: 100%;
   }
@@ -342,13 +346,13 @@
   }
 
   .mod-info {
-    gap: 0.25em;
+    gap: 0.2em;
     justify-content: center;
   }
 
   .mod-actions {
     align-self: stretch;
-    gap: 0.38em;
+    gap: 0.28em;
     justify-content: center;
   }
 
@@ -368,11 +372,11 @@
   }
 
   .mod-actions :global(button) {
-    font-size: 0.82em;
+    font-size: 0.78em;
     line-height: 1.1;
     margin: 0;
-    min-height: 2.35em;
-    padding: 0.42em 0.65em;
+    min-height: 2.08em;
+    padding: 0.32em 0.55em;
   }
 
   .mod-actions :global(.horizontal) {
@@ -381,7 +385,7 @@
   }
 
   .description {
-    padding: 0.56em;
+    padding: 0.5em;
     /* border-radius: 10px; */
     /* border: 2px solid #414141; */
     /* border-bottom: 2px solid #414141; */
@@ -390,7 +394,7 @@
     border-bottom: 2px solid #333;
     background-color: #121212;
 
-    margin: 0 0 0.42em;
+    margin: 0 0 0.36em;
   }
 
   .description-content {
@@ -482,13 +486,8 @@
     white-space: nowrap;
   }
 
-  .site-link {
-    font-weight: 700;
-    font-size: 0.65em;
-    text-transform: lowercase;
-  }
-
-  .details-button {
+  .details-button,
+  .open-page-button {
     color: #d6dde5;
   }
 

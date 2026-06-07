@@ -250,7 +250,7 @@
         const minimumScrollerHeight = clampNumber(availableHeight * 0.42, 180, 300);
         const targetScrollerHeight = clampNumber(availableHeight - chromeHeight - pageGap, minimumScrollerHeight, availableHeight);
         const targetThumbWidth = clampNumber(pageRect.width * 0.15, 136, 210);
-        const targetThumbHeight = clampNumber(targetScrollerHeight / (targetScrollerHeight >= 620 ? 5.6 : 4.9), 74, 112);
+        const targetThumbHeight = clampNumber(targetScrollerHeight / (targetScrollerHeight >= 620 ? 6.1 : 5.25), 70, 104);
 
         page.style.setProperty("--sotf-scroller-target-height", `${Math.round(targetScrollerHeight)}px`);
         page.style.setProperty("--sotf-thumb-width", `${Math.round(targetThumbWidth)}px`);

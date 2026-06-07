@@ -21,9 +21,9 @@ When a Nexus account is already connected, the All Stores embedded Nexus/Vortex 
 
 Embedded Nexus/Vortex rows in All Stores also use tighter thumbnails, one-line summaries, and preview-scoped primary actions so install/detail/open controls remain visible in the shared workspace instead of dropping below the lower frame.
 
-The All Stores SOTF Mods preview now measures the shared panel height and uses preview-only compact rows, hiding duplicate filters only when no hidden SOTF facet is active so complete native Install/Details rows appear before the Nexus/Vortex preview without removing full SOTF controls from the dedicated source.
+The All Stores SOTF Mods preview now measures the shared panel height and uses preview-only compact rows, hiding duplicate filters only when no hidden SOTF facet is active so complete native Install/Details/Open Page rows appear before the Nexus/Vortex preview without removing full SOTF controls from the dedicated source.
 
-SOTF Mods rows now show compact image counts and left/right preview controls when the live storefront payload includes gallery image records, cycling only already-loaded image URLs without making extra store requests.
+SOTF Mods rows now show compact image counts and left/right preview controls when the live storefront payload includes gallery image records, cycling only already-loaded image URLs without making extra store requests. Their denser row action column also exposes Open Page beside Install and Details so native-store rows match the Nexus row action model in All Stores.
 
 SOTF Mods details now open in a native drawer that keeps the preview image, mod name, category/type/author context, and description first, then summarizes source state, install target, dependency records, and bottom deployment/page actions without moving install controls above the mod identity.
 
