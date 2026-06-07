@@ -18,6 +18,12 @@ export type ModAuthor = {
     isTrusted?: boolean;
 }
 
+export type ModImage = {
+    url?: string;
+    isPrimary?: boolean;
+    isThumbnail?: boolean;
+}
+
 export type Mod = {
     name: string;
     slug: string;
@@ -31,6 +37,7 @@ export type Mod = {
     // user_slug: string;
     user: ModAuthor;
     imageUrl: string;
+    images?: ModImage[];
     latestVersion: string;
     lastReleasedAt: string;
     type: string;

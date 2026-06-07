@@ -17,6 +17,8 @@ The All Stores Nexus/Vortex preview keeps the full controls in the dedicated sou
 
 Embedded Nexus/Vortex rows in All Stores also use tighter thumbnails, one-line summaries, and preview-scoped primary actions so install/detail/open controls remain visible in the shared workspace instead of dropping below the lower frame.
 
+SOTF Mods rows now show compact image counts and left/right preview controls when the live storefront payload includes gallery image records, cycling only already-loaded image URLs without making extra store requests.
+
 The Nexus action queue now collapses to a slim `Queue clear` strip when endorsement, tracking, update, disabled, and conflict counts are all zero, but restores the full shortcut chips whenever an action exists or one of those filters is selected.
 
 The connected Nexus account row now uses tighter button spacing in compact catalog layouts, keeping auto-endorse, Nexus, Vortex staging, inventory refresh, and disconnect controls readable without taking extra list height.

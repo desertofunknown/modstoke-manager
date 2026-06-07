@@ -4,15 +4,39 @@
     import { ModDatabase, type Mod } from './mods';
     import StatusButton from './StatusButton.svelte';
     import * as dialog from "@tauri-apps/plugin-dialog"
+    import LucideChevronLeft from "~icons/lucide/chevron-left";
+    import LucideChevronRight from "~icons/lucide/chevron-right";
+    import LucideImages from "~icons/lucide/images";
 
     export let mod: Mod;
 
     let isLibrary = false;
     let isImageLoaded = false;
+    let activePreviewModKey = "";
+    let currentPreviewIndex = 0;
+    let previewUrls: string[] = [];
+    let currentPreviewUrl = "";
+    let previewCountLabel = "";
+
+    const fallbackPreviewUrl = "https://placehold.co/600x400/252525/FFF?text=No+Image";
 
     const dispatch = createEventDispatcher();
 
     $: isLibrary = mod.type === "Library" || mod.installedMod?.loaderType === "redloader-library";
+    $: {
+      const modKey = mod.mod_id || mod.slug || mod.name;
+      if (activePreviewModKey !== modKey) {
+        activePreviewModKey = modKey;
+        currentPreviewIndex = 0;
+        isImageLoaded = false;
+      }
+    }
+    $: previewUrls = modPreviewUrls(mod);
+    $: if (currentPreviewIndex >= previewUrls.length) {
+      currentPreviewIndex = 0;
+    }
+    $: currentPreviewUrl = previewUrls[currentPreviewIndex] ?? fallbackPreviewUrl;
+    $: previewCountLabel = previewUrls.length > 0 ? `${currentPreviewIndex + 1}/${previewUrls.length}` : "Local";
 
     async function update() {
       if (!mod.installedMod) {
@@ -127,6 +151,26 @@
       isImageLoaded = true;
     }
 
+    function modPreviewUrls(mod: Mod): string[] {
+      const urls = [
+        mod.imageUrl,
+        ...(mod.images ?? []).map((image) => image.url)
+      ];
+
+      return Array.from(new Set(urls
+        .map((url) => typeof url === "string" ? url.trim() : "")
+        .filter((url) => url.length > 0 && !url.includes("placehold.co"))));
+    }
+
+    function cyclePreview(direction: number) {
+      if (previewUrls.length <= 1) {
+        return;
+      }
+
+      currentPreviewIndex = (currentPreviewIndex + direction + previewUrls.length) % previewUrls.length;
+      isImageLoaded = false;
+    }
+
     function isVortexManaged() {
       return mod.installedMod?.installSource === "vortex";
     }
@@ -199,10 +243,29 @@
       <img
         class="cover-img main-image"
         class:isImageLoaded
-        src={mod.imageUrl?mod.imageUrl:"https://placehold.co/600x400/252525/FFF?text=No+Image"}
-        alt="Mod cover..."
+        src={currentPreviewUrl}
+        alt={`Preview for ${mod.name}`}
         on:load={onImageLoad}
       />
+      <div
+        class="preview-count"
+        class:preview-count-fallback={previewUrls.length === 0}
+        aria-label={previewUrls.length > 0 ? `${mod.name} preview image ${currentPreviewIndex + 1} of ${previewUrls.length}` : `${mod.name} uses the local fallback preview image`}
+        title={previewUrls.length > 0 ? `${previewUrls.length} preview ${previewUrls.length === 1 ? "image" : "images"}` : "Local fallback preview"}
+      >
+        <LucideImages aria-hidden="true" />
+        <span>{previewCountLabel}</span>
+      </div>
+      {#if previewUrls.length > 1}
+        <div class="preview-controls" aria-label={`Cycle preview images for ${mod.name}`}>
+          <button type="button" aria-label={`Previous preview image for ${mod.name}`} title="Previous preview image" on:click={() => cyclePreview(-1)}>
+            <LucideChevronLeft aria-hidden="true" />
+          </button>
+          <button type="button" aria-label={`Next preview image for ${mod.name}`} title="Next preview image" on:click={() => cyclePreview(1)}>
+            <LucideChevronRight aria-hidden="true" />
+          </button>
+        </div>
+      {/if}
     </div>
 
     <div class="mod-info">
@@ -447,8 +510,11 @@
 
   .image-container {
     align-self: center;
+    background: rgba(8, 8, 8, 0.85);
+    border-radius: 6px;
     height: var(--sotf-thumb-height, clamp(74px, 9vh, 112px));
     min-width: 0;
+    overflow: hidden;
     position: relative;
     width: 100%;
   }
@@ -470,6 +536,66 @@
   
   .main-image.isImageLoaded {
     opacity: 1;
+  }
+
+  .preview-count,
+  .preview-controls {
+    align-items: center;
+    display: flex;
+    gap: 0.2em;
+    position: absolute;
+    z-index: 2;
+  }
+
+  .preview-count {
+    background: rgba(6, 10, 12, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: #d6f3ff;
+    font-size: 0.68em;
+    font-weight: 900;
+    left: 0.35em;
+    padding: 0.18em 0.34em;
+    text-transform: uppercase;
+    top: 0.35em;
+  }
+
+  .preview-count :global(svg) {
+    height: 1em;
+    width: 1em;
+  }
+
+  .preview-count-fallback {
+    color: #9aa5af;
+  }
+
+  .preview-controls {
+    bottom: 0.35em;
+    right: 0.35em;
+  }
+
+  .preview-controls button {
+    align-items: center;
+    background: rgba(10, 14, 18, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: none;
+    color: #62f09b;
+    display: inline-flex;
+    height: 1.8em;
+    justify-content: center;
+    margin: 0;
+    min-width: 1.8em;
+    padding: 0;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .preview-controls button:hover {
+    border-color: rgba(98, 240, 155, 0.4);
+  }
+
+  .preview-controls :global(svg) {
+    height: 1.05em;
+    width: 1.05em;
   }
 
   .header-desc {
