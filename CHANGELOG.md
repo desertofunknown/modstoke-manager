@@ -17,6 +17,7 @@
   - Preserved Nexus v3/global file IDs alongside game-scoped Vortex file IDs so selected-file and nested dependency checks can query the correct dependency metadata before falling back to resolver/original-ID paths.
   - Added a compact Nexus dependency readiness strip that summarizes API dependencies, author requirement hints, and nested dependency checks before Vortex handoff.
   - Added compact Nexus file-choice summary chips that show total files, selected file readiness, and archived/old-file review state before Vortex handoff.
+  - Added Nexus file-choice recovery controls so archived, old, or removed selections can jump back to Files and switch to the recommended file before Vortex handoff.
   - Added a compact in-drawer Nexus detail section rail for jumping to Description, Files, Dependencies, Install Plan, Changelog, and Deployment without hunting through split scroll panes.
   - Made Nexus catalog previews more resilient by accepting protocol-relative and common nested media URL fields, replacing the remote placeholder with a bundled local fallback image, and using clearer compact preview count/cycle controls.
   - Added author requirement hints from Nexus description, selected-file notes, and changelog links when structured dependency rows are missing or incomplete, without extra Nexus requests.
@@ -37,6 +38,7 @@
   - Improved Nexus author-description layout preservation with real definition-list rendering, ordered-list start numbers, legacy `centre`/`colour`/strikethrough/newline aliases, and tighter monospace spacing for aligned install notes.
   - Rendered Nexus spoiler, details, collapse, and accordion BBCode/HTML blocks as native expandable sections with safe summaries so author-hidden instructions keep their intended collapsed layout.
   - Preserved more Nexus author-layout BBCode by converting labeled divider sections, standalone anchor/bookmark markers, and table cell width/alignment hints into safe drawer markup.
+  - Preserved labeled code/preformatted blocks, quote citations, and attribute-bearing alignment BBCode so author-written install examples and centered/right-aligned sections keep their intended layout.
   - Rebuilt and signed portable/setup EXEs as `0.2.0`.
 
 - 0.1.2

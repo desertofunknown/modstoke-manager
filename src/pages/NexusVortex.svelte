@@ -177,6 +177,11 @@
     let selectedModDetails: NexusMod | null = null;
     let selectedModFiles: NexusModFile[] = [];
     let selectedFileId: number | null = null;
+    let recommendedNexusFile: NexusModFile | null = null;
+    let selectedFileCanUseRecommended = false;
+    let selectedFileRecommendedActionTitle = "";
+    let selectedFileFooterReviewVisible = false;
+    let selectedFileFooterReviewTitle = "";
     let selectedDependencies: NexusModDependency[] = [];
     let selectedDependencyMessage = "";
     let selectedAuthorRequirements: AuthorRequirementLink[] = [];
@@ -275,6 +280,19 @@
     $: trackedCount = trackedMods.length;
     $: selectedNexusFile = selectedModFiles.find(file => file.file_id === selectedFileId) ?? null;
     $: recommendedNexusFileId = pickRecommendedNexusFile(selectedModFiles)?.file_id ?? null;
+    $: recommendedNexusFile = selectedModFiles.find(file => file.file_id === recommendedNexusFileId) ?? null;
+    $: selectedFileCanUseRecommended = Boolean(
+        selectedNexusFile
+        && recommendedNexusFile
+        && selectedNexusFile.file_id !== recommendedNexusFile.file_id
+    );
+    $: selectedFileRecommendedActionTitle = recommendedNexusFile
+        ? `Switch back to the recommended Nexus file: ${recommendedNexusFile.name}.`
+        : "Nexus did not return a recommended file for this mod.";
+    $: selectedFileFooterReviewVisible = Boolean(selectedNexusFile && isReviewNexusFile(selectedNexusFile));
+    $: selectedFileFooterReviewTitle = selectedNexusFile
+        ? `The selected file is marked ${fileChoiceCategoryLabel(selectedNexusFile)}. Jump to Files to review the safer recommended choice before Vortex handoff.`
+        : "Jump to file choices before Vortex handoff.";
     $: displayedSelectedModFiles = sortNexusFilesForDisplay(selectedModFiles, recommendedNexusFileId);
     $: {
         selectedMod;
@@ -2067,6 +2085,16 @@
         selectedFileId = fileId;
         clearNestedDependencyCheck();
         await loadDependenciesForFile(fileId);
+    }
+
+    async function selectRecommendedNexusFile() {
+        if (!recommendedNexusFile || selectedFileId === recommendedNexusFile.file_id) {
+            return;
+        }
+
+        await selectNexusFile(recommendedNexusFile.file_id);
+        await tick();
+        detailFilesSectionElement?.scrollIntoView({ block: "start", behavior: "smooth" });
     }
 
     async function loadDependenciesForFile(fileId: number) {
@@ -4701,15 +4729,19 @@
             return `<p class="nexus-rich-heading nexus-rich-heading-3">${renderNexusInline(standaloneHeading)}</p>`;
         }
 
-        const code = block.match(/^\[code\]([\s\S]*?)\[\/code\]$/i);
+        const code = block.match(/^\[code(?:=([^\]]+)|[ \t]([^\]]+))?\]([\s\S]*?)\[\/code\]$/i);
         if (code) {
-            return `<pre><code>${escapeHtml(code[1])}</code></pre>`;
+            const label = safeNexusLabel(code[1] ?? code[2]);
+            return `<pre${label ? ` data-nexus-label="${escapeAttribute(label)}"` : ""}><code>${escapeHtml(code[3])}</code></pre>`;
         }
 
-        const aligned = block.match(/^\[(center|left|right)\]([\s\S]*?)\[\/\1\]$/i) ?? block.match(/^\[align=([^\]]+)\]([\s\S]*?)\[\/align\]$/i);
-        if (aligned) {
-            const alignment = safeNexusAlignment(aligned[1]);
-            return `<div class="nexus-rich-align-${alignment}">${renderNexusBlocks(aligned[2], depth + 1)}</div>`;
+        const directAligned = block.match(/^\[(center|centre|left|right)(?:=[^\]]+|[ \t][^\]]*)?\]([\s\S]*?)\[\/\1\]$/i);
+        const attributedAligned = directAligned ? null : block.match(/^\[align(?:=([^\]]+)|[ \t]([^\]]+))?\]([\s\S]*?)\[\/align\]$/i);
+        if (directAligned || attributedAligned) {
+            const tagAlignment = directAligned?.[1]?.toLowerCase() === "centre" ? "center" : directAligned?.[1];
+            const alignment = safeNexusAlignment(attributedAligned?.[1] ?? attributedAligned?.[2] ?? tagAlignment);
+            const body = directAligned?.[2] ?? attributedAligned?.[3] ?? "";
+            return `<div class="nexus-rich-align-${alignment}">${renderNexusBlocks(body, depth + 1)}</div>`;
         }
 
         const quote = block.match(/^\[quote(?:=([^\]]+))?\]([\s\S]*?)\[\/quote\]$/i);
@@ -5384,8 +5416,10 @@
             case "samp":
             case "var":
                 return `<code>${escapeHtml(collectNexusNodeText(node.children))}</code>`;
-            case "quote":
-                return `<blockquote>${inner}</blockquote>`;
+            case "quote": {
+                const cite = safeNexusLabel(node.attr);
+                return `<blockquote>${cite ? `<cite>${escapeHtml(cite)}</cite>` : ""}${inner}</blockquote>`;
+            }
             case "spoiler":
                 return `<span class="nexus-rich-spoiler">${safeNexusLabel(node.attr) ? `<b>${escapeHtml(safeNexusLabel(node.attr) ?? "")}</b> ` : ""}${inner}</span>`;
             case "collapse":
@@ -7155,7 +7189,19 @@
                     {/if}
 
                     <div class="file-picker" bind:this={detailFilesSectionElement}>
-                        <span class="detail-section-title">Files</span>
+                        <div class="file-picker-head">
+                            <span class="detail-section-title">Files</span>
+                            {#if selectedFileCanUseRecommended}
+                                <button
+                                    class="use-recommended-file-btn"
+                                    type="button"
+                                    title={selectedFileRecommendedActionTitle}
+                                    on:click={selectRecommendedNexusFile}
+                                >
+                                    Use Recommended
+                                </button>
+                            {/if}
+                        </div>
                         <div class="file-readiness-grid" aria-label="File choice summary">
                             <span
                                 class="file-readiness-chip"
@@ -7405,6 +7451,15 @@
                 </div>
 
                 <div class="detail-actions">
+                    {#if selectedFileFooterReviewVisible}
+                        <button
+                            class="file-review-btn"
+                            title={selectedFileFooterReviewTitle}
+                            on:click={() => scrollDetailSection("files")}
+                        >
+                            Review File Choice
+                        </button>
+                    {/if}
                     {#if shouldShowDependencyFooterReviewAction()}
                         <button
                             class="dependency-review-btn"
@@ -8420,7 +8475,8 @@
         min-width: 9.6em;
     }
 
-    .detail-actions .dependency-review-btn {
+    .detail-actions .dependency-review-btn,
+    .detail-actions .file-review-btn {
         color: #fdc66d;
         min-width: 10.4em;
     }
@@ -9138,6 +9194,17 @@
         overflow-x: auto;
         padding: 0.65em;
         white-space: pre-wrap;
+    }
+
+    .nexus-rich-text :global(pre[data-nexus-label])::before {
+        color: #78d9f4;
+        content: attr(data-nexus-label);
+        display: block;
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-size: 0.78em;
+        font-weight: 900;
+        margin-bottom: 0.45em;
+        text-transform: uppercase;
     }
 
     .nexus-rich-text :global(.nexus-rich-image) {
@@ -9986,6 +10053,28 @@
     .dependency-box-head button:disabled {
         cursor: default;
         opacity: 0.52;
+    }
+
+    .file-picker-head {
+        align-items: center;
+        display: flex;
+        gap: 0.65em;
+        justify-content: space-between;
+        min-width: 0;
+    }
+
+    .file-picker-head .detail-section-title {
+        min-width: 0;
+    }
+
+    .use-recommended-file-btn {
+        color: #62f09b;
+        flex: 0 0 auto;
+        font-size: 0.72em;
+        margin: 0;
+        min-height: 2.15em;
+        min-width: 9.2em;
+        padding: 0.35em 0.55em;
     }
 
     .dependency-readiness-grid,
