@@ -151,13 +151,15 @@
             return sum + Math.max(0, section.getBoundingClientRect().height - body.getBoundingClientRect().height);
         }, 0);
         const fixedHeight = panelPaddingBlock + panelGap + sectionChrome;
-        const bodyBudget = Math.max(isNarrow ? 560 : 620, height - fixedHeight);
-        const sotfMinimum = isNarrow ? 255 : 285;
-        const nexusMinimum = isNarrow ? 290 : 330;
+        const bodyBudget = Math.max(260, height - fixedHeight);
+        const sotfBaseMinimum = isNarrow ? 255 : 285;
+        const nexusBaseMinimum = isNarrow ? 290 : 330;
+        const sotfMinimum = Math.min(sotfBaseMinimum, Math.max(isNarrow ? 138 : 156, Math.round(bodyBudget * 0.34)));
+        const nexusMinimum = Math.min(nexusBaseMinimum, Math.max(isNarrow ? 160 : 180, Math.round(bodyBudget * 0.4)));
         const sotfShare = isShort ? 0.42 : width > 1320 ? 0.47 : 0.45;
         const maxSotfHeight = Math.max(sotfMinimum, bodyBudget - nexusMinimum);
         const sotfHeight = clampNumber(bodyBudget * sotfShare, sotfMinimum, maxSotfHeight);
-        const nexusHeight = Math.max(nexusMinimum, bodyBudget - sotfHeight);
+        const nexusHeight = Math.max(0, bodyBudget - sotfHeight);
 
         panel.style.setProperty("--all-sotf-preview-height", `${Math.round(sotfHeight)}px`);
         panel.style.setProperty("--all-nexus-preview-height", `${Math.round(nexusHeight)}px`);
@@ -589,11 +591,11 @@
         }
 
         .all-source-panel .source-section-body {
-            height: var(--all-sotf-preview-height, clamp(20em, 39vh, 28em));
+            height: var(--all-sotf-preview-height, clamp(14em, 34vh, 21em));
         }
 
         .all-source-panel .nexus-source-section-body {
-            height: var(--all-nexus-preview-height, clamp(29em, 53vh, 38em));
+            height: var(--all-nexus-preview-height, clamp(18em, 43vh, 27em));
         }
     }
 </style>
