@@ -29,6 +29,7 @@ export type Mod = {
     slug: string;
     mod_id: string;
     shortDescription: string;
+    description?: string;
     isApproved: boolean;
     // category_name: string;
     // category_slug: string;

@@ -4,6 +4,7 @@
     import ModCard from "../lib/ModCard.svelte";
     import type { Mod, ModCategory } from "../lib/mods";
     import { ModDatabase, modDependencies, modPreviewUrls, Sorting } from "../lib/mods";
+    import { renderStoreRichText } from "../lib/richText";
     import InfiniteScroll from "../lib/InfiniteScroll.svelte";
     import { debounce } from "lodash";
     import SvgSpinnersBlocksWave from '~icons/svg-spinners/blocks-wave'
@@ -62,11 +63,16 @@
     let selectedDetailPreviewUrls: string[] = [];
     let selectedDetailPreviewUrl = "";
     let selectedDetailPreviewLabel = "";
+    let selectedDetailDescriptionHtml = "";
+    let selectedDetailIsLoading = false;
+    let selectedDetailLoadError = "";
     let selectedDetailDependencies: string[] = [];
     let selectedDetailDependencyRows: DetailDependencyRow[] = [];
     let detailDependencyLookupToken = 0;
+    let detailModLookupToken = 0;
 
     const SOTF_DETAIL_FALLBACK_IMAGE = "https://placehold.co/900x500/252525/FFF?text=No+Image";
+    const detailModCache = new Map<string, Mod>();
     const detailDependencyCache = new Map<string, Mod | null>();
 
     $: {
@@ -92,6 +98,10 @@
     $: selectedDetailPreviewLabel = selectedDetailPreviewUrls.length > 0
         ? `${selectedDetailPreviewIndex + 1}/${selectedDetailPreviewUrls.length}`
         : "Local";
+    $: selectedDetailDescriptionHtml = renderStoreRichText(
+        selectedDetailMod?.description || selectedDetailMod?.shortDescription,
+        "No description is available from SOTF Mods for this entry."
+    );
     $: selectedDetailDependencies = selectedDetailMod ? modDependencies(selectedDetailMod) : [];
     $: {
         visibleMods.length;
@@ -420,19 +430,65 @@
         if (updated) {
             selectedDetailMod = updated;
             resolveSelectedDetailDependencies(updated);
+            void loadSelectedDetailMod(updated);
         }
     }
 
     function openModDetails(mod: Mod) {
         selectedDetailMod = mod;
         selectedDetailPreviewIndex = 0;
+        selectedDetailLoadError = "";
         resolveSelectedDetailDependencies(mod);
+        void loadSelectedDetailMod(mod);
     }
 
     function closeModDetails() {
         selectedDetailMod = null;
+        selectedDetailIsLoading = false;
+        selectedDetailLoadError = "";
         selectedDetailDependencyRows = [];
         detailDependencyLookupToken += 1;
+        detailModLookupToken += 1;
+    }
+
+    async function loadSelectedDetailMod(mod: Mod) {
+        const lookupKey = mod.mod_id || mod.slug || mod.name;
+        const lookupToken = ++detailModLookupToken;
+        selectedDetailIsLoading = true;
+        selectedDetailLoadError = "";
+
+        try {
+            let detailMod = detailModCache.get(lookupKey);
+            if (!detailMod) {
+                detailMod = await ModDatabase.fetchMod(lookupKey) ?? undefined;
+                if (detailMod) {
+                    detailModCache.set(lookupKey, detailMod);
+                }
+            }
+
+            if (lookupToken !== detailModLookupToken || !selectedDetailMod || modIdentityKey(selectedDetailMod) !== modIdentityKey(mod)) {
+                return;
+            }
+
+            if (!detailMod) {
+                selectedDetailLoadError = "Full author description was not returned by SOTF Mods.";
+                return;
+            }
+
+            ModDatabase.initModList([detailMod]);
+            selectedDetailMod = detailMod;
+            resolveSelectedDetailDependencies(detailMod);
+        } catch (error) {
+            if (lookupToken !== detailModLookupToken) {
+                return;
+            }
+
+            selectedDetailLoadError = `Full author description failed to load: ${error}`;
+        } finally {
+            if (lookupToken === detailModLookupToken) {
+                selectedDetailIsLoading = false;
+            }
+        }
     }
 
     function cycleSelectedDetailPreview(direction: number) {
@@ -825,10 +881,17 @@
                                 {/if}
                             </div>
 
-                            <div class="sotf-detail-description">
-                                <span class="sotf-detail-section-title">Description</span>
-                                <p>{selectedDetailMod.shortDescription || "No description is available from SOTF Mods for this entry."}</p>
-                            </div>
+        <div class="sotf-detail-description">
+            <span class="sotf-detail-section-title">Description</span>
+            {#if selectedDetailIsLoading}
+                <small class="sotf-detail-description-note">Loading full author description...</small>
+            {:else if selectedDetailLoadError}
+                <small class="sotf-detail-description-note sotf-detail-description-warning">{selectedDetailLoadError}</small>
+            {/if}
+            <div class="sotf-rich-text">
+                {@html selectedDetailDescriptionHtml}
+            </div>
+        </div>
                         </div>
 
                         <aside class="sotf-detail-side">
@@ -1410,12 +1473,197 @@
         text-align: left;
     }
 
-    .sotf-detail-description p {
+    .sotf-rich-text {
         color: #c2ccd5;
         font-size: 0.92em;
         line-height: 1.45;
         margin: 0.55em 0 0;
         overflow-wrap: anywhere;
+        min-width: 0;
+    }
+
+    .sotf-detail-description-note {
+        color: #8d99a5;
+        display: block;
+        font-size: 0.78em;
+        font-weight: 800;
+        line-height: 1.3;
+        margin-top: 0.5em;
+        text-transform: uppercase;
+    }
+
+    .sotf-detail-description-warning {
+        color: #fdc66d;
+        text-transform: none;
+    }
+
+    .sotf-rich-text :global(p),
+    .sotf-rich-text :global(ul),
+    .sotf-rich-text :global(ol),
+    .sotf-rich-text :global(blockquote),
+    .sotf-rich-text :global(pre),
+    .sotf-rich-text :global(.store-rich-table-wrap) {
+        margin: 0.62em 0 0;
+    }
+
+    .sotf-rich-text :global(p:first-child),
+    .sotf-rich-text :global(ul:first-child),
+    .sotf-rich-text :global(ol:first-child),
+    .sotf-rich-text :global(blockquote:first-child),
+    .sotf-rich-text :global(pre:first-child),
+    .sotf-rich-text :global(.store-rich-table-wrap:first-child) {
+        margin-top: 0;
+    }
+
+    .sotf-rich-text :global(p) {
+        color: inherit;
+        line-height: inherit;
+        margin-bottom: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .sotf-rich-text :global(a) {
+        color: #78d9f4;
+        font-weight: 800;
+        overflow-wrap: anywhere;
+        text-decoration: underline;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.18em;
+    }
+
+    .sotf-rich-text :global(ul),
+    .sotf-rich-text :global(ol) {
+        box-sizing: border-box;
+        padding-left: 1.35em;
+    }
+
+    .sotf-rich-text :global(li) {
+        margin: 0.18em 0;
+        padding-left: 0.08em;
+    }
+
+    .sotf-rich-text :global(blockquote) {
+        border-left: 3px solid rgba(98, 240, 155, 0.52);
+        color: #dce7ee;
+        padding: 0.25em 0 0.25em 0.75em;
+    }
+
+    .sotf-rich-text :global(pre) {
+        background: rgba(5, 7, 9, 0.76);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-sizing: border-box;
+        color: #d6dde5;
+        font-size: 0.86em;
+        line-height: 1.4;
+        max-width: 100%;
+        overflow-x: auto;
+        padding: 0.75em;
+        white-space: pre-wrap;
+    }
+
+    .sotf-rich-text :global(code) {
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 4px;
+        color: #e8f4ff;
+        font-family: Consolas, "Liberation Mono", monospace;
+        font-size: 0.92em;
+        padding: 0.05em 0.28em;
+    }
+
+    .sotf-rich-text :global(pre code) {
+        background: transparent;
+        border-radius: 0;
+        display: block;
+        padding: 0;
+    }
+
+    .sotf-rich-text :global(.store-rich-heading) {
+        color: #eefcff;
+        font-weight: 900;
+        letter-spacing: 0.04em;
+        line-height: 1.18;
+        margin-top: 0.9em;
+        text-transform: uppercase;
+    }
+
+    .sotf-rich-text :global(.store-rich-heading-1),
+    .sotf-rich-text :global(.store-rich-heading-2) {
+        font-size: 1.08em;
+    }
+
+    .sotf-rich-text :global(.store-rich-heading-3),
+    .sotf-rich-text :global(.store-rich-heading-4),
+    .sotf-rich-text :global(.store-rich-heading-5),
+    .sotf-rich-text :global(.store-rich-heading-6) {
+        font-size: 0.98em;
+    }
+
+    .sotf-rich-text :global(.store-rich-align-center) {
+        text-align: center;
+    }
+
+    .sotf-rich-text :global(.store-rich-align-right) {
+        text-align: right;
+    }
+
+    .sotf-rich-text :global(.store-rich-align-justify) {
+        text-align: justify;
+    }
+
+    .sotf-rich-text :global(.store-rich-highlight) {
+        border-radius: 3px;
+        box-decoration-break: clone;
+        color: #101418;
+        padding: 0 0.2em;
+    }
+
+    .sotf-rich-text :global(.store-rich-big) {
+        font-size: 1.14em;
+    }
+
+    .sotf-rich-text :global(.store-rich-media) {
+        display: block;
+        margin: 0.65em 0;
+        max-width: 100%;
+    }
+
+    .sotf-rich-text :global(.store-rich-media img) {
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        display: block;
+        height: auto;
+        max-height: 360px;
+        max-width: 100%;
+        object-fit: contain;
+    }
+
+    .sotf-rich-text :global(.store-rich-table-wrap) {
+        max-width: 100%;
+        overflow-x: auto;
+    }
+
+    .sotf-rich-text :global(table) {
+        border-collapse: collapse;
+        min-width: min(100%, 28em);
+        width: 100%;
+    }
+
+    .sotf-rich-text :global(td),
+    .sotf-rich-text :global(th) {
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        padding: 0.42em 0.55em;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    .sotf-rich-text :global(th) {
+        color: #eefcff;
+        font-weight: 900;
+    }
+
+    .sotf-rich-text :global(hr) {
+        border: 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.16);
+        margin: 0.85em 0;
     }
 
     .sotf-detail-facts {

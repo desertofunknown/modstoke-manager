@@ -31,6 +31,8 @@ SOTF Mods rows now show compact image counts and left/right preview controls whe
 
 SOTF Mods details now open in a native drawer that keeps the preview image, mod name, category/type/author context, and description first, then summarizes source state, install target, dependency records, and bottom deployment/page actions without moving install controls above the mod identity.
 
+SOTF Mods detail descriptions now load the full author text on demand and preserve safe common BBCode/HTML/Markdown structure such as headings, emphasis, links, lists, quotes, code blocks, tables, divider lines, and bounded images, while compact native catalog rows strip markup into readable one-line summaries.
+
 SOTF Mods dependency fields are normalized when the live storefront returns either a single mod ID string or an array, keeping detail dependency rows and recursive dependency installs from splitting one ID into characters.
 
 SOTF Mods dependency rows now resolve matching store metadata in the detail drawer, show available/installed/review state, and expose Details/Open Page actions so users can inspect a dependency before installing it.

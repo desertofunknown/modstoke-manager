@@ -2,6 +2,7 @@
   import { processProgress, processing } from './store';
     import { createEventDispatcher } from 'svelte';
     import { ModDatabase, modPreviewUrls, type Mod } from './mods';
+    import { storeRichTextPlainText } from './richText';
     import StatusButton from './StatusButton.svelte';
     import * as dialog from "@tauri-apps/plugin-dialog"
     import LucideChevronLeft from "~icons/lucide/chevron-left";
@@ -19,6 +20,7 @@
     let previewUrls: string[] = [];
     let currentPreviewUrl = "";
     let previewCountLabel = "";
+    let cardSummary = "";
 
     const fallbackPreviewUrl = "https://placehold.co/600x400/252525/FFF?text=No+Image";
 
@@ -39,6 +41,7 @@
     }
     $: currentPreviewUrl = previewUrls[currentPreviewIndex] ?? fallbackPreviewUrl;
     $: previewCountLabel = previewUrls.length > 0 ? `${currentPreviewIndex + 1}/${previewUrls.length}` : "Local";
+    $: cardSummary = storeRichTextPlainText(mod.shortDescription);
 
     async function update() {
       if (!mod.installedMod) {
@@ -296,7 +299,7 @@
           <span class="source-pill source-detail">{mod.installedMod.vortexPackage}</span>
         {/if}
       </div>
-      <span class="description-content header-desc">{mod.shortDescription?mod.shortDescription:""}</span>
+      <span class="description-content header-desc">{cardSummary}</span>
       <div class="fact-row">
         <span>Author <b class="update">{mod.user.name}</b></span>
         <span>Version <b class="update">{mod.latestVersion}</b></span>
