@@ -7290,6 +7290,7 @@
     class:nexus-catalog-tight={nexusCatalogTight}
     class:nexus-catalog-very-tight={nexusCatalogVeryTight}
     class:nexus-embedded-store-preview={embeddedStorePreview}
+    class:nexus-session-connected={session.is_connected}
     bind:this={nexusPageElement}
 >
     <section class="account-panel">
@@ -8511,6 +8512,10 @@
 
     .nexus-embedded-store-preview .account-panel {
         padding: 0.38em 0.65em;
+    }
+
+    .nexus-embedded-store-preview.nexus-session-connected .account-panel {
+        display: none;
     }
 
     .nexus-embedded-store-preview .account-actions,
