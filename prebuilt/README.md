@@ -35,6 +35,8 @@ SOTF Mods detail descriptions now load the full author text on demand and preser
 
 SOTF Mods details also include compact version/changelog records from the per-mod detail endpoint, showing latest/older releases, dates, download counts, filenames, and safe formatted changelog text without moving deployment actions away from the bottom.
 
+SOTF Mods detail drawers now surface API-returned community metadata, including comment, favorite, review, rating, and trusted-author counts/status, plus store-page and optional source-link actions while leaving discussions on the SOTF Mods website.
+
 SOTF Mods dependency fields are normalized when the live storefront returns either a single mod ID string or an array, keeping detail dependency rows and recursive dependency installs from splitting one ID into characters.
 
 SOTF Mods dependency rows now resolve matching store metadata in the detail drawer, show available/installed/review state, and expose Details/Open Page actions so users can inspect a dependency before installing it.

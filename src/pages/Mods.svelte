@@ -730,6 +730,43 @@
         return renderStoreRichText(version.changelog, "No changelog text.");
     }
 
+    function detailCount(value?: number): string {
+        return typeof value === "number" ? value.toLocaleString() : "-";
+    }
+
+    function detailRatingLabel(value?: number): string {
+        if (typeof value !== "number" || value <= 0) {
+            return "No rating";
+        }
+
+        return `${value.toFixed(1)} / 5`;
+    }
+
+    function trustedAuthorLabel(mod: Mod): string {
+        return mod.user?.isTrusted ? "Trusted" : "Standard";
+    }
+
+    function normalizedSourceUrl(mod: Mod): string {
+        const raw = mod.sourceUrl?.trim();
+        if (!raw) {
+            return "";
+        }
+
+        try {
+            const url = new URL(raw);
+            return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : "";
+        } catch {
+            return "";
+        }
+    }
+
+    function openSelectedDetailSource() {
+        const url = selectedDetailMod ? normalizedSourceUrl(selectedDetailMod) : "";
+        if (url) {
+            window.open(url);
+        }
+    }
+
     function detailInstallStateLabel(mod: Mod): string {
         if (!mod.isInstalled) {
             return "Not installed";
@@ -942,6 +979,31 @@
                                 <span>Compatibility <b>{detailCompatibilityLabel(selectedDetailMod)}</b></span>
                                 <span>Downloads <b>{selectedDetailMod.downloads ?? selectedDetailMod.lastWeekDownloads ?? "-"}</b></span>
                                 <span>Author <b>{detailAuthorName(selectedDetailMod)}</b></span>
+                            </div>
+
+                            <div class="sotf-detail-community">
+                                <span class="sotf-detail-section-title">Community</span>
+                                <div class="sotf-detail-community-grid">
+                                    <span>Comments <b>{detailCount(selectedDetailMod.commentsCount)}</b></span>
+                                    <span>Favorites <b>{detailCount(selectedDetailMod.favoritesCount)}</b></span>
+                                    <span>Reviews <b>{detailCount(selectedDetailMod.reviewsCount)}</b></span>
+                                    <span>Rating <b>{detailRatingLabel(selectedDetailMod.averageRating)}</b></span>
+                                    <span>Author Status <b>{trustedAuthorLabel(selectedDetailMod)}</b></span>
+                                    <span>Store Page <b>SOTF Mods</b></span>
+                                </div>
+                                <div class="sotf-detail-community-actions">
+                                    <button type="button" on:click={openSelectedDetailPage}>
+                                        <LucideExternalLink aria-hidden="true" />
+                                        <span>Open Page</span>
+                                    </button>
+                                    {#if normalizedSourceUrl(selectedDetailMod)}
+                                        <button type="button" on:click={openSelectedDetailSource}>
+                                            <LucideExternalLink aria-hidden="true" />
+                                            <span>Open Source</span>
+                                        </button>
+                                    {/if}
+                                </div>
+                                <small>Counts are returned by SOTF Mods; discussions stay on the store page.</small>
                             </div>
 
                             <div class="sotf-detail-install-target">
@@ -1517,6 +1579,7 @@
 
     .sotf-detail-description,
     .sotf-detail-facts,
+    .sotf-detail-community,
     .sotf-detail-install-target,
     .sotf-detail-dependencies,
     .sotf-detail-versions,
@@ -1756,6 +1819,7 @@
     }
 
     .sotf-detail-facts b,
+    .sotf-detail-community-grid b,
     .sotf-detail-install-target b {
         color: #d6dde5;
         display: block;
@@ -1764,6 +1828,67 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    .sotf-detail-community {
+        display: flex;
+        flex: 0 0 auto;
+        flex-direction: column;
+        gap: 0.55em;
+        min-width: 0;
+        text-align: left;
+    }
+
+    .sotf-detail-community-grid {
+        display: grid;
+        gap: 0.45em 0.65em;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        min-width: 0;
+    }
+
+    .sotf-detail-community-grid span {
+        color: #8d99a5;
+        font-size: 0.76em;
+        font-weight: 800;
+        line-height: 1.25;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .sotf-detail-community-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35em;
+        min-width: 0;
+    }
+
+    .sotf-detail-community-actions button {
+        align-items: center;
+        color: #d6dde5;
+        display: inline-flex;
+        flex: 1 1 8em;
+        gap: 0.35em;
+        justify-content: center;
+        margin: 0;
+        min-height: 2.15em;
+        min-width: 0;
+        padding: 0.35em 0.5em;
+    }
+
+    .sotf-detail-community-actions :global(svg) {
+        flex: 0 0 auto;
+        height: 0.9em;
+        width: 0.9em;
+    }
+
+    .sotf-detail-community small {
+        color: #9aa5af;
+        font-size: 0.74em;
+        font-weight: 800;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
     }
 
     .sotf-detail-install-target,

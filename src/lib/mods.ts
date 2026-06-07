@@ -61,6 +61,11 @@ export type Mod = {
     requiresAllPlayers?: boolean;
     lastWeekDownloads?: number;
     downloads?: number;
+    commentsCount?: number;
+    favoritesCount?: number;
+    reviewsCount?: number;
+    averageRating?: number;
+    sourceUrl?: string | null;
     dependencies: string[];
     versions?: ModVersion[];
 
