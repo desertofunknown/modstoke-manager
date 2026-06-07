@@ -3,7 +3,7 @@
     import { isPathValid } from "../lib/store";
     import ModCard from "../lib/ModCard.svelte";
     import type { Mod, ModCategory } from "../lib/mods";
-    import { ModDatabase, modPreviewUrls, Sorting } from "../lib/mods";
+    import { ModDatabase, modDependencies, modPreviewUrls, Sorting } from "../lib/mods";
     import InfiniteScroll from "../lib/InfiniteScroll.svelte";
     import { debounce } from "lodash";
     import SvgSpinnersBlocksWave from '~icons/svg-spinners/blocks-wave'
@@ -52,6 +52,7 @@
     let selectedDetailPreviewUrls: string[] = [];
     let selectedDetailPreviewUrl = "";
     let selectedDetailPreviewLabel = "";
+    let selectedDetailDependencies: string[] = [];
 
     const SOTF_DETAIL_FALLBACK_IMAGE = "https://placehold.co/900x500/252525/FFF?text=No+Image";
 
@@ -78,6 +79,7 @@
     $: selectedDetailPreviewLabel = selectedDetailPreviewUrls.length > 0
         ? `${selectedDetailPreviewIndex + 1}/${selectedDetailPreviewUrls.length}`
         : "Local";
+    $: selectedDetailDependencies = selectedDetailMod ? modDependencies(selectedDetailMod) : [];
     $: {
         visibleMods.length;
         filtered.length;
@@ -720,9 +722,9 @@
 
                             <div class="sotf-detail-dependencies">
                                 <span class="sotf-detail-section-title">Dependencies</span>
-                                {#if (selectedDetailMod.dependencies ?? []).length > 0}
+                                {#if selectedDetailDependencies.length > 0}
                                     <div class="sotf-detail-dependency-list">
-                                        {#each selectedDetailMod.dependencies as dependency}
+                                        {#each selectedDetailDependencies as dependency}
                                             <span>{dependency}</span>
                                         {/each}
                                     </div>

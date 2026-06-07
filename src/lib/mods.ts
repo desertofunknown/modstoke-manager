@@ -64,6 +64,54 @@ export function modPreviewUrls(mod: Mod): string[] {
         .filter((url) => url.length > 0 && !url.includes("placehold.co"))));
 }
 
+export function modDependencies(mod: Pick<Mod, "dependencies">): string[] {
+    return normalizeModDependencies((mod as { dependencies?: unknown }).dependencies);
+}
+
+export function normalizeModDependencies(value: unknown): string[] {
+    const rawDependencies = Array.isArray(value)
+        ? value
+        : typeof value === "string"
+            ? value.split(/[,\n;]+/)
+            : value == null
+                ? []
+                : [value];
+    const dependencies = rawDependencies
+        .map(dependencyIdentifier)
+        .filter((dependency): dependency is string => Boolean(dependency));
+
+    return Array.from(new Set(dependencies));
+}
+
+function dependencyIdentifier(value: unknown): string | null {
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed.length > 0 ? trimmed : null;
+    }
+
+    if (typeof value === "number") {
+        return String(value);
+    }
+
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+
+    const record = value as Record<string, unknown>;
+    for (const key of ["mod_id", "modId", "slug", "id", "name", "title"]) {
+        const candidate = record[key];
+        if (typeof candidate === "string" && candidate.trim().length > 0) {
+            return candidate.trim();
+        }
+
+        if (typeof candidate === "number") {
+            return String(candidate);
+        }
+    }
+
+    return null;
+}
+
 type RequestMeta = {
     limit: number;
     next_page: number;
@@ -156,7 +204,9 @@ export class ModDatabase {
             url += "&type=" + encodeURIComponent(typeFilter);
         }
 
-        return await this.fetchJson<EndpointResponse>(url);
+        const result = await this.fetchJson<EndpointResponse>(url);
+        result.data = this.normalizeMods(result.data);
+        return result;
     }
 
     public static async fetchCategories(): Promise<ModCategory[]> {
@@ -170,7 +220,7 @@ export class ModDatabase {
             return null;
         }
 
-        return resultData.data;
+        return this.normalizeMod(resultData.data as Mod);
     }
 
     public static async fetchAllMods(sorting: Sorting = Sorting.newest, approved: boolean = true, nsfw: boolean = false): Promise<Mod[]> {
@@ -279,6 +329,15 @@ export class ModDatabase {
         }
 
         return await result.json();
+    }
+
+    private static normalizeMods(mods: Mod[] | undefined): Mod[] {
+        return Array.isArray(mods) ? mods.map(mod => this.normalizeMod(mod)) : [];
+    }
+
+    private static normalizeMod(mod: Mod): Mod {
+        mod.dependencies = modDependencies(mod);
+        return mod;
     }
 
     private static async initInstalledMod(
@@ -568,7 +627,7 @@ export class ModDatabase {
         let modUrl = `${MOD_REPOSITORY_WEB}/mods/${mod.user.slug}/${mod.slug}/download/${mod.latestVersion}`;
         await downloadAndInstall(gamePath, modUrl, mod.name);
 
-        for (const dependency of mod.dependencies) {
+        for (const dependency of modDependencies(mod)) {
             if(!dependency || dependency.length === 0) 
                 continue;
             

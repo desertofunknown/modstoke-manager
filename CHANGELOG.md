@@ -16,6 +16,7 @@
   - Compacted SOTF Mods list rows with measured scroller sizing so more mods stay visible in the unified Mods workspace, and retired the unstable SOTF grid toggle.
   - Added compact SOTF Mods preview counts and left/right image controls that cycle already-loaded storefront `imageUrl` and gallery image records without making extra API requests.
   - Added SOTF Mods detail drawers that keep the mod name, preview media, author/category/type context, and description first, then place facts, dependency records, and install/open actions in a bottom-oriented deployment area.
+  - Normalized SOTF Mods dependency payloads that arrive as a single mod ID string or an array so detail drawers and dependency installs show full dependency IDs instead of splitting strings into characters.
   - Compacted the connected Nexus account/action row in tight catalog layouts so auto-endorse, Nexus, Vortex staging, inventory refresh, and disconnect controls stay readable while leaving more vertical space for mod rows.
   - Added measured tight-density behavior to the Nexus catalog so account/status chrome, queue chips, filters, thumbnails, and row copy compress together when the actual mod-list pane would otherwise show only one row.
   - Collapsed the Nexus action queue into a slim `Queue clear` status strip when endorsement, tracking, update, disabled, and conflict counts are all zero, while restoring the full shortcut chips when an action exists or a queue filter is selected.
