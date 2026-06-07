@@ -8,6 +8,10 @@ type RichBlock =
     | { kind: "code"; value: string; label?: string }
     | { kind: "heading"; value: string; level: number }
     | { kind: "align"; value: string; align: "left" | "center" | "right" | "justify" }
+    | { kind: "indent"; value: string; level: number }
+    | { kind: "details"; value: string; label: string; tone: "details" | "spoiler" }
+    | { kind: "callout"; value: string; label: string; tone: "note" | "tip" | "warning" | "box" }
+    | { kind: "definition"; value: string }
     | { kind: "table"; value: string };
 
 export function renderStoreRichText(value?: string, fallback = ""): string {
@@ -62,6 +66,10 @@ function normalizeStoreMarkup(value?: string): string {
             const color = htmlAttribute(attrs, "color");
             return color ? `[color=${color}]${body}[/color]` : body;
         })
+        .replace(/<details\b[^>]*>\s*<summary\b[^>]*>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/gi, (_match, label: string, body: string) => {
+            const clean = safeInlineLabel(label);
+            return `\n\n[details${clean ? `=${clean}` : ""}]\n${body}\n[/details]\n\n`;
+        })
         .replace(/<ul\b[^>]*>/gi, "\n[list]\n")
         .replace(/<\/ul>/gi, "\n[/list]\n")
         .replace(/<ol\b([^>]*)>/gi, (_match, attrs: string) => {
@@ -72,6 +80,12 @@ function normalizeStoreMarkup(value?: string): string {
         .replace(/<\/ol>/gi, "\n[/list]\n")
         .replace(/<li\b[^>]*>/gi, "\n[*]")
         .replace(/<\/li>/gi, "\n")
+        .replace(/<dl\b[^>]*>/gi, "\n\n[dl]\n")
+        .replace(/<\/dl>/gi, "\n[/dl]\n\n")
+        .replace(/<dt\b[^>]*>/gi, "\n[dt]")
+        .replace(/<\/dt>/gi, "[/dt]\n")
+        .replace(/<dd\b[^>]*>/gi, "[dd]")
+        .replace(/<\/dd>/gi, "[/dd]\n")
         .replace(/<table\b[^>]*>/gi, "\n\n[table]\n")
         .replace(/<\/table>/gi, "\n[/table]\n\n")
         .replace(/<\/?(?:tbody|thead|tfoot)\b[^>]*>/gi, "")
@@ -97,6 +111,10 @@ function normalizeStoreMarkup(value?: string): string {
         .replace(/\[(?:br|break|nl|newline)\s*\/?\]/gi, "\n")
         .replace(/\[(?:centre)\]/gi, "[center]")
         .replace(/\[\/(?:centre)\]/gi, "[/center]")
+        .replace(/\[(?:strong)\]/gi, "[b]")
+        .replace(/\[\/(?:strong)\]/gi, "[/b]")
+        .replace(/\[(?:em)\]/gi, "[i]")
+        .replace(/\[\/(?:em)\]/gi, "[/i]")
         .replace(/\[(?:colour)([^\]]*)\]/gi, (_match, attrs: string) => `[color${attrs ?? ""}]`)
         .replace(/\[\/(?:colour)\]/gi, "[/color]")
         .replace(/\[(?:h|header|title)(?:=([^\]]+))?\]/gi, (_match, level: string | undefined) => `[heading=${safeHeadingLevel(level ?? "2")}]`)
@@ -106,14 +124,31 @@ function normalizeStoreMarkup(value?: string): string {
         .replace(/(^|\n)(#{1,6})[ \t]+(.+?)(?=\n|$)/g, (_match, prefix: string, markers: string, label: string) => {
             return `${prefix}[heading=${Math.min(6, markers.length)}]${label.trim()}[/heading]`;
         })
-        .replace(/\[(?:ul|list)(?:=[^\]]+)?\]/gi, "\n[list]\n")
+        .replace(/\[ul(?:=[^\]]+)?\]/gi, "\n[list]\n")
+        .replace(/\[list(?:=([^\]]+))?\]/gi, (_match, attr: string | undefined) => {
+            const normalized = (attr ?? "").trim().toLowerCase();
+            if (isOrderedListAttribute(normalized)) {
+                const start = safeListStart(normalized);
+                return `\n[olist${start ? ` start="${start}"` : ""}]\n`;
+            }
+
+            return "\n[list]\n";
+        })
         .replace(/\[ol(?:=([^\]]+))?\]/gi, (_match, attr: string | undefined) => `\n[olist${safeListStart(attr) ? ` start="${safeListStart(attr)}"` : ""}]\n`)
         .replace(/\[\/(?:ul|ol|list|olist)\]/gi, "\n[/list]\n")
+        .replace(/\[\s*li(?:\s[^\]]*|=[^\]]*)?\]/gi, "\n[*]")
+        .replace(/\[\/\s*li\]/gi, "\n")
         .replace(/\[\*\s*=([^\]]+)\]/g, (_match, label: string) => {
             const clean = safeInlineLabel(label);
             return clean ? `\n[*][b]${clean}[/b] ` : "\n[*]";
         })
         .replace(/\[\*\]/g, "\n[*]")
+        .replace(/\[(details|spoiler|hidden|collapse|accordion)([^\]]*)\]/gi, (_match, tag: string, attrs: string) => `\n\n[${tag.toLowerCase()}${attrs ?? ""}]\n`)
+        .replace(/\[\/(details|spoiler|hidden|collapse|accordion)\]/gi, (_match, tag: string) => `\n[/${tag.toLowerCase()}]\n\n`)
+        .replace(/\[(note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error)([^\]]*)\]/gi, (_match, tag: string, attrs: string) => `\n\n[${tag.toLowerCase()}${attrs ?? ""}]\n`)
+        .replace(/\[\/(note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error)\]/gi, (_match, tag: string) => `\n[/${tag.toLowerCase()}]\n\n`)
+        .replace(/\[(indent)([^\]]*)\]/gi, (_match, tag: string, attrs: string) => `\n\n[${tag.toLowerCase()}${attrs ?? ""}]\n`)
+        .replace(/\[\/(indent)\]/gi, (_match, tag: string) => `\n[/${tag.toLowerCase()}]\n\n`)
         .replace(/\[(?:hr|line|rule|divider|separator)\s*\/?\]/gi, "\n\n---\n\n")
         .replace(/(^|\n)[ \t]*(?:-{3,}|={3,}|_{3,}|\*{3,})[ \t]*(?=\n|$)/g, "$1\n\n---\n\n")
         .replace(/[ \t]+\n/g, "\n")
@@ -123,7 +158,7 @@ function normalizeStoreMarkup(value?: string): string {
 
 function storeRichBlocks(value: string): RichBlock[] {
     const blocks: RichBlock[] = [];
-    const structuralPattern = /\[(list|olist|quote|code|heading|align|center|left|right|table)([^\]]*)\]/gi;
+    const structuralPattern = /\[(list|olist|quote|code|heading|align|center|left|right|justify|indent|details|spoiler|hidden|collapse|accordion|note|info|warning|important|tip|box|panel|fieldset|notice|success|danger|error|dl|table)([^\]]*)\]/gi;
     let cursor = 0;
     let match: RegExpExecArray | null;
 
@@ -157,6 +192,24 @@ function storeRichBlocks(value: string): RichBlock[] {
             blocks.push({ kind: "heading", value: body, level: safeHeadingLevel(tagAttribute(attrs)) });
         } else if (tag === "table") {
             blocks.push({ kind: "table", value: body });
+        } else if (tag === "dl") {
+            blocks.push({ kind: "definition", value: body });
+        } else if (tag === "indent") {
+            blocks.push({ kind: "indent", value: body, level: safeIndentLevel(tagAttribute(attrs)) });
+        } else if (isDisclosureTag(tag)) {
+            blocks.push({
+                kind: "details",
+                value: body,
+                label: disclosureLabel(tag, attrs),
+                tone: tag === "spoiler" || tag === "hidden" ? "spoiler" : "details"
+            });
+        } else if (isCalloutTag(tag)) {
+            blocks.push({
+                kind: "callout",
+                value: body,
+                label: calloutLabel(tag, attrs),
+                tone: calloutTone(tag)
+            });
         } else {
             blocks.push({ kind: "align", value: body, align: safeAlignment(tag === "align" ? tagAttribute(attrs) : tag) });
         }
@@ -258,6 +311,14 @@ function renderStoreBlock(block: RichBlock): string {
             return `<p class="store-rich-heading store-rich-heading-${block.level}">${renderStoreInline(block.value)}</p>`;
         case "align":
             return `<div class="store-rich-align store-rich-align-${block.align}">${renderStoreRichText(block.value)}</div>`;
+        case "indent":
+            return `<div class="store-rich-indent store-rich-indent-${block.level}">${renderStoreRichText(block.value)}</div>`;
+        case "details":
+            return `<details class="store-rich-disclosure store-rich-disclosure-${block.tone}"><summary>${escapeHtml(block.label)}</summary><div>${renderStoreRichText(block.value)}</div></details>`;
+        case "callout":
+            return `<div class="store-rich-callout store-rich-callout-${block.tone}"><span>${escapeHtml(block.label)}</span>${renderStoreRichText(block.value)}</div>`;
+        case "definition":
+            return renderStoreDefinitionList(block.value);
         case "table":
             return renderStoreTable(block.value);
         case "line":
@@ -281,14 +342,31 @@ function renderStoreInline(value: string, depth = 0): string {
     let text = value
         .replace(/\[code(?:=[^\]]+)?\]([\s\S]*?)\[\/code\]/gi, (_match, body: string) => reserve(`<code>${escapeHtml(body)}</code>`))
         .replace(/`([^`\n]+)`/g, (_match, body: string) => reserve(`<code>${escapeHtml(body)}</code>`))
-        .replace(/\[img([^\]]*)\]([\s\S]*?)\[\/img\]/gi, (_match, attrs: string, body: string) => {
-            const url = safeUrl(body.trim());
+        .replace(/\[(?:img|image|thumb|thumbnail)=([^\]]+)\]/gi, (_match, source: string) => {
+            const url = safeUrl(source);
             if (!url) {
                 return "";
             }
 
+            return reserve(`<span class="store-rich-media"><img src="${escapeAttribute(url)}" alt="Preview image" loading="lazy" /></span>`);
+        })
+        .replace(/\[(img|image|thumb|thumbnail)([^\]]*)\]([\s\S]*?)\[\/\1\]/gi, (_match, _tag: string, attrs: string, body: string) => {
+            const url = safeUrl(attributeValue(attrs, "src") ?? attributeValue(attrs, "url") ?? tagAttribute(attrs) ?? body.trim());
+            if (!url) {
+                return renderStoreInline(body, depth + 1);
+            }
+
             const label = safeInlineLabel(attributeValue(attrs, "alt") ?? attributeValue(attrs, "title") ?? "Preview image");
             return reserve(`<span class="store-rich-media"><img src="${escapeAttribute(url)}" alt="${escapeAttribute(label)}" loading="lazy" /></span>`);
+        })
+        .replace(/\[(youtube|video|media|embed)([^\]]*)\]([\s\S]*?)\[\/\1\]/gi, (_match, tag: string, attrs: string, body: string) => {
+            const url = safeUrl(attributeValue(attrs, "src") ?? attributeValue(attrs, "url") ?? tagAttribute(attrs) ?? body.trim());
+            if (!url) {
+                return renderStoreInline(body, depth + 1);
+            }
+
+            const label = safeInlineLabel(attributeValue(attrs, "title") ?? `${tag[0].toUpperCase()}${tag.slice(1)} link`);
+            return reserve(`<a class="store-rich-media-link" href="${escapeAttribute(url)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`);
         })
         .replace(/\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi, (_match, href: string, label: string) => {
             const url = safeUrl(href);
@@ -319,6 +397,10 @@ function renderStoreInline(value: string, depth = 0): string {
     text = replaceInlinePair(text, "sub", "sub");
     text = replaceInlinePair(text, "sup", "sup");
     text = text
+        .replace(/\*\*([^*\n][^\n]*?)\*\*/g, "<strong>$1</strong>")
+        .replace(/__([^_\n][^\n]*?)__/g, "<strong>$1</strong>")
+        .replace(/(^|[\s([{])\*([^*\n]+)\*(?=$|[\s.,;:!?)\]])/g, "$1<em>$2</em>")
+        .replace(/(^|[\s([{])_([^_\n]+)_(?=$|[\s.,;:!?)\]])/g, "$1<em>$2</em>")
         .replace(/\[(?:small)\]([\s\S]*?)\[\/(?:small)\]/gi, "<small>$1</small>")
         .replace(/\[(?:big)\]([\s\S]*?)\[\/(?:big)\]/gi, "<span class=\"store-rich-big\">$1</span>")
         .replace(/\[(?:color|colour)=([^\]]+)\]([\s\S]*?)\[\/(?:color|colour)\]/gi, (_match, color: string, body: string) => {
@@ -333,9 +415,36 @@ function renderStoreInline(value: string, depth = 0): string {
             const safe = safeFontSize(size);
             return safe ? `<span style="font-size: ${escapeAttribute(safe)}">${body}</span>` : body;
         })
+        .replace(/\[font([^\]]*)\]([\s\S]*?)\[\/font\]/gi, (_match, attrs: string, body: string) => {
+            const color = safeColor(attributeValue(attrs, "color") ?? undefined);
+            const background = safeColor(attributeValue(attrs, "background") ?? attributeValue(attrs, "background-color") ?? attributeValue(attrs, "bgcolor") ?? undefined);
+            const size = safeFontSize(attributeValue(attrs, "size") ?? attributeValue(attrs, "font-size") ?? undefined);
+            const fontClass = safeFontClass(attributeValue(attrs, "face") ?? attributeValue(attrs, "font") ?? attributeValue(attrs, "family") ?? tagAttribute(attrs));
+            const classes = ["store-rich-font", fontClass ? `store-rich-font-${fontClass}` : ""].filter(Boolean).join(" ");
+            const style = [
+                color ? `color: ${color}` : "",
+                background ? `background-color: ${background}` : "",
+                size ? `font-size: ${size}` : ""
+            ].filter(Boolean).join("; ");
+            return style || fontClass ? `<span class="${classes}"${style ? ` style="${escapeAttribute(style)}"` : ""}>${body}</span>` : body;
+        })
         .replace(/\[\/?[a-z0-9_-]+[^\]]*\]/gi, "");
 
     return text.replace(/\u0000(\d+)\u0000/g, (_match, index: string) => tokens[Number(index)] ?? "");
+}
+
+function renderStoreDefinitionList(value: string): string {
+    const entries = Array.from(value.matchAll(/\[dt[^\]]*\]([\s\S]*?)\[\/dt\]\s*\[dd[^\]]*\]([\s\S]*?)\[\/dd\]/gi))
+        .map(match => ({ term: match[1].trim(), detail: match[2].trim() }))
+        .filter(entry => entry.term || entry.detail);
+
+    if (entries.length === 0) {
+        return renderStoreRichText(value);
+    }
+
+    return `<dl class="store-rich-definition-list">${entries.map(entry => {
+        return `<div><dt>${renderStoreInline(entry.term)}</dt><dd>${renderStoreRichText(entry.detail)}</dd></div>`;
+    }).join("")}</dl>`;
 }
 
 function renderStoreTable(value: string): string {
@@ -473,6 +582,87 @@ function safeAlignment(value?: string): "left" | "center" | "right" | "justify" 
     return "left";
 }
 
+function safeIndentLevel(value?: string): number {
+    const parsed = Number.parseInt(tagAttribute(value), 10);
+    return Number.isFinite(parsed) ? Math.min(4, Math.max(1, parsed)) : 1;
+}
+
+function isDisclosureTag(tag: string): boolean {
+    return tag === "details"
+        || tag === "spoiler"
+        || tag === "hidden"
+        || tag === "collapse"
+        || tag === "accordion";
+}
+
+function disclosureLabel(tag: string, attrs: string): string {
+    const label = safeInlineLabel(tagAttribute(attrs));
+    if (label) {
+        return label;
+    }
+
+    return tag === "spoiler" || tag === "hidden" ? "Spoiler" : "Details";
+}
+
+function isCalloutTag(tag: string): boolean {
+    return tag === "note"
+        || tag === "info"
+        || tag === "warning"
+        || tag === "important"
+        || tag === "tip"
+        || tag === "box"
+        || tag === "panel"
+        || tag === "fieldset"
+        || tag === "notice"
+        || tag === "success"
+        || tag === "danger"
+        || tag === "error";
+}
+
+function calloutTone(tag: string): "note" | "tip" | "warning" | "box" {
+    if (tag === "warning" || tag === "important" || tag === "danger" || tag === "error") {
+        return "warning";
+    }
+
+    if (tag === "tip" || tag === "success") {
+        return "tip";
+    }
+
+    if (tag === "box" || tag === "panel" || tag === "fieldset" || tag === "notice") {
+        return "box";
+    }
+
+    return "note";
+}
+
+function calloutLabel(tag: string, attrs: string): string {
+    const label = safeInlineLabel(tagAttribute(attrs));
+    if (label) {
+        return label;
+    }
+
+    switch (calloutTone(tag)) {
+        case "tip":
+            return "Tip";
+        case "warning":
+            return "Warning";
+        case "box":
+            return "Note";
+        default:
+            return tag === "info" ? "Info" : "Note";
+    }
+}
+
+function isOrderedListAttribute(value?: string): boolean {
+    const normalized = (value ?? "").trim().toLowerCase();
+    return normalized === "1"
+        || normalized === "decimal"
+        || normalized === "number"
+        || normalized === "ordered"
+        || normalized === "ol"
+        || /^\d+$/.test(normalized);
+}
+
 function safeListStart(value?: string): number | undefined {
     const parsed = Number.parseInt(tagAttribute(value), 10);
     return Number.isFinite(parsed) && parsed > 1 ? Math.min(999, parsed) : undefined;
@@ -531,6 +721,27 @@ function safeFontSize(value?: string): string | null {
     }
 
     return `${Math.min(1.6, Math.max(0.75, amount))}${unit}`;
+}
+
+function safeFontClass(value?: string): "mono" | "serif" | "sans" | null {
+    const font = decodeHtmlEntities(value ?? "").trim().toLowerCase();
+    if (!font) {
+        return null;
+    }
+
+    if (/(?:mono|consolas|courier|fixed|terminal)/.test(font)) {
+        return "mono";
+    }
+
+    if (/(?:serif|times|georgia|garamond)/.test(font)) {
+        return "serif";
+    }
+
+    if (/(?:sans|arial|verdana|tahoma|helvetica)/.test(font)) {
+        return "sans";
+    }
+
+    return null;
 }
 
 function safeUrl(value?: string): string | null {

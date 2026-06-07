@@ -1756,7 +1756,10 @@
     .sotf-rich-text :global(ol),
     .sotf-rich-text :global(blockquote),
     .sotf-rich-text :global(pre),
-    .sotf-rich-text :global(.store-rich-table-wrap) {
+    .sotf-rich-text :global(.store-rich-table-wrap),
+    .sotf-rich-text :global(.store-rich-disclosure),
+    .sotf-rich-text :global(.store-rich-callout),
+    .sotf-rich-text :global(.store-rich-definition-list) {
         margin: 0.62em 0 0;
     }
 
@@ -1765,7 +1768,10 @@
     .sotf-rich-text :global(ol:first-child),
     .sotf-rich-text :global(blockquote:first-child),
     .sotf-rich-text :global(pre:first-child),
-    .sotf-rich-text :global(.store-rich-table-wrap:first-child) {
+    .sotf-rich-text :global(.store-rich-table-wrap:first-child),
+    .sotf-rich-text :global(.store-rich-disclosure:first-child),
+    .sotf-rich-text :global(.store-rich-callout:first-child),
+    .sotf-rich-text :global(.store-rich-definition-list:first-child) {
         margin-top: 0;
     }
 
@@ -1864,11 +1870,41 @@
         text-align: justify;
     }
 
+    .sotf-rich-text :global(.store-rich-indent) {
+        border-left: 2px solid rgba(255, 255, 255, 0.1);
+        margin-top: 0.62em;
+        padding-left: 0.85em;
+    }
+
+    .sotf-rich-text :global(.store-rich-indent-2) {
+        margin-left: 0.6em;
+    }
+
+    .sotf-rich-text :global(.store-rich-indent-3) {
+        margin-left: 1.1em;
+    }
+
+    .sotf-rich-text :global(.store-rich-indent-4) {
+        margin-left: 1.6em;
+    }
+
     .sotf-rich-text :global(.store-rich-highlight) {
         border-radius: 3px;
         box-decoration-break: clone;
         color: #101418;
         padding: 0 0.2em;
+    }
+
+    .sotf-rich-text :global(.store-rich-font-mono) {
+        font-family: Consolas, "Liberation Mono", monospace;
+    }
+
+    .sotf-rich-text :global(.store-rich-font-serif) {
+        font-family: Georgia, "Times New Roman", serif;
+    }
+
+    .sotf-rich-text :global(.store-rich-font-sans) {
+        font-family: Arial, Helvetica, sans-serif;
     }
 
     .sotf-rich-text :global(.store-rich-big) {
@@ -1888,6 +1924,115 @@
         max-height: 360px;
         max-width: 100%;
         object-fit: contain;
+    }
+
+    .sotf-rich-text :global(.store-rich-media-link) {
+        align-items: center;
+        background: rgba(120, 217, 244, 0.08);
+        border: 1px solid rgba(120, 217, 244, 0.22);
+        color: #9ee8fb;
+        display: inline-flex;
+        font-weight: 900;
+        margin-top: 0.42em;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        padding: 0.34em 0.52em;
+        text-decoration: none;
+    }
+
+    .sotf-rich-text :global(.store-rich-callout) {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-sizing: border-box;
+        color: #dce7ee;
+        padding: 0.62em 0.72em;
+    }
+
+    .sotf-rich-text :global(.store-rich-callout > span) {
+        color: #eefcff;
+        display: block;
+        font-size: 0.76em;
+        font-weight: 900;
+        margin-bottom: 0.32em;
+        text-transform: uppercase;
+    }
+
+    .sotf-rich-text :global(.store-rich-callout-note) {
+        border-left: 3px solid rgba(120, 217, 244, 0.48);
+    }
+
+    .sotf-rich-text :global(.store-rich-callout-tip) {
+        border-left: 3px solid rgba(98, 240, 155, 0.5);
+    }
+
+    .sotf-rich-text :global(.store-rich-callout-warning) {
+        border-left: 3px solid rgba(255, 192, 92, 0.58);
+    }
+
+    .sotf-rich-text :global(.store-rich-callout-box) {
+        border-left: 3px solid rgba(255, 255, 255, 0.22);
+    }
+
+    .sotf-rich-text :global(.store-rich-disclosure) {
+        background: rgba(255, 255, 255, 0.045);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-sizing: border-box;
+        padding: 0.52em 0.64em;
+    }
+
+    .sotf-rich-text :global(.store-rich-disclosure-spoiler) {
+        border-color: rgba(255, 192, 92, 0.28);
+    }
+
+    .sotf-rich-text :global(.store-rich-disclosure > summary) {
+        color: #eefcff;
+        cursor: pointer;
+        font-size: 0.82em;
+        font-weight: 900;
+        list-style: none;
+        text-transform: uppercase;
+    }
+
+    .sotf-rich-text :global(.store-rich-disclosure > summary::-webkit-details-marker) {
+        display: none;
+    }
+
+    .sotf-rich-text :global(.store-rich-disclosure > summary::before) {
+        color: #62f09b;
+        content: "+";
+        display: inline-block;
+        font-weight: 900;
+        margin-right: 0.45em;
+        width: 0.8em;
+    }
+
+    .sotf-rich-text :global(.store-rich-disclosure[open] > summary::before) {
+        content: "-";
+    }
+
+    .sotf-rich-text :global(.store-rich-disclosure > div) {
+        margin-top: 0.45em;
+    }
+
+    .sotf-rich-text :global(.store-rich-definition-list) {
+        display: grid;
+        gap: 0.42em;
+    }
+
+    .sotf-rich-text :global(.store-rich-definition-list > div) {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-sizing: border-box;
+        padding: 0.5em 0.6em;
+    }
+
+    .sotf-rich-text :global(.store-rich-definition-list dt) {
+        color: #eefcff;
+        font-weight: 900;
+    }
+
+    .sotf-rich-text :global(.store-rich-definition-list dd) {
+        margin: 0.24em 0 0;
     }
 
     .sotf-rich-text :global(.store-rich-table-wrap) {
@@ -2358,7 +2503,10 @@
         .sotf-rich-text :global(ol),
         .sotf-rich-text :global(blockquote),
         .sotf-rich-text :global(pre),
-        .sotf-rich-text :global(.store-rich-table-wrap) {
+        .sotf-rich-text :global(.store-rich-table-wrap),
+        .sotf-rich-text :global(.store-rich-disclosure),
+        .sotf-rich-text :global(.store-rich-callout),
+        .sotf-rich-text :global(.store-rich-definition-list) {
             margin-top: 0.46em;
         }
 
