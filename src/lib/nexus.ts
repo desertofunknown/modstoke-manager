@@ -1488,11 +1488,7 @@ function uniqueImageUrls(values: Array<string | undefined>): string[] {
 }
 
 function normalizeImageUrl(value?: string): string | undefined {
-    const trimmed = (value ?? "")
-        .replace(/&amp;/gi, "&")
-        .replace(/&quot;/gi, "\"")
-        .replace(/&#39;/g, "'")
-        .trim();
+    const trimmed = decodeHtmlEntities(value ?? "").trim();
     const candidate = trimmed.startsWith("//")
         ? `https:${trimmed}`
         : /^www\./i.test(trimmed)
@@ -1648,8 +1644,83 @@ function cleanSummary(value: string | undefined): string | undefined {
         return undefined;
     }
 
-    return value
+    const cleaned = decodeHtmlEntities(value)
         .replace(/<[^>]*>/g, " ")
         .replace(/\s+/g, " ")
         .trim();
+
+    return cleaned || undefined;
+}
+
+function decodeHtmlEntities(value: string): string {
+    let decoded = value;
+    for (let pass = 0; pass < 2; pass += 1) {
+        const next = decoded.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity: string) => {
+            const lower = entity.toLowerCase();
+            if (lower.startsWith("#x")) {
+                return decodeCodePoint(Number.parseInt(lower.slice(2), 16), match);
+            }
+
+            if (lower.startsWith("#")) {
+                return decodeCodePoint(Number.parseInt(lower.slice(1), 10), match);
+            }
+
+            switch (lower) {
+                case "amp":
+                    return "&";
+                case "lt":
+                    return "<";
+                case "gt":
+                    return ">";
+                case "quot":
+                    return "\"";
+                case "apos":
+                case "rsquo":
+                case "lsquo":
+                    return "'";
+                case "nbsp":
+                case "ensp":
+                case "emsp":
+                    return " ";
+                case "ndash":
+                    return "-";
+                case "mdash":
+                    return "--";
+                case "hellip":
+                    return "...";
+                case "copy":
+                    return "(c)";
+                case "reg":
+                    return "(r)";
+                case "trade":
+                    return "(tm)";
+                default:
+                    return match;
+            }
+        });
+
+        if (next === decoded) {
+            break;
+        }
+
+        decoded = next;
+    }
+
+    return decoded;
+}
+
+function decodeCodePoint(codePoint: number, fallback: string): string {
+    if (!Number.isFinite(codePoint) || codePoint <= 0 || codePoint > 0x10ffff) {
+        return fallback;
+    }
+
+    if (codePoint < 32 && codePoint !== 9 && codePoint !== 10 && codePoint !== 13) {
+        return " ";
+    }
+
+    try {
+        return String.fromCodePoint(codePoint);
+    } catch {
+        return fallback;
+    }
 }
