@@ -190,6 +190,40 @@ const LOCAL_SOTF_NEXUS_CATEGORIES: NexusCategory[] = [
     { category_id: 2, name: "Miscellaneous", source: "local" },
     { category_id: 3, name: "Visuals", source: "local" }
 ];
+const NEXUS_CATEGORY_ALIASES: Record<string, string> = {
+    "game play": "Gameplay",
+    "game mechanics": "Gameplay",
+    gameplay: "Gameplay",
+    mechanics: "Gameplay",
+    qol: "Gameplay",
+    "quality of life": "Gameplay",
+    balance: "Gameplay",
+    survival: "Gameplay",
+    building: "Gameplay",
+    combat: "Gameplay",
+    graphic: "Visuals",
+    graphics: "Visuals",
+    lighting: "Visuals",
+    model: "Visuals",
+    models: "Visuals",
+    reshade: "Visuals",
+    shader: "Visuals",
+    shaders: "Visuals",
+    texture: "Visuals",
+    textures: "Visuals",
+    visual: "Visuals",
+    visuals: "Visuals",
+    misc: "Miscellaneous",
+    miscellaneous: "Miscellaneous",
+    save: "Miscellaneous",
+    saves: "Miscellaneous",
+    tool: "Miscellaneous",
+    tools: "Miscellaneous",
+    translation: "Miscellaneous",
+    translations: "Miscellaneous",
+    utilities: "Miscellaneous",
+    utility: "Miscellaneous"
+};
 const DEPENDENCY_SOURCE_KEYS = [
     "dependencies",
     "dependency_definitions",
@@ -641,6 +675,23 @@ function emptyFieldsFrom(preferred: NexusMod, fallback: NexusMod): Partial<Nexus
     return result;
 }
 
+function canonicalNexusCategoryName(name: string): string {
+    const normalized = name
+        .trim()
+        .replace(/[_-]+/g, " ")
+        .replace(/\s+/g, " ");
+    return NEXUS_CATEGORY_ALIASES[normalized.toLowerCase()] ?? normalized;
+}
+
+function nexusCategoryNameKey(name: string): string {
+    return canonicalNexusCategoryName(name).toLowerCase();
+}
+
+function localNexusCategoryByName(name: string): NexusCategory | undefined {
+    const key = nexusCategoryNameKey(name);
+    return LOCAL_SOTF_NEXUS_CATEGORIES.find(category => nexusCategoryNameKey(category.name) === key);
+}
+
 function normalizeNexusCategories(raw: unknown): NexusCategory[] {
     const root = objectField(raw);
     const data = objectField(root?.data);
@@ -670,9 +721,10 @@ function normalizeNexusCategory(raw: unknown, source: NexusCategorySource): Nexu
     const parentCategoryId = numberField(category.parent_category_id)
         ?? numberField(category.parent_id)
         ?? numberField(category.parent);
-    const name = stringField(category.name)
+    const rawName = stringField(category.name)
         ?? stringField(category.category_name)
         ?? stringField(category.title);
+    const name = rawName ? canonicalNexusCategoryName(rawName) : undefined;
 
     if (!name || isRootNexusCategory(name, categoryId)) {
         return null;
@@ -710,14 +762,14 @@ function mergeNexusCategories(input: NexusCategory[]): NexusCategory[] {
 
         const key = category.category_id !== undefined
             ? `id:${category.category_id}`
-            : `name:${category.name.toLowerCase()}`;
+            : `name:${nexusCategoryNameKey(category.name)}`;
         const existing = byKey.get(key);
         const merged = preferNexusCategory(existing, category);
         byKey.set(key, merged);
     }
 
     for (const category of byKey.values()) {
-        const nameKey = category.name.toLowerCase();
+        const nameKey = nexusCategoryNameKey(category.name);
         byName.set(nameKey, preferNexusCategory(byName.get(nameKey), category));
     }
 
@@ -745,8 +797,8 @@ function preferNexusCategory(existing: NexusCategory | undefined, next: NexusCat
 }
 
 function compareNexusCategories(left: NexusCategory, right: NexusCategory): number {
-    const leftLocalIndex = LOCAL_SOTF_NEXUS_CATEGORIES.findIndex(category => category.name === left.name);
-    const rightLocalIndex = LOCAL_SOTF_NEXUS_CATEGORIES.findIndex(category => category.name === right.name);
+    const leftLocalIndex = LOCAL_SOTF_NEXUS_CATEGORIES.findIndex(category => nexusCategoryNameKey(category.name) === nexusCategoryNameKey(left.name));
+    const rightLocalIndex = LOCAL_SOTF_NEXUS_CATEGORIES.findIndex(category => nexusCategoryNameKey(category.name) === nexusCategoryNameKey(right.name));
 
     if (leftLocalIndex !== -1 || rightLocalIndex !== -1) {
         return (leftLocalIndex === -1 ? Number.MAX_SAFE_INTEGER : leftLocalIndex)
@@ -826,19 +878,22 @@ function resolveNexusCategory(raw: Record<string, unknown>, categories: NexusCat
         ?? stringField(nestedCategory?.category_name)
         ?? stringField(raw.category);
     const categoryByName = rawName
-        ? categories.find(category => category.name.toLowerCase() === rawName.toLowerCase())
+        ? categories.find(category => nexusCategoryNameKey(category.name) === nexusCategoryNameKey(rawName))
         : undefined;
 
     if (categoryByName) {
         return categoryByName;
     }
 
-    if (rawName && !isRootNexusCategory(rawName, categoryId)) {
+    const canonicalRawName = rawName ? canonicalNexusCategoryName(rawName) : undefined;
+    const localCategory = canonicalRawName ? localNexusCategoryByName(canonicalRawName) : undefined;
+
+    if (canonicalRawName && !isRootNexusCategory(canonicalRawName, categoryId)) {
         return {
-            category_id: categoryById?.category_id ?? categoryId,
-            name: rawName,
-            parent_category_id: categoryById?.parent_category_id,
-            source: categoryById?.source ?? "api"
+            category_id: categoryById?.category_id ?? localCategory?.category_id ?? categoryId,
+            name: localCategory?.name ?? canonicalRawName,
+            parent_category_id: categoryById?.parent_category_id ?? localCategory?.parent_category_id,
+            source: categoryById?.source ?? localCategory?.source ?? "api"
         };
     }
 
@@ -846,8 +901,12 @@ function resolveNexusCategory(raw: Record<string, unknown>, categories: NexusCat
         return categoryById;
     }
 
+    const inferredName = inferNexusCategory(raw);
+    const inferredCategory = localNexusCategoryByName(inferredName);
     return {
-        name: inferNexusCategory(raw),
+        category_id: inferredCategory?.category_id,
+        name: inferredCategory?.name ?? inferredName,
+        parent_category_id: inferredCategory?.parent_category_id,
         source: "inferred"
     };
 }

@@ -26,6 +26,7 @@
         trackNexusSotfMod,
         untrackNexusSotfMod,
         type NexusCategory,
+        type NexusCategorySource,
         type NexusEndorsement,
         type NexusModChangelog,
         type NexusModDependency,
@@ -3375,11 +3376,11 @@
     function buildNexusCategoryOptions(categories: NexusCategory[], loadedMods: NexusMod[]): string[] {
         const ordered = categories
             .map(category => category.name)
-            .filter((name, index, names) => name && names.findIndex(candidate => candidate.toLowerCase() === name.toLowerCase()) === index);
-        const orderedNames = new Set(ordered.map(name => name.toLowerCase()));
+            .filter((name, index, names) => name && names.findIndex(candidate => nexusCategoryKey(candidate) === nexusCategoryKey(name)) === index);
+        const orderedNames = new Set(ordered.map(name => nexusCategoryKey(name)));
         const extra = Array.from(new Set(loadedMods
             .map(mod => mod.category_name)
-            .filter((name): name is string => !!name && !orderedNames.has(name.toLowerCase()))))
+            .filter((name): name is string => !!name && !orderedNames.has(nexusCategoryKey(name)))))
             .sort((left, right) => left.localeCompare(right));
 
         return [...ordered, ...extra];
@@ -3400,7 +3401,7 @@
                 value: "all"
             },
             ...nexusCategoryOptions.map(category => {
-                const count = baseMods.filter(mod => mod.category_name === category).length;
+                const count = baseMods.filter(mod => nexusModMatchesCategoryFilter(mod, category)).length;
                 return {
                     count,
                     label: filterCountLabel(category, count),
@@ -3528,6 +3529,35 @@
         }
     }
 
+    function nexusCategoryKey(category: string | undefined): string {
+        return (category ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+    }
+
+    function nexusCategorySourceBadge(source: NexusCategorySource | undefined): string | null {
+        switch (source) {
+            case "local":
+                return "taxonomy";
+            case "inferred":
+                return "inferred";
+            default:
+                return null;
+        }
+    }
+
+    function nexusCategorySourceTitle(mod: NexusMod | null | undefined): string {
+        const category = mod?.category_name ?? "Nexus";
+        switch (mod?.category_source) {
+            case "api":
+                return `${category} category from Nexus game metadata.`;
+            case "local":
+                return `${category} category from the local Sons Of The Forest taxonomy cache.`;
+            case "inferred":
+                return `${category} category inferred from API-provided mod text because the feed omitted category data.`;
+            default:
+                return `${category} category.`;
+        }
+    }
+
     function matchesNexusSearch(mod: NexusMod): boolean {
         const search = nexusSearchTerm.trim().toLowerCase();
 
@@ -3563,7 +3593,7 @@
     }
 
     function nexusModMatchesCategoryFilter(mod: NexusMod, category: string): boolean {
-        return category === "all" || mod.category_name === category;
+        return category === "all" || nexusCategoryKey(mod.category_name) === nexusCategoryKey(category);
     }
 
     function nexusModMatchesInstallFilter(mod: NexusMod, match: InstalledInventoryEntry | null, filter: InstallFilter): boolean {
@@ -6928,6 +6958,7 @@
                         {@const conflict = conflictForEntry(match)}
                         {@const previewUrls = catalogPreviewUrls(mod)}
                         {@const previewIndex = catalogPreviewIndex(mod, previewUrls)}
+                        {@const categoryBadge = nexusCategorySourceBadge(mod.category_source)}
                         <article class="nexus-card" class:nexus-installed={!!match} class:nexus-conflict={!!conflict}>
                             <div class="thumbnail-frame">
                                 <button class="thumbnail-button" aria-label={`Open ${mod.name} details`} on:click={() => openModDetails(mod)}>
@@ -6965,7 +6996,16 @@
                                 <div class="card-head">
                                     <button class="title-stack title-button" on:click={() => openModDetails(mod)}>
                                         <span class="mod-title">{mod.name}</span>
-                                        <span class="mod-byline">{mod.category_name ?? "Nexus"} · {mod.loader_type ?? "Unknown type"} · {mod.author ?? mod.uploaded_by ?? "Unknown author"}</span>
+                                        <span class="mod-byline" title={nexusCategorySourceTitle(mod)}>
+                                            {mod.category_name ?? "Nexus"}
+                                            {#if categoryBadge}
+                                                <span class="category-source-badge" class:category-source-inferred={mod.category_source === "inferred"}>{categoryBadge}</span>
+                                            {/if}
+                                            <span class="byline-divider">·</span>
+                                            {mod.loader_type ?? "Unknown type"}
+                                            <span class="byline-divider">·</span>
+                                            {mod.author ?? mod.uploaded_by ?? "Unknown author"}
+                                        </span>
                                     </button>
                                     <div class="card-pills">
                                         {#if conflict}
@@ -7136,7 +7176,16 @@
             <div class="detail-header">
                 <div class="detail-title">
                     <span class="panel-title">{selectedModDetails?.name ?? selectedMod.name}</span>
-                    <span class="panel-subtitle">{selectedModDetails?.category_name ?? "Nexus"} · {selectedModDetails?.loader_type ?? "Unknown type"} · {selectedModDetails?.author ?? selectedModDetails?.uploaded_by ?? "Unknown author"}</span>
+                    <span class="panel-subtitle" title={nexusCategorySourceTitle(selectedModDetails ?? selectedMod)}>
+                        {selectedModDetails?.category_name ?? selectedMod.category_name ?? "Nexus"}
+                        {#if nexusCategorySourceBadge(selectedModDetails?.category_source ?? selectedMod.category_source)}
+                            <span class="category-source-badge" class:category-source-inferred={(selectedModDetails?.category_source ?? selectedMod.category_source) === "inferred"}>{nexusCategorySourceBadge(selectedModDetails?.category_source ?? selectedMod.category_source)}</span>
+                        {/if}
+                        <span class="byline-divider">·</span>
+                        {selectedModDetails?.loader_type ?? selectedMod.loader_type ?? "Unknown type"}
+                        <span class="byline-divider">·</span>
+                        {selectedModDetails?.author ?? selectedModDetails?.uploaded_by ?? selectedMod.author ?? selectedMod.uploaded_by ?? "Unknown author"}
+                    </span>
                 </div>
                 <div class="detail-header-actions">
                     {#if detailBackStack.length > 0}
@@ -7710,7 +7759,11 @@
 
     .panel-subtitle {
         color: #9eb0bf;
+        display: flex;
+        flex-wrap: wrap;
         font-size: 0.85em;
+        gap: 0.35em;
+        align-items: center;
         line-height: 1.25;
     }
 
@@ -8455,7 +8508,10 @@
     }
 
     .mod-byline {
+        align-items: center;
         color: #8d99a5;
+        display: flex;
+        gap: 0.35em;
         font-size: 0.76em;
         font-weight: 800;
         letter-spacing: 0.03em;
@@ -8795,6 +8851,26 @@
         min-width: 0;
         text-align: center;
         white-space: nowrap;
+    }
+
+    .category-source-badge {
+        border: 1px solid rgba(128, 219, 180, 0.45);
+        color: #9fdabf;
+        flex: 0 0 auto;
+        font-size: 0.78em;
+        line-height: 1;
+        padding: 0.14em 0.42em;
+        text-transform: uppercase;
+    }
+
+    .category-source-inferred {
+        border-color: rgba(231, 190, 107, 0.52);
+        color: #e7be6b;
+    }
+
+    .byline-divider {
+        color: rgba(158, 176, 191, 0.62);
+        flex: 0 0 auto;
     }
 
     .thumbnail-nav :global(.thumbnail-icon),

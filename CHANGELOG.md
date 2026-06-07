@@ -33,6 +33,7 @@
   - Added direct Review Conflict actions on conflicted Nexus rows, installed rows, detail conflict panels, and the deployment footer so duplicate local deployments can jump straight to the installed conflict review panel.
   - Added local inventory refresh actions to the Nexus/Vortex account row and detail deployment footer so users can rescan Vortex/native/manual install state immediately after a Vortex handoff without making extra Nexus requests.
   - Added live result counts to Nexus category, install-state, and mod-type filters, and disabled the online-only category dropdown while browsing installed inventory.
+  - Canonicalized common Nexus category aliases into the local Sons Of The Forest taxonomy and marked local-taxonomy or inferred category sources in Nexus rows/details.
   - Improved Nexus description formatting fidelity with monospaced column-style line blocks, codebox/plain/fixed preformatted BBCode aliases, hidden/spoilerblock aliases, legacy horizontal-rule tags, and relative/point size hints.
   - Improved Nexus BBCode layout recovery for indented plain lists, standalone image aliases, and cell-only table layouts so author instructions keep more of their original reading order.
   - Hardened Nexus rich-text parsing so malformed nested closing tags do not leak raw BBCode into descriptions, and HTML/CSS list marker hints such as square, circle, upper-alpha, and roman styles are preserved where safe.
