@@ -23,6 +23,7 @@
   - Preserved Nexus v3/global file IDs alongside game-scoped Vortex file IDs so selected-file and nested dependency checks can query the correct dependency metadata before falling back to resolver/original-ID paths.
   - Added a compact Nexus dependency readiness strip that summarizes API dependencies, author requirement hints, and nested dependency checks before Vortex handoff.
   - Added compact Nexus file-choice summary chips that show total files, selected file readiness, and archived/old-file review state before Vortex handoff.
+  - Added compact Nexus file-choice filters for All, Main, Review, and Selected files so mixed file sets can be narrowed inside the detail drawer before Vortex handoff.
   - Added Nexus file-choice recovery controls so archived, old, or removed selections can jump back to Files and switch to the recommended file before Vortex handoff.
   - Added a compact in-drawer Nexus detail section rail for jumping to Description, Files, Dependencies, Install Plan, Changelog, and Deployment without hunting through split scroll panes.
   - Made Nexus catalog previews more resilient by accepting protocol-relative and common nested media URL fields, replacing the remote placeholder with a bundled local fallback image, and using clearer compact preview count/cycle controls.

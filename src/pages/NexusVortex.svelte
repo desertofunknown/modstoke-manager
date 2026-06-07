@@ -68,6 +68,7 @@
     type InstallPlacement = "auto" | "bepinex-plugin" | "redloader-mod" | "redloader-library" | "manual-review";
     type VersionComparison = "same" | "remote-newer" | "local-newer" | "different" | "unknown";
     type DetailSectionTarget = "description" | "files" | "dependencies" | "plan" | "changelog" | "deployment";
+    type NexusFileListFilter = "all" | "main" | "review" | "selected";
     type NexusSurfaceTab = "description" | "files" | "posts" | "images" | "bugs";
     type NexusSurfaceLink = {
         key: NexusSurfaceTab;
@@ -211,6 +212,7 @@
     let selectedModDetails: NexusMod | null = null;
     let selectedModFiles: NexusModFile[] = [];
     let selectedFileId: number | null = null;
+    let selectedFileListFilter: NexusFileListFilter = "all";
     let recommendedNexusFile: NexusModFile | null = null;
     let selectedFileCanUseRecommended = false;
     let selectedFileRecommendedActionTitle = "";
@@ -333,7 +335,12 @@
     $: selectedFileFooterReviewTitle = selectedNexusFile
         ? `The selected file is marked ${fileChoiceCategoryLabel(selectedNexusFile)}. Jump to Files to review the safer recommended choice before Vortex handoff.`
         : "Jump to file choices before Vortex handoff.";
-    $: displayedSelectedModFiles = sortNexusFilesForDisplay(selectedModFiles, recommendedNexusFileId);
+    $: displayedSelectedModFiles = filterDisplayedNexusFiles(
+        selectedModFiles,
+        recommendedNexusFileId,
+        selectedFileId,
+        selectedFileListFilter
+    );
     $: {
         selectedMod;
         selectedModDetails;
@@ -551,9 +558,7 @@
         : "-";
     $: selectedFileSizeLabel = selectedNexusFile ? formatSizeKb(selectedNexusFile.size) : "-";
     $: selectedFileReviewCount = selectedModFiles.filter(isReviewNexusFile).length;
-    $: selectedFileRecommendedCount = selectedModFiles.filter(file =>
-        file.file_id === recommendedNexusFileId || file.is_primary || normalizedNexusFileCategory(file) === "main"
-    ).length;
+    $: selectedFileRecommendedCount = selectedModFiles.filter(file => isMainNexusFileChoice(file, recommendedNexusFileId)).length;
     $: fileChoiceReadinessText = describeFileChoiceReadiness(selectedModFiles.length, selectedFileRecommendedCount, selectedFileReviewCount, isDetailLoading);
     $: selectedFileReadinessText = describeSelectedFileReadiness(selectedNexusFile, recommendedNexusFileId, selectedModFiles.length);
     $: fileReviewReadinessText = describeFileReviewReadiness(selectedModFiles.length, selectedFileReviewCount);
@@ -2289,6 +2294,7 @@
         detailDescriptionExpanded = false;
         selectedModFiles = [];
         selectedFileId = null;
+        selectedFileListFilter = "all";
         selectedInstallPlacement = "auto";
         selectedDependencies = [];
         selectedDependencyMessage = "";
@@ -2444,6 +2450,7 @@
         detailDescriptionExpanded = false;
         selectedModFiles = [];
         selectedFileId = null;
+        selectedFileListFilter = "all";
         selectedDependencies = [];
         selectedDependencyMessage = "";
         clearNestedDependencyCheck();
@@ -2474,6 +2481,7 @@
         }
 
         await selectNexusFile(recommendedNexusFile.file_id);
+        selectedFileListFilter = "selected";
         await tick();
         detailFilesSectionElement?.scrollIntoView({ block: "start", behavior: "smooth" });
     }
@@ -3400,6 +3408,43 @@
             || (b.uploaded_timestamp ?? 0) - (a.uploaded_timestamp ?? 0)
             || a.name.localeCompare(b.name)
         );
+    }
+
+    function filterDisplayedNexusFiles(
+        files: NexusModFile[],
+        recommendedFileId: number | null,
+        selectedId: number | null,
+        filter: NexusFileListFilter
+    ): NexusModFile[] {
+        const sorted = sortNexusFilesForDisplay(files, recommendedFileId);
+
+        switch (filter) {
+            case "main":
+                return sorted.filter(file => isMainNexusFileChoice(file, recommendedFileId));
+            case "review":
+                return sorted.filter(isReviewNexusFile);
+            case "selected":
+                return selectedId === null ? [] : sorted.filter(file => file.file_id === selectedId);
+            default:
+                return sorted;
+        }
+    }
+
+    function isMainNexusFileChoice(file: NexusModFile, recommendedFileId: number | null): boolean {
+        return file.file_id === recommendedFileId || file.is_primary || normalizedNexusFileCategory(file) === "main";
+    }
+
+    function describeFileListFilter(filter: NexusFileListFilter): string {
+        switch (filter) {
+            case "main":
+                return "main or recommended files";
+            case "review":
+                return "archived, old, or removed files";
+            case "selected":
+                return "the selected file";
+            default:
+                return "files";
+        }
     }
 
     function nexusFileDisplayRank(file: NexusModFile, recommendedFileId: number | null): number {
@@ -8006,8 +8051,48 @@
                                 <span>{fileReviewReadinessText}</span>
                             </span>
                         </div>
+                        <div class="file-filter-row" aria-label="File choice filters">
+                            <button
+                                type="button"
+                                class:file-filter-selected={selectedFileListFilter === "all"}
+                                aria-pressed={selectedFileListFilter === "all"}
+                                disabled={selectedModFiles.length === 0}
+                                on:click={() => selectedFileListFilter = "all"}
+                            >
+                                All <b>{selectedModFiles.length}</b>
+                            </button>
+                            <button
+                                type="button"
+                                class:file-filter-selected={selectedFileListFilter === "main"}
+                                aria-pressed={selectedFileListFilter === "main"}
+                                disabled={selectedFileRecommendedCount === 0}
+                                on:click={() => selectedFileListFilter = "main"}
+                            >
+                                Main <b>{selectedFileRecommendedCount}</b>
+                            </button>
+                            <button
+                                type="button"
+                                class:file-filter-selected={selectedFileListFilter === "review"}
+                                aria-pressed={selectedFileListFilter === "review"}
+                                disabled={selectedFileReviewCount === 0}
+                                on:click={() => selectedFileListFilter = "review"}
+                            >
+                                Review <b>{selectedFileReviewCount}</b>
+                            </button>
+                            <button
+                                type="button"
+                                class:file-filter-selected={selectedFileListFilter === "selected"}
+                                aria-pressed={selectedFileListFilter === "selected"}
+                                disabled={!selectedNexusFile}
+                                on:click={() => selectedFileListFilter = "selected"}
+                            >
+                                Selected <b>{selectedNexusFile ? 1 : 0}</b>
+                            </button>
+                        </div>
                         {#if selectedModFiles.length === 0 && !isDetailLoading}
                             <div class="notice empty-nexus">No downloadable files were returned by Nexus.</div>
+                        {:else if displayedSelectedModFiles.length === 0 && !isDetailLoading}
+                            <div class="notice empty-nexus">No {describeFileListFilter(selectedFileListFilter)} match this file set.</div>
                         {/if}
 
                         {#each displayedSelectedModFiles as file}
@@ -11340,6 +11425,49 @@
         grid-template-columns: repeat(auto-fit, minmax(8.4em, 1fr));
     }
 
+    .file-filter-row {
+        display: grid;
+        gap: 0.35em;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .file-filter-row button {
+        -webkit-mask-image: none;
+        align-items: center;
+        background: rgba(18, 18, 18, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: none;
+        color: #9fb0bf;
+        display: inline-flex;
+        font-size: 0.68em;
+        font-weight: 900;
+        justify-content: center;
+        margin: 0;
+        mask-image: none;
+        min-height: 2.2em;
+        min-width: 0;
+        padding: 0.28em 0.45em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .file-filter-row button:disabled {
+        cursor: default;
+        opacity: 0.42;
+    }
+
+    .file-filter-row button:not(:disabled):hover,
+    .file-filter-row .file-filter-selected {
+        border-color: rgba(98, 240, 155, 0.42);
+        color: #62f09b;
+    }
+
+    .file-filter-row b {
+        color: inherit;
+        font-size: 0.96em;
+        margin-left: 0.35em;
+    }
+
     .dependency-readiness-chip,
     .file-readiness-chip {
         background: rgba(255, 255, 255, 0.045);
@@ -12057,6 +12185,10 @@
         }
 
         .deployment-checklist {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .file-filter-row {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
