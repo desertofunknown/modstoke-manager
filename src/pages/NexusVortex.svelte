@@ -160,6 +160,8 @@
     let apiKey = "";
     let mods: NexusMod[] = [];
     let knownNexusDetails: Record<number, NexusMod> = {};
+    let knownNexusPreviewUrls: Record<number, string[]> = {};
+    let catalogPreviewCacheVersion = 0;
     let catalogPreviewIndexes: Record<number, number> = {};
     let selectedDetailPreviewIndex = 0;
     let detailDescriptionExpanded = false;
@@ -337,6 +339,9 @@
         selectedNexusFile;
         selectedChangelogs;
         currentDetailPreviewUrls = selectedDetailPreviewUrls();
+        if (selectedMod) {
+            rememberNexusPreviewUrls(selectedMod.mod_id, currentDetailPreviewUrls);
+        }
     }
     $: {
         selectedDetailPreviewIndex;
@@ -1043,6 +1048,8 @@
         session = { is_connected: false };
         mods = [];
         knownNexusDetails = {};
+        knownNexusPreviewUrls = {};
+        catalogPreviewCacheVersion += 1;
         nexusCategories = [];
         nexusCatalogLoadedAt = null;
         endorsements = [];
@@ -1069,6 +1076,8 @@
 
             beginManualRefreshCooldown(now);
             knownNexusDetails = {};
+            knownNexusPreviewUrls = {};
+            catalogPreviewCacheVersion += 1;
         }
 
         isLoading = true;
@@ -1569,13 +1578,15 @@
         await shell.open(getNexusModDownloadUrl(mod));
     }
 
-    function catalogPreviewUrls(mod: NexusMod): string[] {
+    function catalogPreviewUrls(mod: NexusMod, cacheVersion = catalogPreviewCacheVersion): string[] {
+        void cacheVersion;
         const detail = knownNexusDetails[mod.mod_id];
         return uniquePreviewUrls([
             ...(mod.image_urls ?? []),
             mod.picture_url,
             ...(detail?.image_urls ?? []),
-            detail?.picture_url
+            detail?.picture_url,
+            ...(knownNexusPreviewUrls[mod.mod_id] ?? [])
         ]);
     }
 
@@ -2272,7 +2283,11 @@
                 fetchNexusModFiles(mod.mod_id),
                 fetchNexusModChangelogs(mod.mod_id).catch(() => ({ changelogs: [], rate_limit: session.rate_limit ?? {} }))
             ]);
-            const mergedDetails = { ...mod, ...detailResponse.details };
+            const mergedDetails = {
+                ...mod,
+                ...detailResponse.details,
+                mod_id: detailResponse.details.mod_id ?? mod.mod_id
+            };
             const recommendedFileVersion = preferredNexusFileVersion(fileResponse.files);
             selectedModDetails = recommendedFileVersion
                 ? { ...mergedDetails, version: recommendedFileVersion }
@@ -2280,9 +2295,15 @@
             if (detailResponse.fetched) {
                 rememberNexusDetails(selectedModDetails);
             }
+            const recommendedFile = pickRecommendedNexusFile(fileResponse.files) ?? fileResponse.files[0] ?? null;
+            const fetchedChangelogs = changelogResponse.changelogs.slice(0, 5);
             selectedModFiles = fileResponse.files;
-            selectedChangelogs = changelogResponse.changelogs.slice(0, 5);
-            selectedFileId = pickRecommendedNexusFile(fileResponse.files)?.file_id ?? fileResponse.files[0]?.file_id ?? null;
+            selectedChangelogs = fetchedChangelogs;
+            selectedFileId = recommendedFile?.file_id ?? null;
+            rememberNexusPreviewUrls(
+                mod.mod_id,
+                catalogPreviewUrlsFromLoadedDetails(selectedModDetails, recommendedFile, fetchedChangelogs)
+            );
             session = {
                 ...session,
                 rate_limit: fileResponse.rate_limit
@@ -2346,6 +2367,44 @@
                 ...details
             }
         };
+    }
+
+    function rememberNexusPreviewUrls(modId: number | undefined, urls: string[]) {
+        if (!modId || urls.length === 0) {
+            return;
+        }
+
+        const merged = uniquePreviewUrls([
+            ...(knownNexusPreviewUrls[modId] ?? []),
+            ...urls
+        ]);
+        if (previewUrlListsEqual(knownNexusPreviewUrls[modId] ?? [], merged)) {
+            return;
+        }
+
+        knownNexusPreviewUrls = {
+            ...knownNexusPreviewUrls,
+            [modId]: merged
+        };
+        catalogPreviewCacheVersion += 1;
+    }
+
+    function catalogPreviewUrlsFromLoadedDetails(details: NexusMod, file: NexusModFile | null, changelogs: NexusModChangelog[]): string[] {
+        const richTextSources = [
+            details.description,
+            file?.description,
+            file?.changelog_html,
+            ...changelogs.map(changelog => changelog.changes)
+        ];
+        return uniquePreviewUrls([
+            ...(details.image_urls ?? []),
+            details.picture_url,
+            ...richTextSources.flatMap(source => nexusRichTextImageUrls(source))
+        ]);
+    }
+
+    function previewUrlListsEqual(left: string[], right: string[]): boolean {
+        return left.length === right.length && left.every((value, index) => value === right[index]);
     }
 
     function preferredNexusFileVersion(files: NexusModFile[]): string | undefined {
@@ -7372,7 +7431,8 @@
                         {@const match = installedMatch(mod)}
                         {@const updateVerdict = nexusUpdateVerdict(mod, match)}
                         {@const conflict = conflictForEntry(match)}
-                        {@const previewUrls = catalogPreviewUrls(mod)}
+                        {@const previewCacheVersion = catalogPreviewCacheVersion}
+                        {@const previewUrls = catalogPreviewUrls(mod, previewCacheVersion)}
                         {@const previewIndex = catalogPreviewIndex(mod, previewUrls)}
                         {@const categoryBadge = nexusCategorySourceBadge(mod.category_source)}
                         <article class="nexus-card" class:nexus-installed={!!match} class:nexus-conflict={!!conflict}>

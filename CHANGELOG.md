@@ -27,6 +27,7 @@
   - Added author requirement hints from Nexus description, selected-file notes, and changelog links when structured dependency rows are missing or incomplete, without extra Nexus requests.
   - Added compact icon preview controls in Nexus detail drawers, including a current-preview open action for single-image and multi-image detail media.
   - Enriched Nexus detail preview rails with safe image URLs found in API-provided descriptions, selected-file notes, and changelogs, so author-supplied screenshots can appear in the drawer without extra Nexus requests.
+  - Reused already-loaded detail preview URLs in the Nexus catalog so rows can gain carousel controls after a detail drawer discovers author-supplied screenshots, while preserving row Nexus IDs when detail payloads omit them.
   - Added selected-file notes in Nexus detail drawers so file-specific descriptions and changelog HTML are shown with the same safe formatting before Vortex handoff.
   - Improved Nexus install plans so dependency lookup progress, lookup failures, no-API-row responses, author requirement counts, and nested dependency check readiness are visible before handing a file to Vortex.
   - Added compact author instruction hints to Nexus install plans by extracting likely install, configuration, usage, warning, and requirement snippets from API-provided author text, selected-file notes, and changelogs without extra Nexus requests.
