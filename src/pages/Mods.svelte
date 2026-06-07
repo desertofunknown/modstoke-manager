@@ -38,6 +38,7 @@
     export let sharedSearchVersion = 0;
     export let showEmbeddedSearch = true;
     export let embeddedStorePreview = false;
+    export let embeddedControlsExpanded = false;
 
     const dispatch = createEventDispatcher<{ searchChange: string; summaryChange: SourceSummaryEvent }>();
 
@@ -964,7 +965,7 @@
 <div
     class="column mods-page"
     class:sotf-embedded-store-preview={embeddedStorePreview}
-    class:sotf-embedded-controls-needed={embeddedStorePreview && (installedSelected || hasActiveLocalModViewOptions)}
+    class:sotf-embedded-controls-needed={embeddedStorePreview && (embeddedControlsExpanded || installedSelected || hasActiveLocalModViewOptions)}
     bind:this={modsPageElement}
 >
     {#if $isPathValid}

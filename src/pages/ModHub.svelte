@@ -6,6 +6,7 @@
     import LucideLayoutGrid from "~icons/lucide/layout-grid";
     import LucideMaximize2 from "~icons/lucide/maximize-2";
     import LucideSearch from "~icons/lucide/search";
+    import LucideSlidersHorizontal from "~icons/lucide/sliders-horizontal";
     import LucideStore from "~icons/lucide/store";
     import LucideX from "~icons/lucide/x";
 
@@ -27,6 +28,8 @@
     let sharedSearchVersion = 0;
     let sotfSummary: SourceSummary | null = null;
     let nexusSummary: SourceSummary | null = null;
+    let allStoresSotfControlsExpanded = false;
+    let allStoresNexusControlsExpanded = false;
     let modHubElement: HTMLDivElement | null = null;
     let sourcePanelElement: HTMLDivElement | null = null;
     let hubLayoutObserver: ResizeObserver | null = null;
@@ -57,6 +60,8 @@
     $: {
         activeSource;
         sharedSearchTerm;
+        allStoresSotfControlsExpanded;
+        allStoresNexusControlsExpanded;
         void measureHubLayoutAfterTick();
     }
 
@@ -315,13 +320,26 @@
                         <span class="source-section-name"><LucideStore aria-hidden="true" /> SOTF Mods</span>
                         <small>{sourceSummaryLine(sotfSummary, "Native store")}</small>
                     </span>
-                    <button type="button" on:click={() => selectSource("sotf")} title="Open SOTF Mods source" aria-label="Open SOTF Mods source">
-                        <LucideMaximize2 aria-hidden="true" />
-                    </button>
+                    <span class="source-section-actions">
+                        <button
+                            type="button"
+                            class:source-section-toggle-active={allStoresSotfControlsExpanded}
+                            aria-label={allStoresSotfControlsExpanded ? "Hide SOTF Mods controls" : "Show SOTF Mods controls"}
+                            aria-pressed={allStoresSotfControlsExpanded}
+                            on:click={() => allStoresSotfControlsExpanded = !allStoresSotfControlsExpanded}
+                            title={allStoresSotfControlsExpanded ? "Hide SOTF Mods controls" : "Show SOTF Mods controls"}
+                        >
+                            <LucideSlidersHorizontal aria-hidden="true" />
+                        </button>
+                        <button type="button" on:click={() => selectSource("sotf")} title="Open SOTF Mods source" aria-label="Open SOTF Mods source">
+                            <LucideMaximize2 aria-hidden="true" />
+                        </button>
+                    </span>
                 </div>
                 <div class="source-section-body">
                     <SOTFMods
                         embeddedStorePreview={true}
+                        embeddedControlsExpanded={allStoresSotfControlsExpanded}
                         sharedSearchTerm={sharedSearchTerm}
                         sharedSearchVersion={sharedSearchVersion}
                         showEmbeddedSearch={false}
@@ -337,13 +355,26 @@
                         <span class="source-section-name"><LucideCloudDownload aria-hidden="true" /> Nexus / Vortex</span>
                         <small>{sourceSummaryLine(nexusSummary, "Nexus catalog")}</small>
                     </span>
-                    <button type="button" on:click={() => selectSource("nexus")} title="Open Nexus / Vortex source" aria-label="Open Nexus / Vortex source">
-                        <LucideMaximize2 aria-hidden="true" />
-                    </button>
+                    <span class="source-section-actions">
+                        <button
+                            type="button"
+                            class:source-section-toggle-active={allStoresNexusControlsExpanded}
+                            aria-label={allStoresNexusControlsExpanded ? "Hide Nexus / Vortex controls" : "Show Nexus / Vortex controls"}
+                            aria-pressed={allStoresNexusControlsExpanded}
+                            on:click={() => allStoresNexusControlsExpanded = !allStoresNexusControlsExpanded}
+                            title={allStoresNexusControlsExpanded ? "Hide Nexus / Vortex controls" : "Show Nexus / Vortex controls"}
+                        >
+                            <LucideSlidersHorizontal aria-hidden="true" />
+                        </button>
+                        <button type="button" on:click={() => selectSource("nexus")} title="Open Nexus / Vortex source" aria-label="Open Nexus / Vortex source">
+                            <LucideMaximize2 aria-hidden="true" />
+                        </button>
+                    </span>
                 </div>
                 <div class="source-section-body nexus-source-section-body">
                     <NexusVortex
                         embeddedStorePreview={true}
+                        embeddedControlsExpanded={allStoresNexusControlsExpanded}
                         sharedSearchTerm={sharedSearchTerm}
                         sharedSearchVersion={sharedSearchVersion}
                         showEmbeddedSearch={false}
@@ -624,6 +655,13 @@
         stroke-width: 2.35;
     }
 
+    .source-section-actions {
+        display: inline-grid;
+        flex: 0 0 auto;
+        gap: 0.35em;
+        grid-auto-flow: column;
+    }
+
     .source-section-head button {
         align-items: center;
         background: rgba(255, 255, 255, 0.05);
@@ -644,6 +682,12 @@
 
     .source-section-head button:hover {
         border-color: rgba(98, 240, 155, 0.44);
+        color: #62f09b;
+    }
+
+    .source-section-head button.source-section-toggle-active {
+        background: rgba(98, 240, 155, 0.08);
+        border-color: rgba(98, 240, 155, 0.5);
         color: #62f09b;
     }
 

@@ -55,6 +55,7 @@
     export let sharedSearchVersion = 0;
     export let showEmbeddedSearch = true;
     export let embeddedStorePreview = false;
+    export let embeddedControlsExpanded = false;
 
     type SourceSummaryEvent = {
         visible: number;
@@ -7534,6 +7535,7 @@
     class:nexus-catalog-tight={nexusCatalogTight}
     class:nexus-catalog-very-tight={nexusCatalogVeryTight}
     class:nexus-embedded-store-preview={embeddedStorePreview}
+    class:nexus-embedded-controls-expanded={embeddedStorePreview && embeddedControlsExpanded}
     class:nexus-session-connected={session.is_connected}
     bind:this={nexusPageElement}
 >
@@ -8808,6 +8810,14 @@
     .nexus-embedded-store-preview .nexus-filter-row,
     .nexus-embedded-store-preview .action-queue-empty {
         display: none;
+    }
+
+    .nexus-embedded-store-preview.nexus-embedded-controls-expanded .catalog-toolbar {
+        display: flex;
+    }
+
+    .nexus-embedded-store-preview.nexus-embedded-controls-expanded .nexus-filter-row {
+        display: grid;
     }
 
     .nexus-embedded-store-preview .panel-title {
