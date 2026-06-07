@@ -264,6 +264,8 @@
     let nexusLayoutObserver: ResizeObserver | null = null;
     let nexusLayoutFrame: number | null = null;
     let nexusWindowResizeHandler: (() => void) | null = null;
+    let nexusCatalogTight = false;
+    let nexusCatalogVeryTight = false;
     let detailDescriptionSectionElement: HTMLDivElement | null = null;
     let detailFilesSectionElement: HTMLDivElement | null = null;
     let detailDependenciesSectionElement: HTMLDivElement | null = null;
@@ -698,13 +700,21 @@
             + Math.max(0, catalogChrome.length) * catalogGap;
         const availableCatalogHeight = clampNumber(pageRect.bottom - catalogRect.top, 380, Math.max(380, pageRect.height));
         const targetScrollerHeight = clampNumber(availableCatalogHeight - chromeHeight, 300, availableCatalogHeight);
-        const targetCardHeight = clampNumber(targetScrollerHeight / (targetScrollerHeight >= 620 ? 3.8 : 3.2), 126, 190);
-        const targetThumbWidth = clampNumber(pageRect.width * 0.16, 126, 230);
+        const shouldTightenCatalog = pageRect.height < 920 || targetScrollerHeight < 430;
+        const shouldVeryTightenCatalog = pageRect.height < 760 || targetScrollerHeight < 340;
+        const desiredVisibleRows = targetScrollerHeight >= 620 ? 3.9 : shouldTightenCatalog ? 2.7 : 3.2;
+        const cardMin = shouldTightenCatalog ? 112 : 126;
+        const cardMax = shouldTightenCatalog ? 156 : 190;
+        const thumbWidthRatio = shouldTightenCatalog ? 0.11 : 0.16;
+        const targetCardHeight = clampNumber(targetScrollerHeight / desiredVisibleRows, cardMin, cardMax);
+        const targetThumbWidth = clampNumber(pageRect.width * thumbWidthRatio, shouldTightenCatalog ? 96 : 126, shouldTightenCatalog ? 164 : 230);
 
         page.style.setProperty("--nexus-catalog-target-height", `${Math.round(availableCatalogHeight)}px`);
         page.style.setProperty("--nexus-scroller-target-height", `${Math.round(targetScrollerHeight)}px`);
         page.style.setProperty("--nexus-card-min-height", `${Math.round(targetCardHeight)}px`);
         page.style.setProperty("--nexus-thumb-width", `${Math.round(targetThumbWidth)}px`);
+        nexusCatalogTight = shouldTightenCatalog;
+        nexusCatalogVeryTight = shouldVeryTightenCatalog;
     }
 
     function cssPixels(value: string): number {
@@ -7077,7 +7087,7 @@
     }
 </script>
 
-<div class="column nexus-page" bind:this={nexusPageElement}>
+<div class="column nexus-page" class:nexus-catalog-tight={nexusCatalogTight} class:nexus-catalog-very-tight={nexusCatalogVeryTight} bind:this={nexusPageElement}>
     <section class="account-panel">
         <div class="account-copy">
             <span class="panel-title">Vortex / Nexus Mods</span>
@@ -8182,6 +8192,132 @@
         justify-content: flex-start;
         min-height: 0;
         overflow: hidden;
+    }
+
+    .nexus-page.nexus-catalog-tight {
+        gap: clamp(0.35em, 0.7vh, 0.55em);
+    }
+
+    .nexus-page.nexus-catalog-tight .account-panel {
+        padding: 0.45em 0.75em;
+    }
+
+    .nexus-page.nexus-catalog-tight .panel-title {
+        font-size: 0.98em;
+    }
+
+    .nexus-page.nexus-catalog-tight .panel-subtitle {
+        font-size: 0.78em;
+    }
+
+    .nexus-page.nexus-catalog-tight .rate-row,
+    .nexus-page.nexus-catalog-tight .vortex-summary,
+    .nexus-page.nexus-catalog-tight .catalog-panel,
+    .nexus-page.nexus-catalog-tight .action-queue,
+    .nexus-page.nexus-catalog-tight .nexus-filter-row,
+    .nexus-page.nexus-catalog-tight .nexus-scroller {
+        gap: 0.38em;
+    }
+
+    .nexus-page.nexus-catalog-tight .rate-meter {
+        gap: 0.2em;
+        padding: 0.32em 0.5em;
+    }
+
+    .nexus-page.nexus-catalog-tight .summary-card {
+        gap: 0;
+        padding: 0.38em 0.5em;
+    }
+
+    .nexus-page.nexus-catalog-tight .summary-note,
+    .nexus-page.nexus-catalog-tight .queue-chip small {
+        display: none;
+    }
+
+    .nexus-page.nexus-catalog-tight .api-note {
+        padding: 0.34em 0.6em;
+    }
+
+    .nexus-page.nexus-catalog-tight .queue-chip {
+        min-height: 2.35em;
+        padding: 0.3em 0.5em;
+    }
+
+    .nexus-page.nexus-catalog-tight .queue-chip b {
+        font-size: 1em;
+    }
+
+    .nexus-page.nexus-catalog-tight .nexus-filter-row select,
+    .nexus-page.nexus-catalog-tight .nexus-filter-row .key-input {
+        min-height: 2.28em;
+        padding-bottom: 0.32em;
+        padding-top: 0.32em;
+    }
+
+    .nexus-page.nexus-catalog-tight .cat-btn,
+    .nexus-page.nexus-catalog-tight .refresh-btn,
+    .nexus-page.nexus-catalog-tight .catalog-mode-buttons button {
+        height: 2.3em;
+    }
+
+    .nexus-page.nexus-catalog-tight .nexus-card {
+        grid-template-columns: var(--nexus-thumb-width) minmax(0, 1fr);
+        min-height: var(--nexus-card-min-height);
+    }
+
+    .nexus-page.nexus-catalog-tight .thumbnail-frame,
+    .nexus-page.nexus-catalog-tight .thumbnail-button,
+    .nexus-page.nexus-catalog-tight .nexus-img {
+        min-height: var(--nexus-card-min-height);
+    }
+
+    .nexus-page.nexus-catalog-tight .nexus-body {
+        gap: 0.32em;
+        padding: 0.5em 0.65em;
+    }
+
+    .nexus-page.nexus-catalog-tight .mod-title {
+        font-size: 0.98em;
+    }
+
+    .nexus-page.nexus-catalog-tight .description-content {
+        -webkit-line-clamp: 1;
+        line-clamp: 1;
+        min-height: auto;
+    }
+
+    .nexus-page.nexus-catalog-tight .facts,
+    .nexus-page.nexus-catalog-tight .inventory-facts {
+        font-size: 0.72em;
+    }
+
+    .nexus-page.nexus-catalog-tight .nexus-card-footer {
+        align-items: center;
+        gap: 0.45em;
+    }
+
+    .nexus-page.nexus-catalog-tight .button-row {
+        gap: 0.35em;
+    }
+
+    .nexus-page.nexus-catalog-tight .button-row button {
+        font-size: 0.72em;
+        min-width: 5.8em;
+        padding: 0.45em 0.62em;
+    }
+
+    .nexus-page.nexus-catalog-tight .button-row .vortex-install-btn {
+        min-width: 9.2em;
+    }
+
+    .nexus-page.nexus-catalog-very-tight .description-content {
+        -webkit-line-clamp: 1;
+        line-clamp: 1;
+    }
+
+    .nexus-page.nexus-catalog-very-tight .facts,
+    .nexus-page.nexus-catalog-very-tight .inventory-facts {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .account-panel {
