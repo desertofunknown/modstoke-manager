@@ -44,6 +44,7 @@
   - Classified author runtime/library mentions with incompatibility, removal, or conflict wording as compatibility warnings instead of satisfied dependencies.
   - Improved Nexus dependency section rails and install-plan facts so author warning/review/detected summaries stay visible before scrolling into individual rows.
   - Prioritized the Nexus Dependencies section above selected-file notes whenever dependency warnings, reviews, nested checks, or author hints exist so requirements are visible sooner in detail drawers and navigation order.
+  - Promoted Nexus author requirement hints ahead of generic no-API dependency helper text when Nexus returns no structured dependency rows, keeping the actionable warning/review snippets visible first.
   - Added dependency review shortcuts and status-aware dependency row actions so missing, mismatched, and review dependencies open as `Install`, `Update`, or `Review` instead of generic details.
   - Added direct Review Conflict actions on conflicted Nexus rows, installed rows, detail conflict panels, and the deployment footer so duplicate local deployments can jump straight to the installed conflict review panel.
   - Added local inventory refresh actions to the Nexus/Vortex account row and detail deployment footer so users can rescan Vortex/native/manual install state immediately after a Vortex handoff without making extra Nexus requests.

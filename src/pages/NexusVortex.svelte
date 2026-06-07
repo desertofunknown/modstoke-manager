@@ -8193,6 +8193,38 @@
                         {/if}
                     {/snippet}
 
+                    {#snippet authorRequirementSectionBlock()}
+                        {#if selectedAuthorRequirements.length > 0}
+                            <div class="author-requirement-section">
+                                <span class="dependency-subtitle">Author requirement hints</span>
+                                {#each selectedAuthorRequirements as requirement (requirement.key)}
+                                    <div
+                                        class="author-requirement-row"
+                                        class:author-requirement-detected={requirement.status === "detected"}
+                                        class:author-requirement-warning={requirement.status === "warning"}
+                                    >
+                                        <div class="author-requirement-main">
+                                            <span>{requirement.label}</span>
+                                            <small>{requirement.source}{requirement.mod_id ? ` · Mod ${requirement.mod_id}` : ""} · {requirement.status === "detected" ? "Detected locally" : requirement.status === "warning" ? "Compatibility warning" : "Review manually"}</small>
+                                            {#if requirement.detail}
+                                                <small>{requirement.detail}</small>
+                                            {/if}
+                                            {#if requirement.excerpt}
+                                                <small class="author-requirement-excerpt">Matched: {requirement.excerpt}</small>
+                                            {/if}
+                                        </div>
+                                        {#if requirement.mod_id || requirement.url || requirement.match}
+                                            <button on:click={() => openAuthorRequirement(requirement)}>
+                                                {requirement.mod_id ? "Details" : requirement.match ? "Folder" : "Open"}
+                                            </button>
+                                        {/if}
+                                    </div>
+                                {/each}
+                                <span class="dependency-empty">These came from Nexus author text, selected file notes, or changelog text and are not API dependency rows.</span>
+                            </div>
+                        {/if}
+                    {/snippet}
+
                     {#snippet dependencyBoxBlock()}
                         <div class="dependency-box" bind:this={detailDependenciesSectionElement}>
                             <div class="dependency-box-head">
@@ -8243,6 +8275,9 @@
                                     <span>{nestedDependencyReadinessLabel()}</span>
                                 </span>
                             </div>
+                            {#if resolvedDependencies.length === 0}
+                                {@render authorRequirementSectionBlock()}
+                            {/if}
                             {#if nestedDependencySummary}
                                 <span class="dependency-empty">{nestedDependencySummary}</span>
                             {/if}
@@ -8285,34 +8320,8 @@
                                     </div>
                                 {/each}
                             {/if}
-                            {#if selectedAuthorRequirements.length > 0}
-                                <div class="author-requirement-section">
-                                    <span class="dependency-subtitle">Author requirement hints</span>
-                                    <span class="dependency-empty">These came from Nexus author text, selected file notes, or changelog text and are not API dependency rows.</span>
-                                    {#each selectedAuthorRequirements as requirement (requirement.key)}
-                                        <div
-                                            class="author-requirement-row"
-                                            class:author-requirement-detected={requirement.status === "detected"}
-                                            class:author-requirement-warning={requirement.status === "warning"}
-                                        >
-                                            <div class="author-requirement-main">
-                                                <span>{requirement.label}</span>
-                                                <small>{requirement.source}{requirement.mod_id ? ` · Mod ${requirement.mod_id}` : ""} · {requirement.status === "detected" ? "Detected locally" : requirement.status === "warning" ? "Compatibility warning" : "Review manually"}</small>
-                                                {#if requirement.detail}
-                                                    <small>{requirement.detail}</small>
-                                                {/if}
-                                                {#if requirement.excerpt}
-                                                    <small class="author-requirement-excerpt">Matched: {requirement.excerpt}</small>
-                                                {/if}
-                                            </div>
-                                            {#if requirement.mod_id || requirement.url || requirement.match}
-                                                <button on:click={() => openAuthorRequirement(requirement)}>
-                                                    {requirement.mod_id ? "Details" : requirement.match ? "Folder" : "Open"}
-                                                </button>
-                                            {/if}
-                                        </div>
-                                    {/each}
-                                </div>
+                            {#if resolvedDependencies.length > 0}
+                                {@render authorRequirementSectionBlock()}
                             {/if}
                             {#if resolvedNestedDependencies.length > 0}
                                 <div class="dependency-nested-section">
