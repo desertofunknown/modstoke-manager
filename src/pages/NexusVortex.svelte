@@ -6142,7 +6142,8 @@
                 const style = nexusImageStyleAttribute(node.rawAttrs);
                 const imageClass = ["nexus-rich-image", alignment ? `nexus-rich-image-${alignment}` : ""].filter(Boolean).join(" ");
                 const alt = safeNexusImageAlt(nexusBbAttribute(node.rawAttrs, "alt") ?? nexusBbAttribute(node.rawAttrs, "title"));
-                return url ? `<img class="${imageClass}" src="${escapeAttribute(url)}" alt="${escapeAttribute(alt)}"${alt ? ` title="${escapeAttribute(alt)}"` : ""}${style} />${attrUrl && inner ? inner : ""}` : inner;
+                const title = safeNexusImageAlt(nexusBbAttribute(node.rawAttrs, "title") ?? nexusBbAttribute(node.rawAttrs, "alt"));
+                return url ? `<img class="${imageClass}" src="${escapeAttribute(url)}" alt="${escapeAttribute(alt)}"${title ? ` title="${escapeAttribute(title)}"` : ""}${style} loading="lazy" />${attrUrl && inner ? inner : ""}` : inner;
             }
             case "color": {
                 const color = safeNexusColor(node.attr);
@@ -6259,20 +6260,22 @@
                     ?? nexusBbAttribute(node.rawAttrs, "background-color")
                     ?? nexusBbAttribute(node.rawAttrs, "bgcolor")
                 );
+                const size = nexusBbAttribute(node.rawAttrs, "size")
+                    ?? nexusBbAttribute(node.rawAttrs, "font-size");
                 const fontClass = safeNexusFontClass(
                     nexusBbAttribute(node.rawAttrs, "face")
                     ?? nexusBbAttribute(node.rawAttrs, "font")
                     ?? nexusBbAttribute(node.rawAttrs, "font-family")
                     ?? node.attr
                 );
-                const classes = ["nexus-rich-font", fontClass ? `nexus-rich-font-${fontClass}` : ""]
+                const classes = ["nexus-rich-font", fontClass ? `nexus-rich-font-${fontClass}` : "", size ? nexusSizeClass(size) : ""]
                     .filter(Boolean)
                     .join(" ");
                 const style = [
                     color ? `color: ${color}` : "",
                     background ? `background-color: ${background}` : ""
                 ].filter(Boolean).join("; ");
-                return style || fontClass ? `<span class="${classes}"${style ? ` style="${escapeAttribute(style)}"` : ""}>${inner}</span>` : inner;
+                return style || fontClass || size ? `<span class="${classes}"${style ? ` style="${escapeAttribute(style)}"` : ""}>${inner}</span>` : inner;
             }
             case "box":
             case "panel":
@@ -6360,11 +6363,15 @@
         const alignment = nexusImageAlignment(rawAttrs, direct);
         const width = safeNexusCssLength(nexusBbAttribute(rawAttrs, "width") ?? nexusBbAttribute(rawAttrs, "w"));
         const height = safeNexusCssLength(nexusBbAttribute(rawAttrs, "height") ?? nexusBbAttribute(rawAttrs, "h"));
+        const alt = safeNexusImageAlt(nexusBbAttribute(rawAttrs, "alt"));
+        const title = safeNexusImageAlt(nexusBbAttribute(rawAttrs, "title"));
         const attrs = [
             source ? `src="${source}"` : "",
             alignment ? `align="${alignment}"` : "",
             width ? `width="${width}"` : "",
-            height ? `height="${height}"` : ""
+            height ? `height="${height}"` : "",
+            nexusSafeBbAttribute("alt", alt),
+            nexusSafeBbAttribute("title", title)
         ].filter(Boolean);
 
         if (attrs.length > 0) {
@@ -6372,6 +6379,11 @@
         }
 
         return direct ? `[img=${direct}]` : "[img]";
+    }
+
+    function nexusSafeBbAttribute(name: string, value?: string): string {
+        const cleaned = value?.trim();
+        return cleaned ? `${name}="${escapeAttribute(cleaned)}"` : "";
     }
 
     function nexusBbTagAttribute(tag: string, rawAttrs?: string): string | undefined {
@@ -6753,10 +6765,14 @@
         const alignment = htmlImageAlignment(attrs);
         const width = safeNexusCssLength(htmlAttribute(attrs, "width"));
         const height = safeNexusCssLength(htmlAttribute(attrs, "height"));
+        const alt = safeNexusImageAlt(htmlAttribute(attrs, "alt") ?? htmlAttribute(attrs, "aria-label") ?? undefined);
+        const title = safeNexusImageAlt(htmlAttribute(attrs, "title") ?? htmlAttribute(attrs, "aria-label") ?? undefined);
         return [
             alignment ? ` align="${alignment}"` : "",
             width ? ` width="${width}"` : "",
-            height ? ` height="${height}"` : ""
+            height ? ` height="${height}"` : "",
+            alt ? ` alt="${escapeAttribute(alt)}"` : "",
+            title ? ` title="${escapeAttribute(title)}"` : ""
         ].join("");
     }
 
@@ -10506,8 +10522,15 @@
         display: block;
     }
 
+    .nexus-rich-text :global(*) {
+        box-sizing: border-box;
+        max-width: 100%;
+    }
+
     .nexus-rich-text :global(p) {
         margin: 0.55em 0 0;
+        min-width: 0;
+        overflow-wrap: anywhere;
     }
 
     .nexus-rich-text :global(.nexus-rich-line-block) {
@@ -10637,6 +10660,8 @@
         border-left: 3px solid rgba(120, 217, 244, 0.35);
         color: #d6dde5;
         margin: 0.75em 0 0;
+        min-width: 0;
+        overflow-wrap: anywhere;
         padding: 0.1em 0 0.1em 0.8em;
     }
 
@@ -10689,6 +10714,7 @@
         border: 1px solid rgba(255, 255, 255, 0.12);
         box-sizing: border-box;
         display: block;
+        height: auto;
         margin: 0.75em 0 0;
         max-height: clamp(140px, 28vh, 320px);
         max-width: 100%;
@@ -10999,6 +11025,8 @@
         border: 1px solid rgba(120, 217, 244, 0.18);
         border-left-width: 3px;
         margin: 0.8em 0 0;
+        min-width: 0;
+        overflow-wrap: anywhere;
         padding: 0.6em 0.7em;
     }
 
@@ -11026,6 +11054,8 @@
         border: 1px solid rgba(255, 255, 255, 0.13);
         border-left: 3px solid rgba(198, 208, 217, 0.24);
         margin: 0.8em 0 0;
+        min-width: 0;
+        overflow-wrap: anywhere;
         padding: 0.65em 0.75em;
     }
 
@@ -11114,9 +11144,11 @@
     .nexus-rich-text :global(.nexus-rich-table th),
     .nexus-rich-text :global(.nexus-rich-table td) {
         border: 1px solid rgba(255, 255, 255, 0.13);
+        overflow-wrap: anywhere;
         padding: 0.45em 0.55em;
         text-align: left;
         vertical-align: top;
+        word-break: break-word;
     }
 
     .nexus-rich-text :global(.nexus-rich-table th) {
