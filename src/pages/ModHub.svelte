@@ -136,15 +136,28 @@
         const panelRect = panel.getBoundingClientRect();
         const panelStyle = getComputedStyle(panel);
         const panelGap = cssPixels(panelStyle.rowGap || panelStyle.gap);
+        const panelPaddingBlock = cssPixels(panelStyle.paddingTop) + cssPixels(panelStyle.paddingBottom);
         const width = Math.max(320, panelRect.width);
         const height = Math.max(360, panelRect.height);
         const isShort = height < 720;
         const isNarrow = width < 860;
-        const sectionChrome = isNarrow ? 94 : 82;
-        const usableHeight = Math.max(320, height - panelGap - (sectionChrome * 2));
-        const sotfRatio = isShort ? 0.46 : 0.5;
-        const sotfHeight = clampNumber(usableHeight * sotfRatio, isNarrow ? 315 : 330, isShort ? 365 : 430);
-        const nexusHeight = clampNumber(usableHeight - sotfHeight, isNarrow ? 300 : 320, isShort ? 420 : 520);
+        const sectionBodies = Array.from(panel.querySelectorAll<HTMLElement>(".source-section-body"));
+        const sectionChrome = sectionBodies.reduce((sum, body) => {
+            const section = body.closest<HTMLElement>(".source-section");
+            if (!section) {
+                return sum;
+            }
+
+            return sum + Math.max(0, section.getBoundingClientRect().height - body.getBoundingClientRect().height);
+        }, 0);
+        const fixedHeight = panelPaddingBlock + panelGap + sectionChrome;
+        const bodyBudget = Math.max(isNarrow ? 560 : 620, height - fixedHeight);
+        const sotfMinimum = isNarrow ? 255 : 285;
+        const nexusMinimum = isNarrow ? 290 : 330;
+        const sotfShare = isShort ? 0.42 : width > 1320 ? 0.47 : 0.45;
+        const maxSotfHeight = Math.max(sotfMinimum, bodyBudget - nexusMinimum);
+        const sotfHeight = clampNumber(bodyBudget * sotfShare, sotfMinimum, maxSotfHeight);
+        const nexusHeight = Math.max(nexusMinimum, bodyBudget - sotfHeight);
 
         panel.style.setProperty("--all-sotf-preview-height", `${Math.round(sotfHeight)}px`);
         panel.style.setProperty("--all-nexus-preview-height", `${Math.round(nexusHeight)}px`);

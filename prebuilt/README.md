@@ -27,6 +27,8 @@ The All Stores Nexus/Vortex preview keeps the full controls in the dedicated sou
 
 All Stores section headers stay sticky while scrolling so the active storefront label and the dedicated-source jump remain visible in the merged workspace.
 
+All Stores preview pane heights now measure the actual embedded section chrome and split the remaining Mods panel budget between SOTF Mods and Nexus/Vortex, giving both stores more usable row space on roomy windows while keeping each source discoverable.
+
 When a Nexus account is already connected, the All Stores embedded Nexus/Vortex preview also hides the redundant connected-account panel so row content starts higher; disconnected previews still show the login/API access controls.
 
 Embedded Nexus/Vortex rows in All Stores also use tighter thumbnails, one-line summaries, and preview-scoped primary actions so install/detail/open controls remain visible in the shared workspace instead of dropping below the lower frame.

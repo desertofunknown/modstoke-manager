@@ -9,6 +9,7 @@
   - Made All Stores the fresh-launch Mods workspace default, while dedicated SOTF Mods or Nexus/Vortex source choices stay session-local instead of persisting across app restarts.
   - Made All Stores section headers sticky while scrolling so the active storefront label and dedicated-source jump stay visible in the merged workspace.
   - Balanced All Stores section heights so SOTF Mods and Nexus/Vortex are both discoverable in the shared Mods workspace before switching into a dedicated source view.
+  - Refined All Stores pane sizing so the merged workspace measures actual section chrome and gives the remaining panel height to SOTF Mods and Nexus/Vortex previews instead of relying on fixed height caps.
   - Let the frameless manager start wider and taller on larger monitors while keeping the same small-screen minimums, and widened the shared content/detail rails so catalog rows and drawers use that room without forcing fullscreen.
   - Added measured All Stores preview sizing and compact embedded SOTF Mods rows so complete native install/detail rows and Nexus install/detail/open actions are visible in the merged workspace while full SOTF filters and facts remain in the dedicated source.
   - Promoted SOTF Mods row page links into the same action column as Install and Details, with denser native row spacing so both storefronts expose page/open actions consistently in All Stores without giving up list visibility.
