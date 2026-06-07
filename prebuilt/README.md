@@ -17,6 +17,8 @@ The Nexus action queue now collapses to a slim `Queue clear` strip when endorsem
 
 The connected Nexus account row now uses tighter button spacing in compact catalog layouts, keeping auto-endorse, Nexus, Vortex staging, inventory refresh, and disconnect controls readable without taking extra list height.
 
+The Nexus account summary now treats Premium, Supporter, and tier values returned by Nexus as account status, with tooltip/context text that download entitlement, speed, and queue behavior remain handled by Nexus/Vortex while tokens stay local and API requests stay cached.
+
 The install plan now also shows dependency handoff readiness in the deployment area itself, including API row count, author instruction snippets, author hint warning/review/detected summaries, nested-check state, lookup-in-progress or lookup-failed notes, informational no-API-row guidance, a bottom dependency-review shortcut when requirements need attention, and status-aware dependency row actions for installing, updating, or reviewing linked dependency mods before the user sends a selected file to Vortex.
 
 The Files panel now exposes `Use Recommended` whenever a nonrecommended file is selected, adds All/Main/Review/Selected filters for mixed file sets, and the deployment footer shows `Review File Choice` when the selected file is archived, old, or removed so users can recover before Vortex handoff without leaving the detail drawer.

@@ -4314,7 +4314,7 @@
 
     function nexusMembershipNote(): string {
         if (session.user?.is_premium) {
-            return "Premium benefits detected where the Nexus API permits them.";
+            return "Premium status returned by Nexus.";
         }
 
         if (session.user?.is_supporter) {
@@ -4326,6 +4326,33 @@
         }
 
         return "Standard Nexus account.";
+    }
+
+    function nexusMembershipBenefitNote(): string {
+        if (session.user?.is_premium) {
+            return "Premium detected · Nexus/Vortex handles downloads";
+        }
+
+        if (session.user?.is_supporter) {
+            return "Supporter detected · downloads stay on Nexus/Vortex";
+        }
+
+        if (session.user?.membership_tier) {
+            return "Tier returned · account actions stay user-controlled";
+        }
+
+        return "Local token · cached requests";
+    }
+
+    function nexusMembershipBenefitTitle(): string {
+        const parts = [
+            nexusMembershipNote(),
+            "Download entitlement, speed, and queue behavior remain handled by Nexus and Vortex.",
+            "The manager does not scrape, rehost, or bypass Nexus-hosted files.",
+            "Tokens stay local and requests are cached."
+        ];
+
+        return parts.join(" ");
     }
 
     function titleCase(value: string): string {
@@ -7302,10 +7329,15 @@
 
     {#if session.is_connected}
         <div class="vortex-summary">
-            <div class="summary-card">
+            <div
+                class="summary-card account-summary-card"
+                class:premium-summary={!!session.user?.is_premium}
+                class:supporter-summary={!session.user?.is_premium && !!session.user?.is_supporter}
+                title={nexusMembershipBenefitTitle()}
+            >
                 <span class="summary-label">Nexus Account</span>
                 <span class="summary-value">{nexusMembershipLabel()}</span>
-                <span class="summary-note">{nexusMembershipNote()}</span>
+                <span class="summary-note">{nexusMembershipBenefitNote()}</span>
             </div>
             <div class="summary-card" class:active-summary={!!vortexStagingPath}>
                 <span class="summary-label">Vortex Deployment</span>
@@ -8839,6 +8871,28 @@
     .summary-card-selected {
         border-color: rgba(98, 240, 155, 0.62);
         box-shadow: inset 0 0 0 1px rgba(98, 240, 155, 0.16);
+    }
+
+    .account-summary-card {
+        border-color: rgba(120, 217, 244, 0.2);
+    }
+
+    .premium-summary {
+        border-color: rgba(244, 210, 109, 0.32);
+        box-shadow: inset 0 0 0 1px rgba(244, 210, 109, 0.08);
+    }
+
+    .premium-summary .summary-value {
+        color: #f4d26d;
+    }
+
+    .supporter-summary {
+        border-color: rgba(120, 217, 244, 0.32);
+        box-shadow: inset 0 0 0 1px rgba(120, 217, 244, 0.08);
+    }
+
+    .supporter-summary .summary-value {
+        color: #78d9f4;
     }
 
     .summary-label {
