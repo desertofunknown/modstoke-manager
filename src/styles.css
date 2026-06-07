@@ -14,6 +14,7 @@
   --sons-blurred-title: url("./assets/sons-ui/blurred-title-screen-texture2d-14.png");
   --sons-endnight-logo: url("./assets/sons-ui/endnightsplashlogo-texture2d-7.png");
   --sons-endnight-logo-blur: url("./assets/sons-ui/endnightsplashlogoblur-texture2d-6.png");
+  --app-bottom-safe-area: clamp(34px, 4.2vh, 58px);
 
   font-family: "SonsRoboto", "Arial Narrow", "Segoe UI Condensed", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   font-size: 16px;
@@ -84,7 +85,8 @@ body {
   padding:
     clamp(8px, 1.8vh, 20px)
     clamp(12px, 2vw, 28px)
-    clamp(8px, 1.8vh, 26px);
+    max(clamp(8px, 1.8vh, 26px), var(--app-bottom-safe-area));
+  scroll-padding-bottom: var(--app-bottom-safe-area);
   width: min(100%, 1260px);
 }
 
@@ -414,9 +416,13 @@ main > * {
 }
 
 @media (max-height: 780px) {
+  :root {
+    --app-bottom-safe-area: clamp(28px, 4vh, 46px);
+  }
+
   .container {
     padding-top: 8px;
-    padding-bottom: 8px;
+    padding-bottom: var(--app-bottom-safe-area);
   }
 
   .tabs {
@@ -432,13 +438,14 @@ main > * {
 
 @media (max-height: 720px) {
   :root {
+    --app-bottom-safe-area: clamp(24px, 3.8vh, 40px);
     font-size: 14px;
     line-height: 20px;
   }
 
   .container {
     padding-top: 6px;
-    padding-bottom: 6px;
+    padding-bottom: var(--app-bottom-safe-area);
   }
 
   .tabs {

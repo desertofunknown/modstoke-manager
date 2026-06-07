@@ -8976,7 +8976,8 @@
         gap: 0.65em;
         min-height: min(var(--nexus-scroller-target-height), 100%);
         overflow-y: auto;
-        padding: 0 0.45em 0.15em 0;
+        padding: 0 0.45em var(--app-bottom-safe-area, 42px) 0;
+        scroll-padding-bottom: var(--app-bottom-safe-area, 42px);
         scrollbar-gutter: stable;
     }
 

@@ -526,8 +526,9 @@
         overflow-y: scroll;
         overflow-x: hidden;
         overscroll-behavior: contain;
-        padding-bottom: 0.6em;
+        padding-bottom: calc(0.6em + var(--app-bottom-safe-area, 42px));
         position: relative;
+        scroll-padding-bottom: var(--app-bottom-safe-area, 42px);
         scrollbar-gutter: stable;
         width: 100%;
     }

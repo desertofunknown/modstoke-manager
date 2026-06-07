@@ -304,7 +304,9 @@
     .all-source-panel {
         gap: 0.55em;
         overflow-y: auto;
+        padding-bottom: var(--app-bottom-safe-area, 42px);
         padding-right: 0.28em;
+        scroll-padding-bottom: var(--app-bottom-safe-area, 42px);
         scrollbar-gutter: stable;
     }
 
