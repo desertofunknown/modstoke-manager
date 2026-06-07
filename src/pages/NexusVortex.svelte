@@ -160,6 +160,9 @@
     let selectedInstalledSort: InstalledSortMode = "attention";
     let nexusCatalogLoadedAt: number | null = null;
     let nexusCategoryOptions: string[] = [];
+    let nexusCategoryFilterOptions: FilterCountOption[] = [];
+    let installFilterOptions: FilterCountOption<InstallFilter>[] = [];
+    let modTypeFilterOptions: FilterCountOption<ModTypeFilter>[] = [];
     let visibleNexusMods: NexusMod[] = [];
     let visibleInstalledEntries: InstalledInventoryEntry[] = [];
     let updateCount = 0;
@@ -376,9 +379,27 @@
         visibleInstalledEntries = sortInstalledEntries(inventory.filter(matchesInstalledFilters));
     }
     $: hasActiveNexusFilters = nexusSearchTerm.trim().length > 0
-        || selectedNexusCategory !== "all"
+        || (catalogMode === "online" && selectedNexusCategory !== "all")
         || selectedInstallFilter !== "all"
         || selectedModTypeFilter !== "all";
+    $: {
+        catalogMode;
+        mods;
+        inventory;
+        nexusSearchTerm;
+        selectedNexusCategory;
+        selectedInstallFilter;
+        selectedModTypeFilter;
+        nexusCategoryOptions;
+        trackedMods;
+        localConflictEntryKeys;
+        knownNexusDetails;
+        endorsements;
+        endorsementsLoaded;
+        nexusCategoryFilterOptions = buildNexusCategoryFilterOptions();
+        installFilterOptions = buildInstallFilterOptions();
+        modTypeFilterOptions = buildModTypeFilterOptions();
+    }
     $: if (sharedSearchVersion > 0 && sharedSearchVersion !== lastAppliedSharedSearchVersion) {
         lastAppliedSharedSearchVersion = sharedSearchVersion;
         applySharedSearch(sharedSearchTerm);
@@ -3364,78 +3385,164 @@
         return [...ordered, ...extra];
     }
 
-    function matchesNexusFilters(mod: NexusMod): boolean {
-        const search = nexusSearchTerm.trim().toLowerCase();
-        const match = installedMatch(mod);
+    function buildNexusCategoryFilterOptions(): FilterCountOption[] {
+        const baseMods = mods.filter(mod => {
+            const match = installedMatch(mod);
+            return matchesNexusSearch(mod)
+                && nexusModMatchesInstallFilter(mod, match, selectedInstallFilter)
+                && nexusModMatchesTypeFilterValue(mod, match, selectedModTypeFilter);
+        });
 
-        if (search && ![
+        return [
+            {
+                count: baseMods.length,
+                label: filterCountLabel(catalogMode === "installed" ? "All categories (online)" : "All categories", baseMods.length),
+                value: "all"
+            },
+            ...nexusCategoryOptions.map(category => {
+                const count = baseMods.filter(mod => mod.category_name === category).length;
+                return {
+                    count,
+                    label: filterCountLabel(category, count),
+                    value: category
+                };
+            })
+        ];
+    }
+
+    function buildInstallFilterOptions(): FilterCountOption<InstallFilter>[] {
+        if (catalogMode === "installed") {
+            const baseEntries = inventory.filter(entry =>
+                matchesInstalledSearch(entry)
+                && installedEntryMatchesTypeFilterValue(entry, selectedModTypeFilter)
+            );
+            return INSTALL_FILTERS.map(filter => {
+                const count = baseEntries.filter(entry => installedEntryMatchesInstallFilter(entry, filter)).length;
+                return {
+                    count,
+                    label: filterCountLabel(installFilterLabel(filter), count),
+                    value: filter
+                };
+            });
+        }
+
+        const baseMods = mods.filter(mod => {
+            const match = installedMatch(mod);
+            return matchesNexusSearch(mod)
+                && nexusModMatchesCategoryFilter(mod, selectedNexusCategory)
+                && nexusModMatchesTypeFilterValue(mod, match, selectedModTypeFilter);
+        });
+
+        return INSTALL_FILTERS.map(filter => {
+            const count = baseMods.filter(mod => nexusModMatchesInstallFilter(mod, installedMatch(mod), filter)).length;
+            return {
+                count,
+                label: filterCountLabel(installFilterLabel(filter), count),
+                value: filter
+            };
+        });
+    }
+
+    function buildModTypeFilterOptions(): FilterCountOption<ModTypeFilter>[] {
+        if (catalogMode === "installed") {
+            const baseEntries = inventory.filter(entry =>
+                matchesInstalledSearch(entry)
+                && installedEntryMatchesInstallFilter(entry, selectedInstallFilter)
+            );
+            return MOD_TYPE_FILTERS.map(filter => {
+                const count = baseEntries.filter(entry => installedEntryMatchesTypeFilterValue(entry, filter)).length;
+                return {
+                    count,
+                    label: filterCountLabel(modTypeFilterLabel(filter), count),
+                    value: filter
+                };
+            });
+        }
+
+        const baseMods = mods.filter(mod => {
+            const match = installedMatch(mod);
+            return matchesNexusSearch(mod)
+                && nexusModMatchesCategoryFilter(mod, selectedNexusCategory)
+                && nexusModMatchesInstallFilter(mod, match, selectedInstallFilter);
+        });
+
+        return MOD_TYPE_FILTERS.map(filter => {
+            const count = baseMods.filter(mod => nexusModMatchesTypeFilterValue(mod, installedMatch(mod), filter)).length;
+            return {
+                count,
+                label: filterCountLabel(modTypeFilterLabel(filter), count),
+                value: filter
+            };
+        });
+    }
+
+    function filterCountLabel(label: string, count: number): string {
+        return `${label} (${count})`;
+    }
+
+    function installFilterLabel(filter: InstallFilter): string {
+        switch (filter) {
+            case "attention":
+                return "Needs attention";
+            case "installed":
+                return "Installed";
+            case "missing":
+                return "Not installed";
+            case "updates":
+                return "Updates";
+            case "disabled":
+                return "Disabled";
+            case "vortex":
+                return "Vortex";
+            case "native":
+                return "OpenACAI store";
+            case "manual":
+                return "Manual";
+            case "tracked":
+                return "Tracked";
+            case "endorsements":
+                return "Needs endorsement";
+            case "conflicts":
+                return "Conflicts";
+            default:
+                return "All installs";
+        }
+    }
+
+    function modTypeFilterLabel(filter: ModTypeFilter): string {
+        switch (filter) {
+            case "bepinex-plugin":
+                return "BepInEx plugins";
+            case "redloader-mod":
+                return "RedLoader mods";
+            case "redloader-library":
+                return "RedLoader libraries";
+            case "vortex":
+                return "Vortex / Nexus";
+            case "native":
+                return "OpenACAI native";
+            case "manual":
+                return "Manual / local";
+            default:
+                return "All mod types";
+        }
+    }
+
+    function matchesNexusSearch(mod: NexusMod): boolean {
+        const search = nexusSearchTerm.trim().toLowerCase();
+
+        return !search || [
             mod.name,
             mod.summary ?? "",
             mod.author ?? "",
             mod.uploaded_by ?? ""
-        ].some(value => value.toLowerCase().includes(search))) {
-            return false;
-        }
-
-        if (selectedNexusCategory !== "all" && mod.category_name !== selectedNexusCategory) {
-            return false;
-        }
-
-        if (!nexusModMatchesTypeFilter(mod, match)) {
-            return false;
-        }
-
-        if (selectedInstallFilter === "installed" && !match) {
-            return false;
-        }
-
-        if (selectedInstallFilter === "missing" && match) {
-            return false;
-        }
-
-        if (selectedInstallFilter === "updates" && !hasNexusUpdate(mod)) {
-            return false;
-        }
-
-        if (selectedInstallFilter === "disabled" && (!match || match.enabled)) {
-            return false;
-        }
-
-        if (selectedInstallFilter === "vortex" && match?.installSource !== "vortex") {
-            return false;
-        }
-
-        if (selectedInstallFilter === "native" && match?.installSource !== "native") {
-            return false;
-        }
-
-        if (selectedInstallFilter === "manual" && match?.installSource !== "manual") {
-            return false;
-        }
-
-        if (selectedInstallFilter === "tracked" && !isNexusModTracked(mod.mod_id)) {
-            return false;
-        }
-
-        if (selectedInstallFilter === "endorsements" && !nexusModNeedsEndorsement(mod)) {
-            return false;
-        }
-
-        if (selectedInstallFilter === "conflicts" && !isConflictedEntry(match)) {
-            return false;
-        }
-
-        if (selectedInstallFilter === "attention" && !nexusNeedsAttention(mod)) {
-            return false;
-        }
-
-        return true;
+        ].some(value => value.toLowerCase().includes(search));
     }
 
-    function matchesInstalledFilters(entry: InstalledInventoryEntry): boolean {
+    function matchesInstalledSearch(entry: InstalledInventoryEntry): boolean {
         const search = nexusSearchTerm.trim().toLowerCase();
 
-        if (search && ![
+        return !search || [
             entry.name,
             entry.author ?? "",
             entry.version ?? "",
@@ -3444,68 +3551,130 @@
             entry.loaderType,
             loaderTypeLabel(entry),
             describeInstallSource(entry)
-        ].some(value => value.toLowerCase().includes(search))) {
+        ].some(value => value.toLowerCase().includes(search));
+    }
+
+    function matchesNexusFilters(mod: NexusMod): boolean {
+        const match = installedMatch(mod);
+        return matchesNexusSearch(mod)
+            && nexusModMatchesCategoryFilter(mod, selectedNexusCategory)
+            && nexusModMatchesTypeFilterValue(mod, match, selectedModTypeFilter)
+            && nexusModMatchesInstallFilter(mod, match, selectedInstallFilter);
+    }
+
+    function nexusModMatchesCategoryFilter(mod: NexusMod, category: string): boolean {
+        return category === "all" || mod.category_name === category;
+    }
+
+    function nexusModMatchesInstallFilter(mod: NexusMod, match: InstalledInventoryEntry | null, filter: InstallFilter): boolean {
+        if (filter === "installed" && !match) {
             return false;
         }
 
-        if (!installedEntryMatchesTypeFilter(entry)) {
+        if (filter === "missing" && match) {
             return false;
         }
 
-        if (selectedInstallFilter === "vortex" && entry.installSource !== "vortex") {
+        if (filter === "updates" && !hasNexusUpdate(mod)) {
             return false;
         }
 
-        if (selectedInstallFilter === "native" && entry.installSource !== "native") {
+        if (filter === "disabled" && (!match || match.enabled)) {
             return false;
         }
 
-        if (selectedInstallFilter === "manual" && entry.installSource !== "manual") {
+        if (filter === "vortex" && match?.installSource !== "vortex") {
             return false;
         }
 
-        if (selectedInstallFilter === "updates" && !hasInventoryUpdate(entry)) {
+        if (filter === "native" && match?.installSource !== "native") {
             return false;
         }
 
-        if (selectedInstallFilter === "disabled" && entry.enabled) {
+        if (filter === "manual" && match?.installSource !== "manual") {
             return false;
         }
 
-        if (selectedInstallFilter === "missing") {
+        if (filter === "tracked" && !isNexusModTracked(mod.mod_id)) {
             return false;
         }
 
-        if (selectedInstallFilter === "tracked" && !isNexusModTracked(entry.nexusModId)) {
+        if (filter === "endorsements" && !nexusModNeedsEndorsement(mod)) {
             return false;
         }
 
-        if (selectedInstallFilter === "endorsements" && !inventoryEntryNeedsEndorsement(entry)) {
+        if (filter === "conflicts" && !isConflictedEntry(match)) {
             return false;
         }
 
-        if (selectedInstallFilter === "conflicts" && !isConflictedEntry(entry)) {
-            return false;
-        }
-
-        if (selectedInstallFilter === "attention" && !inventoryNeedsAttention(entry)) {
+        if (filter === "attention" && !nexusNeedsAttention(mod)) {
             return false;
         }
 
         return true;
     }
 
-    function nexusModMatchesTypeFilter(mod: NexusMod, match: InstalledInventoryEntry | null): boolean {
-        if (selectedModTypeFilter === "all") {
+    function matchesInstalledFilters(entry: InstalledInventoryEntry): boolean {
+        return matchesInstalledSearch(entry)
+            && installedEntryMatchesTypeFilterValue(entry, selectedModTypeFilter)
+            && installedEntryMatchesInstallFilter(entry, selectedInstallFilter);
+    }
+
+    function installedEntryMatchesInstallFilter(entry: InstalledInventoryEntry, filter: InstallFilter): boolean {
+        if (filter === "vortex" && entry.installSource !== "vortex") {
+            return false;
+        }
+
+        if (filter === "native" && entry.installSource !== "native") {
+            return false;
+        }
+
+        if (filter === "manual" && entry.installSource !== "manual") {
+            return false;
+        }
+
+        if (filter === "updates" && !hasInventoryUpdate(entry)) {
+            return false;
+        }
+
+        if (filter === "disabled" && entry.enabled) {
+            return false;
+        }
+
+        if (filter === "missing") {
+            return false;
+        }
+
+        if (filter === "tracked" && !isNexusModTracked(entry.nexusModId)) {
+            return false;
+        }
+
+        if (filter === "endorsements" && !inventoryEntryNeedsEndorsement(entry)) {
+            return false;
+        }
+
+        if (filter === "conflicts" && !isConflictedEntry(entry)) {
+            return false;
+        }
+
+        if (filter === "attention" && !inventoryNeedsAttention(entry)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    function nexusModMatchesTypeFilterValue(mod: NexusMod, match: InstalledInventoryEntry | null, filter: ModTypeFilter): boolean {
+        if (filter === "all") {
             return true;
         }
 
-        if (selectedModTypeFilter === "vortex" || selectedModTypeFilter === "native" || selectedModTypeFilter === "manual") {
-            return match?.installSource === selectedModTypeFilter;
+        if (filter === "vortex" || filter === "native" || filter === "manual") {
+            return match?.installSource === filter;
         }
 
         if (match) {
-            return match.loaderType === selectedModTypeFilter;
+            return match.loaderType === filter;
         }
 
         const text = [
@@ -3516,7 +3685,7 @@
             mod.description
         ].filter(Boolean).join(" ").toLowerCase();
 
-        switch (selectedModTypeFilter) {
+        switch (filter) {
             case "bepinex-plugin":
                 return /\b(bepinex|plugin|plugins)\b/.test(text);
             case "redloader-library":
@@ -3528,16 +3697,16 @@
         }
     }
 
-    function installedEntryMatchesTypeFilter(entry: InstalledInventoryEntry): boolean {
-        switch (selectedModTypeFilter) {
+    function installedEntryMatchesTypeFilterValue(entry: InstalledInventoryEntry, filter: ModTypeFilter): boolean {
+        switch (filter) {
             case "all":
                 return true;
             case "vortex":
             case "native":
             case "manual":
-                return entry.installSource === selectedModTypeFilter;
+                return entry.installSource === filter;
             default:
-                return entry.loaderType === selectedModTypeFilter;
+                return entry.loaderType === filter;
         }
     }
 
@@ -3941,6 +4110,11 @@
         | { kind: "list"; value: string; ordered: boolean; style?: string; start?: number }
         | { kind: "table"; value: string }
         | { kind: "definition"; value: string };
+    type FilterCountOption<T extends string = string> = {
+        count: number;
+        label: string;
+        value: T;
+    };
     type NexusPlainListLine = {
         explicit: boolean;
         indent: number;
@@ -6657,34 +6831,25 @@
                 {#if showEmbeddedSearch}
                     <input class="generic-input key-input" value={nexusSearchTerm} on:input={(event) => handleNexusSearchInput((event.currentTarget as HTMLInputElement).value)} placeholder="Search Nexus" />
                 {/if}
-                <select bind:value={selectedNexusCategory}>
-                    <option value="all">All categories</option>
-                    {#each nexusCategoryOptions as category}
-                        <option value={category}>{category}</option>
+                <select
+                    bind:value={selectedNexusCategory}
+                    disabled={catalogMode === "installed"}
+                    title={catalogMode === "installed" ? "Category filters apply to the online Nexus catalog." : "Filter online Nexus mods by category."}
+                    aria-label="Filter by Nexus category"
+                >
+                    {#each nexusCategoryFilterOptions as option}
+                        <option value={option.value}>{option.label}</option>
                     {/each}
                 </select>
                 <select bind:value={selectedInstallFilter}>
-                    <option value="all">All installs</option>
-                    <option value="attention">Needs attention</option>
-                    <option value="installed">Installed</option>
-                    <option value="missing">Not installed</option>
-                    <option value="updates">Updates</option>
-                    <option value="disabled">Disabled</option>
-                    <option value="vortex">Vortex</option>
-                    <option value="native">OpenACAI store</option>
-                    <option value="manual">Manual</option>
-                    <option value="tracked">Tracked</option>
-                    <option value="endorsements">Needs endorsement</option>
-                    <option value="conflicts">Conflicts</option>
+                    {#each installFilterOptions as option}
+                        <option value={option.value}>{option.label}</option>
+                    {/each}
                 </select>
                 <select bind:value={selectedModTypeFilter} aria-label="Filter by mod type">
-                    <option value="all">All mod types</option>
-                    <option value="bepinex-plugin">BepInEx plugins</option>
-                    <option value="redloader-mod">RedLoader mods</option>
-                    <option value="redloader-library">RedLoader libraries</option>
-                    <option value="vortex">Vortex / Nexus</option>
-                    <option value="native">OpenACAI native</option>
-                    <option value="manual">Manual / local</option>
+                    {#each modTypeFilterOptions as option}
+                        <option value={option.value}>{option.label}</option>
+                    {/each}
                 </select>
                 {#if catalogMode === "online"}
                     <select bind:value={selectedNexusSort} aria-label="Sort Nexus mods">
@@ -7988,6 +8153,12 @@
         padding: 0.45em 0.7em;
         text-transform: uppercase;
         width: 100%;
+    }
+
+    .nexus-filter-row select:disabled {
+        color: rgba(232, 232, 232, 0.46);
+        cursor: not-allowed;
+        opacity: 0.74;
     }
 
     .cat-btn {
