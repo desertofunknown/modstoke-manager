@@ -1997,6 +1997,10 @@
 
             seen.add(key);
             const context = authorRequirementMatchContext(text, matched);
+            if (!context.warning && !authorRequirementContextLooksLikeActionableDependency(context.excerpt ?? matched[0] ?? "")) {
+                return;
+            }
+
             const warningDetail = authorRequirementCompatibilityWarningDetail(label, sourceLocation, context.excerpt);
             const match = entries.find(matchPredicate) ?? null;
             hints.push({
@@ -2090,6 +2094,14 @@
 
     function authorRequirementContextLooksLikeWarning(value: string): boolean {
         return /\b(?:cannot|can't|cant|must\s+not|should\s+not|do\s+not|don't|dont|not\s+compatible|incompatible|conflicts?|conflicting|cannot\s+coexist|can't\s+coexist|will\s+not\s+work|won't\s+work|does\s+not\s+work|remove|delete|uninstall|disable|only\s+one|not\s+supported|must\s+first\s+delete|must\s+first\s+remove)\b|(?:不能|不可|不兼容|冲突|删除|移除|卸载|禁用|无法|不会|只允许|必须先删除|必须先移除)/i.test(value);
+    }
+
+    function authorRequirementContextLooksLikeActionableDependency(value: string): boolean {
+        if (/\b(?:credits?|credit\s+to|thanks?|thank\s+you|contributors?|attribution|acknowledgements?|license|licensed|pardeike|used\s+throughout\s+many\s+unity\s+modding)\b|(?:鸣谢|致谢|贡献者|署名|许可)/i.test(value)) {
+            return false;
+        }
+
+        return /\b(?:requires?|requirements?|dependenc(?:y|ies)|prereq(?:uisites?)?|needed|needs|must\s+have|install\s+first|depends?\s+on|before\s+install(?:ing)?|download\s+and\s+install|install(?:ed|ing)?\s+(?:bepinex|redloader|sonssdk|harmony|doorstop|\.net|dotnet|runtime|framework|library|loader)|runtime|framework|library|required\s+loader|loader\s+required)\b|(?:要求|依赖|前置|需要|必须|安装|下载|运行库|框架|库文件)/i.test(value);
     }
 
     function authorRequirementCompatibilityWarningDetail(label: string, sourceLocation: string, excerpt?: string): string | null {
