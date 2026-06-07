@@ -1226,13 +1226,13 @@
         flex-direction: column;
         gap: 0.75em;
         max-height: calc(100vh - clamp(1.4em, 4vh, 2.8em));
-        max-width: min(1180px, calc(100vw - clamp(1.4em, 4vw, 3em)));
+        max-width: min(1480px, calc(100vw - clamp(1.4em, 4vw, 3em)));
         min-height: min(620px, calc(100vh - 2.8em));
         min-width: 0;
         overflow: hidden;
         padding: clamp(0.8em, 1.6vh, 1.15em);
         position: relative;
-        width: min(1180px, 96vw);
+        width: min(1480px, 96vw);
         z-index: 1;
     }
 

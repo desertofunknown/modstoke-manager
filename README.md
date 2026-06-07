@@ -30,7 +30,7 @@ It is based on Toni Macaroni's RedManager, but the main loader flow has been cha
 - Confirm Nexus account writes before tracking/untracking, manual endorsement, or enabling auto-endorse; optional auto-endorse only targets Vortex-managed SOTF downloads with a local user toggle, queue/attempt visibility, once-per-mod attempt tracking, and a small per-refresh cap so the manager does not create excessive Nexus API traffic.
 - Detect the OpenACAI Endnight Loader core assembly through `BepInEx\plugins\OpenACAILoader`.
 - Keep old RedLoader/MelonLoader cleanup affordances so users can avoid competing loader bootstraps.
-- Present the manager in a frameless, transparent Sons-style shell with rough/jagged edges, Endnight splash-logo styling, roomier large-monitor startup sizing, and native-feeling chromatic text effects instead of a standard Windows app frame.
+- Present the manager in a frameless, transparent Sons-style shell with rough/jagged edges, Endnight splash-logo styling, roomier large-monitor startup sizing and content rails, and native-feeling chromatic text effects instead of a standard Windows app frame.
 
 This public manager does not include the private OpenACAI anti-cheat/admin mod.
 

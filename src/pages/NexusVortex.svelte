@@ -9912,7 +9912,7 @@
         flex-direction: column;
         gap: 0.8em;
         max-height: var(--detail-panel-height);
-        max-width: min(97vw, 1440px);
+        max-width: min(97vw, var(--app-content-max-width, 1680px));
         min-height: min(82vh, 820px);
         padding: clamp(1em, 2vh, 1.35em);
         width: 100%;

@@ -7,7 +7,7 @@
   - Merged the SOTF Mods and Nexus/Vortex storefronts into one top-level Mods workspace with a local source switch.
   - Added an All Stores Mods workspace mode that stacks SOTF Mods and Nexus/Vortex in one shared search surface while keeping each source's download/install actions reachable.
   - Balanced All Stores section heights so SOTF Mods and Nexus/Vortex are both discoverable in the shared Mods workspace before switching into a dedicated source view.
-  - Let the frameless manager start wider and taller on larger monitors while keeping the same small-screen minimums, giving catalog rows and detail drawers more room without forcing fullscreen.
+  - Let the frameless manager start wider and taller on larger monitors while keeping the same small-screen minimums, and widened the shared content/detail rails so catalog rows and drawers use that room without forcing fullscreen.
   - Added measured All Stores preview sizing and compact embedded SOTF Mods rows so complete native install/detail rows and Nexus install/detail/open actions are visible in the merged workspace while full SOTF filters and facts remain in the dedicated source.
   - Promoted SOTF Mods row page links into the same action column as Install and Details, with denser native row spacing so both storefronts expose page/open actions consistently in All Stores without giving up list visibility.
   - Compacted the All Stores Nexus/Vortex preview by hiding low-priority account actions, rate meters, summary cards, feed/filter controls, and empty queue chrome so the merged workspace shows actionable Nexus rows sooner while keeping the full controls in the dedicated Nexus/Vortex source.
