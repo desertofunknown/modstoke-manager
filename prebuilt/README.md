@@ -15,6 +15,8 @@ Nexus catalog scrolling now reserves a measured bottom guard inside the list vie
 
 Nexus catalog, installed inventory, file-choice, preview, changelog, conflict, and dependency rows now keep stable item identities during sorting, filtering, and detail refreshes so preview/action state stays on the correct row.
 
+Empty Nexus/Vortex catalog states now show the active mode, feed, filters, and sort before offering an inline Clear filters action, so persisted triage filters do not make a loaded catalog look broken.
+
 The frameless desktop shell now starts with a larger comfort cap on roomy displays and widens the shared content/detail rails, keeping the same small-screen minimums while giving dense catalogs and detail drawers more width before users resort to fullscreen.
 
 SOTF Mods and Nexus/Vortex catalog rows now use row-aware proximity snapping so the merged All Stores workspace is less likely to stop with row titles or install/detail actions clipped under an embedded section header after wheel scrolling.

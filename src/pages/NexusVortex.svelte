@@ -199,6 +199,9 @@
     let modTypeFilterOptions: FilterCountOption<ModTypeFilter>[] = [];
     let visibleNexusMods: NexusMod[] = [];
     let visibleInstalledEntries: InstalledInventoryEntry[] = [];
+    let nexusEmptyTitle = "";
+    let nexusEmptyDetail = "";
+    let nexusEmptyChips: string[] = [];
     let updateCount = 0;
     let onlineAttentionCount = 0;
     let installedAttentionCount = 0;
@@ -465,6 +468,25 @@
         nexusCategoryFilterOptions = buildNexusCategoryFilterOptions();
         installFilterOptions = buildInstallFilterOptions();
         modTypeFilterOptions = buildModTypeFilterOptions();
+    }
+    $: {
+        catalogMode;
+        selectedView;
+        nexusSearchTerm;
+        selectedNexusCategory;
+        selectedInstallFilter;
+        selectedModTypeFilter;
+        selectedNexusSort;
+        selectedInstalledSort;
+        mods.length;
+        inventory.length;
+        visibleNexusMods.length;
+        visibleInstalledEntries.length;
+        hasActiveNexusFilters;
+        const emptyState = buildNexusEmptyState();
+        nexusEmptyTitle = emptyState.title;
+        nexusEmptyDetail = emptyState.detail;
+        nexusEmptyChips = emptyState.chips;
     }
     $: if (sharedSearchVersion > 0 && sharedSearchVersion !== lastAppliedSharedSearchVersion) {
         lastAppliedSharedSearchVersion = sharedSearchVersion;
@@ -4157,6 +4179,111 @@
             default:
                 return "All mod types";
         }
+    }
+
+    function nexusSortLabel(sort: NexusSortMode): string {
+        switch (sort) {
+            case "updated":
+                return "Updated";
+            case "downloads":
+                return "Downloads";
+            case "endorsements":
+                return "Endorsements";
+            case "name":
+                return "Name";
+            case "version":
+                return "Version";
+            default:
+                return "Attention";
+        }
+    }
+
+    function installedSortLabel(sort: InstalledSortMode): string {
+        switch (sort) {
+            case "name":
+                return "Name";
+            case "source":
+                return "Source";
+            case "location":
+                return "Location";
+            case "state":
+                return "State";
+            case "version":
+                return "Version";
+            default:
+                return "Attention";
+        }
+    }
+
+    function buildNexusEmptyState(): { title: string; detail: string; chips: string[] } {
+        const isOnline = catalogMode === "online";
+        const loadedCount = isOnline ? mods.length : inventory.length;
+        const visibleCount = isOnline ? visibleNexusMods.length : visibleInstalledEntries.length;
+        const modeLabel = isOnline ? "Online Nexus" : "Installed inventory";
+        const chips = buildNexusEmptyChips();
+
+        if (visibleCount > 0) {
+            return { title: "", detail: "", chips };
+        }
+
+        if (hasActiveNexusFilters && loadedCount > 0) {
+            return {
+                title: isOnline ? "No Nexus mods match these filters" : "No installed mods match these filters",
+                detail: `${formatNumber(loadedCount)} ${isOnline ? "catalog" : "installed"} ${loadedCount === 1 ? "row is" : "rows are"} loaded, but the active filters hide every result. Clear filters or adjust the chips below.`,
+                chips
+            };
+        }
+
+        if (!isOnline) {
+            return {
+                title: "No installed mods detected",
+                detail: "Refresh inventory after installing with Vortex, the native store, or a manual local package.",
+                chips
+            };
+        }
+
+        return {
+            title: "No Nexus catalog rows loaded",
+            detail: `The ${viewLabel(selectedView)} feed for ${modeLabel} did not return visible rows yet. Refresh the catalog or choose another feed.`,
+            chips
+        };
+    }
+
+    function buildNexusEmptyChips(): string[] {
+        const chips: string[] = [
+            catalogMode === "online" ? "Mode: Online Nexus" : "Mode: Installed inventory"
+        ];
+
+        if (catalogMode === "online") {
+            chips.push(`Feed: ${viewLabel(selectedView)}`);
+        }
+
+        const search = nexusSearchTerm.trim();
+        if (search) {
+            chips.push(`Search: ${truncateChipValue(search)}`);
+        }
+
+        if (catalogMode === "online" && selectedNexusCategory !== "all") {
+            chips.push(`Category: ${selectedNexusCategory}`);
+        }
+
+        if (selectedInstallFilter !== "all") {
+            chips.push(`Install: ${installFilterLabel(selectedInstallFilter)}`);
+        }
+
+        if (selectedModTypeFilter !== "all") {
+            chips.push(`Type: ${modTypeFilterLabel(selectedModTypeFilter)}`);
+        }
+
+        chips.push(catalogMode === "online"
+            ? `Sort: ${nexusSortLabel(selectedNexusSort)}`
+            : `Sort: ${installedSortLabel(selectedInstalledSort)}`);
+
+        return chips;
+    }
+
+    function truncateChipValue(value: string): string {
+        return value.length > 36 ? `${value.slice(0, 33)}...` : value;
     }
 
     function nexusCategoryKey(category: string | undefined): string {
@@ -7894,12 +8021,23 @@
                     </div>
                 {/if}
 
-                {#if !isLoading && catalogMode === "online" && visibleNexusMods.length === 0}
-                    <div class="notice empty-nexus">No Nexus mods match the current filters.</div>
-                {/if}
-
-                {#if !isLoading && catalogMode === "installed" && visibleInstalledEntries.length === 0}
-                    <div class="notice empty-nexus">No installed mods match the current filters.</div>
+                {#if !isLoading && ((catalogMode === "online" && visibleNexusMods.length === 0) || (catalogMode === "installed" && visibleInstalledEntries.length === 0))}
+                    <div class="notice empty-nexus empty-nexus-panel">
+                        <div class="empty-nexus-copy">
+                            <span>{nexusEmptyTitle}</span>
+                            <small>{nexusEmptyDetail}</small>
+                        </div>
+                        {#if nexusEmptyChips.length > 0}
+                            <div class="empty-nexus-chips" aria-label="Active Nexus catalog context">
+                                {#each nexusEmptyChips as chip (chip)}
+                                    <span>{chip}</span>
+                                {/each}
+                            </div>
+                        {/if}
+                        {#if hasActiveNexusFilters}
+                            <button type="button" class="cat-btn empty-nexus-clear" on:click={clearNexusFilters}>Clear filters</button>
+                        {/if}
+                    </div>
                 {/if}
             </div>
         </section>
@@ -9986,6 +10124,52 @@
 
     .empty-nexus {
         flex: 0 0 auto;
+    }
+
+    .empty-nexus-panel {
+        align-items: start;
+        display: grid;
+        gap: 0.65em;
+    }
+
+    .empty-nexus-copy {
+        display: grid;
+        gap: 0.25em;
+        min-width: 0;
+    }
+
+    .empty-nexus-copy > span {
+        color: #eefcff;
+        font-size: 1.02em;
+        font-weight: 900;
+    }
+
+    .empty-nexus-copy small {
+        color: #aab8c5;
+        line-height: 1.45;
+    }
+
+    .empty-nexus-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35em;
+        min-width: 0;
+    }
+
+    .empty-nexus-chips span {
+        background: rgba(120, 217, 244, 0.1);
+        border: 1px solid rgba(120, 217, 244, 0.18);
+        color: #cdeef7;
+        font-size: 0.72em;
+        font-weight: 900;
+        line-height: 1.2;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        padding: 0.28em 0.5em;
+    }
+
+    .empty-nexus-clear {
+        justify-self: start;
     }
 
     .detail-backdrop {
