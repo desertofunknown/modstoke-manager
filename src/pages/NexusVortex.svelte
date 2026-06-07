@@ -67,6 +67,13 @@
     type InstallPlacement = "auto" | "bepinex-plugin" | "redloader-mod" | "redloader-library" | "manual-review";
     type VersionComparison = "same" | "remote-newer" | "local-newer" | "different" | "unknown";
     type DetailSectionTarget = "description" | "files" | "dependencies" | "plan" | "changelog" | "deployment";
+    type NexusSurfaceTab = "description" | "files" | "posts" | "images" | "bugs";
+    type NexusSurfaceLink = {
+        key: NexusSurfaceTab;
+        label: string;
+        status: string;
+        title: string;
+    };
     type DeploymentChecklistTone = "ready" | "review" | "blocked";
     type UpdateVerdict = {
         label: string;
@@ -209,6 +216,7 @@
     let selectedDependencyMessage = "";
     let selectedAuthorRequirements: AuthorRequirementLink[] = [];
     let selectedAuthorInstructions: AuthorInstructionHint[] = [];
+    let nexusSurfaceLinks: NexusSurfaceLink[] = [];
     let authorRequirementReviewCount = 0;
     let authorRequirementDetectedCount = 0;
     let authorRequirementWarningCount = 0;
@@ -347,6 +355,11 @@
             inventory
         );
         selectedAuthorInstructions = extractAuthorInstructions(authorSources);
+        nexusSurfaceLinks = buildNexusSurfaceLinks(
+            selectedDetailDescription,
+            selectedModFiles.length,
+            currentDetailPreviewUrls.length
+        );
         if (!selectedDetailDescriptionCanToggle && detailDescriptionExpanded) {
             detailDescriptionExpanded = false;
         }
@@ -2518,12 +2531,53 @@
         }
     }
 
-    async function openSelectedModTab(tab: "description" | "files" | "posts" | "images" | "bugs") {
+    async function openSelectedModTab(tab: NexusSurfaceTab) {
         if (!selectedMod) {
             return;
         }
 
         await shell.open(`${getNexusModPageUrl(selectedMod)}?tab=${tab}`);
+    }
+
+    function buildNexusSurfaceLinks(description: string, fileCount: number, previewCount: number): NexusSurfaceLink[] {
+        return [
+            {
+                key: "description",
+                label: "Description",
+                status: description ? "In manager" : "Nexus",
+                title: description
+                    ? "Open the Nexus Description tab. A sanitized formatted copy is already shown in this drawer."
+                    : "Open the Nexus Description tab."
+            },
+            {
+                key: "files",
+                label: "Files",
+                status: fileCount > 0 ? `${fileCount} file${fileCount === 1 ? "" : "s"}` : "Nexus",
+                title: fileCount > 0
+                    ? `Open Nexus Files. The manager is showing ${fileCount} API-returned file choice${fileCount === 1 ? "" : "s"} here.`
+                    : "Open Nexus Files. No file choices were returned to the manager yet."
+            },
+            {
+                key: "images",
+                label: "Images",
+                status: previewCount > 0 ? `${previewCount} preview${previewCount === 1 ? "" : "s"}` : "Nexus",
+                title: previewCount > 0
+                    ? `Open the Nexus Images tab. The manager currently has ${previewCount} API-returned preview image${previewCount === 1 ? "" : "s"}; the full gallery stays on Nexus.`
+                    : "Open the Nexus Images tab. The current API payload did not include preview images for the drawer."
+            },
+            {
+                key: "posts",
+                label: "Posts",
+                status: "Nexus",
+                title: "Open Nexus Posts. The supported API surfaces used by this manager do not expose comments/posts here, so the app links instead of scraping."
+            },
+            {
+                key: "bugs",
+                label: "Bugs",
+                status: "Nexus",
+                title: "Open Nexus Bugs. The supported API surfaces used by this manager do not expose bug threads here, so the app links instead of scraping."
+            }
+        ];
     }
 
     async function copySelectedNxmLink() {
@@ -8079,11 +8133,16 @@
                 </div>
 
                 <div class="detail-link-actions" aria-label="Nexus page sections">
-                    <button on:click={() => openSelectedModTab("description")}>Description</button>
-                    <button on:click={openSelectedDownloadPage}>Files</button>
-                    <button on:click={() => openSelectedModTab("posts")}>Posts</button>
-                    <button on:click={() => openSelectedModTab("images")}>Images</button>
-                    <button on:click={() => openSelectedModTab("bugs")}>Bugs</button>
+                    <span class="detail-link-heading">Nexus surfaces</span>
+                    {#each nexusSurfaceLinks as surface (surface.key)}
+                        <button
+                            title={surface.title}
+                            on:click={() => surface.key === "files" ? openSelectedDownloadPage() : openSelectedModTab(surface.key)}
+                        >
+                            <span>{surface.label}</span>
+                            <small>{surface.status}</small>
+                        </button>
+                    {/each}
                 </div>
             </div>
         </section>
@@ -9464,6 +9523,7 @@
     }
 
     .detail-link-actions {
+        align-items: stretch;
         display: flex;
         flex-wrap: wrap;
         gap: 0.45em;
@@ -9472,11 +9532,43 @@
         min-width: 0;
     }
 
+    .detail-link-heading {
+        align-items: center;
+        color: #8d99a5;
+        display: flex;
+        flex: 1 1 100%;
+        font-size: 0.68em;
+        font-weight: 900;
+        justify-content: flex-end;
+        line-height: 1;
+        text-transform: uppercase;
+    }
+
     .detail-link-actions button {
+        align-items: center;
+        display: grid;
         flex: 1 1 6.25em;
+        gap: 0.08em;
+        line-height: 1.12;
         margin: 0;
+        min-height: 2.6em;
         min-width: 0;
-        padding: 0 0.45em;
+        padding: 0.32em 0.45em;
+    }
+
+    .detail-link-actions button span,
+    .detail-link-actions button small {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .detail-link-actions button small {
+        color: #8d99a5;
+        font-size: 0.66em;
+        font-weight: 900;
+        text-transform: uppercase;
     }
 
     .detail-title {
