@@ -27,7 +27,7 @@
   - Added a compact SOTF Mods Versions panel in native detail drawers that shows latest/older version records, release dates, download counts, filenames, and safe formatted changelog text from the per-mod detail endpoint without pushing deployment actions off-screen.
   - Added a native SOTF Mods Community panel with API-returned comment, favorite, review, rating, trusted-author, store page, and optional source-link metadata without scraping discussion content.
   - Added a SOTF Mods loaded-results sort for recently updated, downloads, favorites, comments, rating, and name so API-returned community/download metadata can reorder the current catalog without pretending to provide a server-wide popularity feed.
-  - Added SOTF Mods row download facts and comma-formatted detail download counts so loaded-results sorting by downloads has visible row context.
+  - Added SOTF Mods row download facts, comma-formatted detail download counts, and active sort-metric pills for downloads, favorites, comments, and rating so loaded-results sorting has visible row context that stays attached to the correct row.
   - Normalized SOTF Mods dependency payloads that arrive as a single mod ID string or an array so detail drawers and dependency installs show full dependency IDs instead of splitting strings into characters.
   - Resolved SOTF Mods detail dependencies into status-aware rows with available/installed/review states plus in-manager Details and Open Page actions.
   - Compacted the connected Nexus account/action row in tight catalog layouts so auto-endorse, Nexus, Vortex staging, inventory refresh, and disconnect controls stay readable while leaving more vertical space for mod rows.

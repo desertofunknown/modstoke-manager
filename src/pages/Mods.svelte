@@ -42,6 +42,7 @@
     let selectedSort: SotfCatalogSort = "updated";
     let categories: ModCategory[] = [];
     let visibleMods: Mod[] = [];
+    let activeSortMetricLabel = "";
     let hasActiveModFilters = false;
     let hasActiveModViewOptions = false;
 
@@ -88,6 +89,7 @@
         selectedCompatibility;
         selectedSort;
         visibleMods = sortVisibleMods(filtered.filter(matchesClientFilters));
+        activeSortMetricLabel = sortMetricLabel(selectedSort);
     }
     $: if (sharedSearchVersion > 0 && sharedSearchVersion !== lastAppliedSharedSearchVersion) {
         lastAppliedSharedSearchVersion = sharedSearchVersion;
@@ -794,6 +796,46 @@
         return "recent updates";
     }
 
+    function sortMetricLabel(sort: SotfCatalogSort): string {
+        if (sort === "downloads") {
+            return "Downloads";
+        }
+
+        if (sort === "favorites") {
+            return "Favorites";
+        }
+
+        if (sort === "comments") {
+            return "Comments";
+        }
+
+        if (sort === "rating") {
+            return "Rating";
+        }
+
+        return "";
+    }
+
+    function rowSortMetricValue(mod: Mod, sort: SotfCatalogSort): string {
+        if (sort === "downloads") {
+            return detailCount(mod.downloads ?? mod.lastWeekDownloads);
+        }
+
+        if (sort === "favorites") {
+            return detailCount(mod.favoritesCount);
+        }
+
+        if (sort === "comments") {
+            return detailCount(mod.commentsCount);
+        }
+
+        if (sort === "rating") {
+            return detailRatingLabel(mod.averageRating);
+        }
+
+        return "";
+    }
+
     function detailCount(value?: number): string {
         return typeof value === "number" ? value.toLocaleString() : "-";
     }
@@ -973,9 +1015,11 @@
         {/if}
 
         <div class="scroller" class:grid={isGrid}>
-            {#each visibleMods as mod}
+            {#each visibleMods as mod (mod.mod_id ?? mod.slug ?? mod.name)}
                 <ModCard
                     mod={mod}
+                    sortMetricLabel={activeSortMetricLabel}
+                    sortMetricValue={rowSortMetricValue(mod, selectedSort)}
                     on:details={(event) => openModDetails(event.detail)}
                     on:refreshMods={refreshMods}
                 />

@@ -12,6 +12,8 @@
     export let mod: Mod;
     export let detailActionsOnly = false;
     export let showDetailsButton = true;
+    export let sortMetricLabel = "";
+    export let sortMetricValue = "";
 
     let isLibrary = false;
     let isImageLoaded = false;
@@ -21,6 +23,11 @@
     let currentPreviewUrl = "";
     let previewCountLabel = "";
     let cardSummary = "";
+    let sourceDisplayLabel = "";
+    let loaderDisplayLabel = "";
+    let multiplayerDisplayLabel = "";
+    let downloadCountLabel = "";
+    let isVortexManagedMod = false;
 
     const fallbackPreviewUrl = "https://placehold.co/600x400/252525/FFF?text=No+Image";
 
@@ -42,13 +49,34 @@
     $: currentPreviewUrl = previewUrls[currentPreviewIndex] ?? fallbackPreviewUrl;
     $: previewCountLabel = previewUrls.length > 0 ? `${currentPreviewIndex + 1}/${previewUrls.length}` : "Local";
     $: cardSummary = storeRichTextPlainText(mod.shortDescription);
+    $: sourceDisplayLabel = !mod.installedMod
+      ? "Online"
+      : mod.installedMod.installSource === "vortex"
+        ? "Vortex"
+        : mod.installedMod.installSource === "native"
+          ? "Native"
+          : "Manual";
+    $: loaderDisplayLabel = mod.installedMod?.loaderType === "bepinex-plugin"
+      ? "BepInEx"
+      : mod.installedMod?.loaderType === "redloader-library" || mod.type === "Library"
+        ? "RedLoader Library"
+        : "RedLoader Mod";
+    $: multiplayerDisplayLabel = mod.requiresAllPlayers
+      ? "All players"
+      : mod.isMultiplayerCompatible
+        ? "MP compatible"
+        : mod.modSide === "client"
+          ? "Client-side"
+          : "Compatibility unknown";
+    $: downloadCountLabel = formatCount(mod.downloads ?? mod.lastWeekDownloads);
+    $: isVortexManagedMod = mod.installedMod?.installSource === "vortex";
 
     async function update() {
       if (!mod.installedMod) {
         return;
       }
 
-      if (isVortexManaged()) {
+      if (isVortexManagedMod) {
         await showVortexManagedMessage("update");
         return;
       }
@@ -65,7 +93,7 @@
         return;
       }
 
-      if (isVortexManaged()) {
+      if (isVortexManagedMod) {
         await showVortexManagedMessage("uninstall");
         return;
       }
@@ -102,7 +130,7 @@
         return;
       }
 
-      if (isVortexManaged()) {
+      if (isVortexManagedMod) {
         await showVortexManagedMessage("enable");
         return;
       }
@@ -116,7 +144,7 @@
         return;
       }
 
-      if (isVortexManaged()) {
+      if (isVortexManagedMod) {
         await showVortexManagedMessage("disable");
         return;
       }
@@ -165,10 +193,6 @@
       isImageLoaded = false;
     }
 
-    function isVortexManaged() {
-      return mod.installedMod?.installSource === "vortex";
-    }
-
     async function showVortexManagedMessage(action: string) {
       await dialog.message(
         `${mod.name} is currently managed by Vortex/Nexus. Use Vortex to ${action} it so deployment metadata stays consistent.`,
@@ -179,56 +203,8 @@
       );
     }
 
-    function sourceLabel() {
-      if (!mod.installedMod) {
-        return "Online";
-      }
-
-      if (mod.installedMod.installSource === "vortex") {
-        return "Vortex";
-      }
-
-      if (mod.installedMod.installSource === "native") {
-        return "Native";
-      }
-
-      return "Manual";
-    }
-
-    function loaderLabel() {
-      if (mod.installedMod?.loaderType === "bepinex-plugin") {
-        return "BepInEx";
-      }
-
-      if (mod.installedMod?.loaderType === "redloader-library" || mod.type === "Library") {
-        return "RedLoader Library";
-      }
-
-      return "RedLoader Mod";
-    }
-
-    function multiplayerLabel() {
-      if (mod.requiresAllPlayers) {
-        return "All players";
-      }
-
-      if (mod.isMultiplayerCompatible) {
-        return "MP compatible";
-      }
-
-      if (mod.modSide === "client") {
-        return "Client-side";
-      }
-
-      return "Compatibility unknown";
-    }
-
     function formatCount(value?: number) {
       return typeof value === "number" ? value.toLocaleString() : "-";
-    }
-
-    function downloadCount() {
-      return formatCount(mod.downloads ?? mod.lastWeekDownloads);
     }
 
     function showDetails() {
@@ -243,11 +219,11 @@
 {#if detailActionsOnly}
   <div class="detail-action-surface">
     {#if mod.isInstalled && !isLibrary}
-      <label class="enable-control" class:vortex-disabled={isVortexManaged()}>
+      <label class="enable-control" class:vortex-disabled={isVortexManagedMod}>
         <input
           type="checkbox"
           checked={!!mod.installedMod?.isEnabled}
-          disabled={isVortexManaged()}
+          disabled={isVortexManagedMod}
           on:change={handleEnabledChange}
         />
         <span>{mod.installedMod?.isEnabled ? "Enabled" : "Disabled"}</span>
@@ -298,11 +274,17 @@
     <div class="mod-info">
       <div class="title-line">
         <span class="mod-title">{mod.name}</span>
+        {#if sortMetricLabel && sortMetricValue}
+          <span class="sort-metric-pill" title={`${sortMetricLabel}: ${sortMetricValue}`}>
+            <span>{sortMetricLabel}</span>
+            <b>{sortMetricValue}</b>
+          </span>
+        {/if}
       </div>
       <div class="meta-row">
-        <span class="source-pill source-{mod.installedMod?.installSource ?? 'online'}">{sourceLabel()}</span>
-        <span class="source-pill">{loaderLabel()}</span>
-        <span class="source-pill">{multiplayerLabel()}</span>
+        <span class="source-pill source-{mod.installedMod?.installSource ?? 'online'}">{sourceDisplayLabel}</span>
+        <span class="source-pill">{loaderDisplayLabel}</span>
+        <span class="source-pill">{multiplayerDisplayLabel}</span>
         {#if mod.installedMod?.vortexPackage}
           <span class="source-pill source-detail">{mod.installedMod.vortexPackage}</span>
         {/if}
@@ -312,18 +294,18 @@
         <span>Author <b class="update">{mod.user.name}</b></span>
         <span>Version <b class="update">{mod.latestVersion}</b></span>
         <span>Updated <b class="update">{mod.lastReleasedAt?formatDate(mod.lastReleasedAt):"-"}</b></span>
-        <span>Downloads <b class="update">{downloadCount()}</b></span>
+        <span>Downloads <b class="update">{downloadCountLabel}</b></span>
         <span>Category <b class="update">{mod.category?mod.category.name:"-"}</b></span>
       </div>
     </div>
 
     <div class="mod-actions">
       {#if mod.isInstalled && !isLibrary}
-        <label class="enable-control" class:vortex-disabled={isVortexManaged()}>
+        <label class="enable-control" class:vortex-disabled={isVortexManagedMod}>
           <input
             type="checkbox"
             checked={!!mod.installedMod?.isEnabled}
-            disabled={isVortexManaged()}
+            disabled={isVortexManagedMod}
             on:change={handleEnabledChange}
           />
           <span>{mod.installedMod?.isEnabled ? "Enabled" : "Disabled"}</span>
@@ -438,6 +420,35 @@
     min-width: 0;
     overflow-wrap: anywhere;
     text-align: left;
+  }
+
+  .sort-metric-pill {
+    align-items: baseline;
+    background: rgba(56, 214, 141, 0.12);
+    border: 1px solid rgba(56, 214, 141, 0.28);
+    color: #9eeec2;
+    display: inline-flex;
+    flex: 0 1 auto;
+    font-size: 0.72em;
+    font-weight: 900;
+    gap: 0.34em;
+    line-height: 1.2;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0.22em 0.42em;
+    text-transform: uppercase;
+  }
+
+  .sort-metric-pill span,
+  .sort-metric-pill b {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sort-metric-pill b {
+    color: #eefcff;
   }
 
   .meta-row {
