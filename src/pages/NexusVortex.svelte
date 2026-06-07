@@ -7559,17 +7559,17 @@
                     title={catalogMode === "installed" ? "Category filters apply to the online Nexus catalog." : "Filter online Nexus mods by category."}
                     aria-label="Filter by Nexus category"
                 >
-                    {#each nexusCategoryFilterOptions as option}
+                    {#each nexusCategoryFilterOptions as option (option.value)}
                         <option value={option.value}>{option.label}</option>
                     {/each}
                 </select>
                 <select bind:value={selectedInstallFilter}>
-                    {#each installFilterOptions as option}
+                    {#each installFilterOptions as option (option.value)}
                         <option value={option.value}>{option.label}</option>
                     {/each}
                 </select>
                 <select bind:value={selectedModTypeFilter} aria-label="Filter by mod type">
-                    {#each modTypeFilterOptions as option}
+                    {#each modTypeFilterOptions as option (option.value)}
                         <option value={option.value}>{option.label}</option>
                     {/each}
                 </select>
@@ -7606,14 +7606,14 @@
                     </div>
 
                     <div class="conflict-group-list">
-                        {#each localConflicts as conflict}
+                        {#each localConflicts as conflict (conflict.key)}
                             <section class="conflict-group">
                                 <div class="conflict-group-title">
                                     <span>{conflict.label}</span>
                                     <small>{conflictGroupSummary(conflict)}</small>
                                 </div>
 
-                                {#each conflict.entries as entry}
+                                {#each conflict.entries as entry (inventoryEntryKey(entry))}
                                     <div class="conflict-entry">
                                         <div class="conflict-entry-main">
                                             <span>{entry.name}</span>
@@ -7644,7 +7644,7 @@
 
             <div class="nexus-scroller" aria-live="polite">
                 {#if catalogMode === "online"}
-                    {#each visibleNexusMods as mod}
+                    {#each visibleNexusMods as mod (mod.mod_id)}
                         {@const match = installedMatch(mod)}
                         {@const updateVerdict = nexusUpdateVerdict(mod, match)}
                         {@const conflict = conflictForEntry(match)}
@@ -7808,7 +7808,7 @@
                         </article>
                     {/each}
                 {:else}
-                    {#each visibleInstalledEntries as entry}
+                    {#each visibleInstalledEntries as entry (inventoryEntryKey(entry))}
                         {@const entryNexusModId = numericNexusId(entry.nexusModId)}
                         {@const inventoryVerdict = inventoryUpdateVerdict(entry)}
                         {@const conflict = conflictForEntry(entry)}
@@ -7997,7 +7997,7 @@
                     </div>
                     {#if currentDetailPreviewUrls.length > 1}
                         <div class="detail-media-strip" aria-label={`${selectedMod.name} preview thumbnails`}>
-                            {#each currentDetailPreviewUrls as previewUrl, previewIndex}
+                            {#each currentDetailPreviewUrls as previewUrl, previewIndex (previewUrl)}
                                 <button
                                     type="button"
                                     class:detail-media-thumb-active={previewIndex === currentDetailPreviewIndex}
@@ -8041,7 +8041,7 @@
                     {:else}
                         <div class="changelog-box" bind:this={detailChangelogSectionElement}>
                             <span class="detail-section-title">Changelog</span>
-                            {#each selectedChangelogs as changelog}
+                            {#each selectedChangelogs as changelog (`${changelog.version}:${changelog.updated_at ?? ""}`)}
                                 <div class="changelog-row">
                                     <span>{changelog.version}</span>
                                     <div class="nexus-rich-text changelog-rich-text">
@@ -8079,7 +8079,7 @@
                         <label class="install-placement-control">
                             <span>Placement</span>
                             <select bind:value={selectedInstallPlacement} aria-label="Install placement override" disabled={!selectedNexusFile}>
-                                {#each INSTALL_PLACEMENTS as placement}
+                                {#each INSTALL_PLACEMENTS as placement (placement)}
                                     <option value={placement}>{installPlacementLabel(placement)}</option>
                                 {/each}
                             </select>
@@ -8099,7 +8099,7 @@
                             <span class="install-plan-file-fact">Nested <b title={nestedDependencyReadinessLabel()}>{nestedDependencyReadinessLabel()}</b></span>
                         </div>
                         <div class="install-plan-notes">
-                            {#each selectedInstallPlan.notes as note}
+                            {#each selectedInstallPlan.notes as note (note)}
                                 <span>{note}</span>
                             {/each}
                         </div>
@@ -8152,7 +8152,7 @@
                             <span class="detail-conflict-note">{selectedInstallConflict.label} · {conflictGroupSummary(selectedInstallConflict)}</span>
 
                             <div class="detail-conflict-list">
-                                {#each selectedInstallConflict.entries as entry}
+                                {#each selectedInstallConflict.entries as entry (inventoryEntryKey(entry))}
                                     <div class="conflict-entry">
                                         <div class="conflict-entry-main">
                                             <span>{entry.name}</span>
@@ -8272,7 +8272,7 @@
 
                         {#if displayedSelectedModFiles.length > 0}
                             <div class="file-row-list">
-                                {#each displayedSelectedModFiles as file}
+                                {#each displayedSelectedModFiles as file (file.file_id)}
                                     <button
                                         class="file-row"
                                         class:file-row-selected={selectedFileId === file.file_id}
@@ -8412,7 +8412,7 @@
                             {#if resolvedDependencies.length === 0}
                                 <span class="dependency-empty">{selectedDependencyMessage ? "Still review the author directions for manual requirements." : "No API-listed dependencies for the selected file. Still review the author directions for manual requirements."}</span>
                             {:else}
-                                {#each resolvedDependencies as dependency}
+                                {#each resolvedDependencies as dependency (`${dependency.id}:${dependency.mod_id ?? ""}:${dependency.file_id ?? ""}:${dependency.nexus_file_id ?? ""}`)}
                                     <div
                                         class="dependency-row"
                                         class:dependency-installed={dependency.status === "installed"}
