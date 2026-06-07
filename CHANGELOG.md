@@ -21,7 +21,7 @@
   - Added a compact in-drawer Nexus detail section rail for jumping to Description, Files, Dependencies, Install Plan, Changelog, and Deployment without hunting through split scroll panes.
   - Made Nexus catalog previews more resilient by accepting protocol-relative and common nested media URL fields, replacing the remote placeholder with a bundled local fallback image, and using clearer compact preview count/cycle controls.
   - Added author requirement hints from Nexus description, selected-file notes, and changelog links when structured dependency rows are missing or incomplete, without extra Nexus requests.
-  - Added a compact thumbnail rail in Nexus detail drawers when the API provides multiple preview images.
+  - Added a compact thumbnail rail in Nexus detail drawers when the API provides multiple preview images, with icon preview controls and a current-preview open action.
   - Enriched Nexus detail preview rails with safe image URLs found in API-provided descriptions, selected-file notes, and changelogs, so author-supplied screenshots can appear in the drawer without extra Nexus requests.
   - Added selected-file notes in Nexus detail drawers so file-specific descriptions and changelog HTML are shown with the same safe formatting before Vortex handoff.
   - Improved Nexus install plans so dependency lookup progress, lookup failures, no-API-row responses, author requirement counts, and nested dependency check readiness are visible before handing a file to Vortex.

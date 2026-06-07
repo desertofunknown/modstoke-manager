@@ -4,6 +4,7 @@
     import SvgSpinnersBlocksWave from "~icons/svg-spinners/blocks-wave";
     import LucideChevronLeft from "~icons/lucide/chevron-left";
     import LucideChevronRight from "~icons/lucide/chevron-right";
+    import LucideExternalLink from "~icons/lucide/external-link";
     import LucideImages from "~icons/lucide/images";
     import nexusFallbackImage from "../assets/sons-ui/blurred-title-screen-texture2d-14.png";
     import {
@@ -2137,6 +2138,16 @@
         }
 
         selectedDetailPreviewIndex = index;
+    }
+
+    async function openSelectedDetailPreviewImage(event: MouseEvent) {
+        event.stopPropagation();
+        const url = currentDetailPreviewUrls[currentDetailPreviewIndex];
+        if (!url) {
+            return;
+        }
+
+        await shell.open(url);
     }
 
     function handleNexusImageError(event: Event, fallback = NEXUS_PLACEHOLDER_IMAGE) {
@@ -7625,9 +7636,16 @@
                         />
                         {#if currentDetailPreviewUrls.length > 1}
                             <div class="detail-media-nav" aria-label={`${selectedMod.name} preview images`}>
-                                <button type="button" aria-label="Previous detail preview image" on:click={(event) => cycleSelectedDetailPreview(currentDetailPreviewUrls, -1, event)}>&lt;</button>
-                                <span>{currentDetailPreviewIndex + 1}/{currentDetailPreviewUrls.length}</span>
-                                <button type="button" aria-label="Next detail preview image" on:click={(event) => cycleSelectedDetailPreview(currentDetailPreviewUrls, 1, event)}>&gt;</button>
+                                <button type="button" aria-label="Previous detail preview image" title="Previous preview image" on:click={(event) => cycleSelectedDetailPreview(currentDetailPreviewUrls, -1, event)}>
+                                    <LucideChevronLeft class="detail-media-icon" aria-hidden="true" />
+                                </button>
+                                <span><LucideImages class="detail-media-icon" aria-hidden="true" />{currentDetailPreviewIndex + 1}/{currentDetailPreviewUrls.length}</span>
+                                <button type="button" aria-label="Next detail preview image" title="Next preview image" on:click={(event) => cycleSelectedDetailPreview(currentDetailPreviewUrls, 1, event)}>
+                                    <LucideChevronRight class="detail-media-icon" aria-hidden="true" />
+                                </button>
+                                <button type="button" aria-label="Open current detail preview image" title="Open current preview image" on:click={openSelectedDetailPreviewImage}>
+                                    <LucideExternalLink class="detail-media-icon" aria-hidden="true" />
+                                </button>
                             </div>
                         {/if}
                     </div>
@@ -9672,7 +9690,7 @@
         display: flex;
         gap: 0.35em;
         left: 0.65em;
-        max-width: min(14em, calc(100% - 1.3em));
+        max-width: min(17.5em, calc(100% - 1.3em));
         padding: 0.28em;
         position: absolute;
     }
@@ -9698,13 +9716,24 @@
     }
 
     .detail-media-nav span {
+        align-items: center;
         color: #d6dde5;
+        display: flex;
         flex: 1 1 auto;
         font-size: 0.72em;
         font-weight: 900;
+        gap: 0.25em;
+        justify-content: center;
         min-width: 4em;
         text-align: center;
         white-space: nowrap;
+    }
+
+    .detail-media-nav :global(.detail-media-icon) {
+        display: block;
+        flex: 0 0 auto;
+        height: 1em;
+        width: 1em;
     }
 
     .detail-media-strip {
