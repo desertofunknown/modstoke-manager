@@ -8,6 +8,7 @@
   - Added an All Stores Mods workspace mode that stacks SOTF Mods and Nexus/Vortex in one shared search surface while keeping each source's download/install actions reachable.
   - Balanced All Stores section heights so SOTF Mods and Nexus/Vortex are both discoverable in the shared Mods workspace before switching into a dedicated source view.
   - Added bottom safe-area spacing to the Mods workspace and catalog scrollers so the last visible rows and action buttons can scroll above the ragged lower frame edge instead of being clipped by the transparent window bleed.
+  - Tightened the Nexus catalog bottom scroll guard so the measured list viewport stops above the lower frame mask and keeps row install/detail/open controls readable while scrolling.
   - Added a shared Mods workspace search box that drives both the SOTF Mods and Nexus/Vortex sources, carries the search term across source switches, and hides the duplicate embedded search fields.
   - Guarded SOTF Mods online catalog reloads so clearing the shared All Stores search immediately restores the catalog and stale empty search responses cannot overwrite the cleared results.
   - Compacted SOTF Mods list rows with measured scroller sizing so more mods stay visible in the unified Mods workspace, and retired the unstable SOTF grid toggle.

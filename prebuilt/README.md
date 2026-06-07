@@ -11,6 +11,8 @@ Version `0.2.0` moves loader updates to GitHub Release assets, adds live SHA256 
 
 Nexus catalog thumbnails now expose compact open-preview actions for already-loaded real row images, while local fallback thumbnails remain passive so no extra Nexus API requests are introduced. Catalog rows also reuse already-loaded preview URLs discovered by detail drawers from API-provided descriptions, selected-file notes, or changelogs, even when Nexus detail payloads omit their mod IDs.
 
+Nexus catalog scrolling now reserves a measured bottom guard inside the list viewport so row install/detail/open controls stay above the lower frame mask in both dedicated Nexus/Vortex and All Stores layouts.
+
 The install plan now also shows dependency handoff readiness in the deployment area itself, including API row count, author instruction snippets, author hint warning/review/detected summaries, nested-check state, lookup-in-progress or lookup-failed notes, informational no-API-row guidance, a bottom dependency-review shortcut when requirements need attention, and status-aware dependency row actions for installing, updating, or reviewing linked dependency mods before the user sends a selected file to Vortex.
 
 The Files panel now exposes `Use Recommended` whenever a nonrecommended file is selected, and the deployment footer shows `Review File Choice` when the selected file is archived, old, or removed so users can recover before Vortex handoff without leaving the detail drawer.

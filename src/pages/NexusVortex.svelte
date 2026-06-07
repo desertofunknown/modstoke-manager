@@ -696,6 +696,10 @@
 
         const pageRect = page.getBoundingClientRect();
         const catalogRect = catalogPanel.getBoundingClientRect();
+        const pageStyle = getComputedStyle(page);
+        const bottomGuard = cssPixels(pageStyle.getPropertyValue("--nexus-scroll-bottom-guard"))
+            || cssPixels(getComputedStyle(document.documentElement).getPropertyValue("--app-bottom-safe-area"))
+            || 42;
         const catalogStyle = getComputedStyle(catalogPanel);
         const catalogGap = cssPixels(catalogStyle.rowGap || catalogStyle.gap);
         const catalogChrome = Array.from(catalogPanel.children)
@@ -703,8 +707,8 @@
 
         const chromeHeight = catalogChrome.reduce((sum, child) => sum + child.getBoundingClientRect().height, 0)
             + Math.max(0, catalogChrome.length) * catalogGap;
-        const availableCatalogHeight = clampNumber(pageRect.bottom - catalogRect.top, 380, Math.max(380, pageRect.height));
-        const targetScrollerHeight = clampNumber(availableCatalogHeight - chromeHeight, 300, availableCatalogHeight);
+        const availableCatalogHeight = clampNumber(pageRect.bottom - catalogRect.top - bottomGuard, 320, Math.max(320, pageRect.height - bottomGuard));
+        const targetScrollerHeight = clampNumber(availableCatalogHeight - chromeHeight, 260, availableCatalogHeight);
         const shouldTightenCatalog = pageRect.height < 920 || targetScrollerHeight < 430;
         const shouldVeryTightenCatalog = pageRect.height < 760 || targetScrollerHeight < 340;
         const desiredVisibleRows = targetScrollerHeight >= 620 ? 3.9 : shouldTightenCatalog ? 2.7 : 3.2;
@@ -8272,8 +8276,10 @@
     .nexus-page {
         --nexus-card-min-height: clamp(138px, 17vh, 178px);
         --nexus-catalog-target-height: 360px;
+        --nexus-scroll-bottom-guard: max(var(--app-bottom-safe-area, 42px), clamp(56px, 6.2vh, 84px));
         --nexus-scroller-target-height: 280px;
         --nexus-thumb-width: clamp(145px, 18vw, 230px);
+        box-sizing: border-box;
         gap: clamp(0.55em, 1vh, 0.9em);
         height: 100%;
         justify-content: flex-start;
@@ -8738,10 +8744,10 @@
 
     .catalog-panel {
         display: flex;
-        flex: 1 0 var(--nexus-catalog-target-height);
+        flex: 1 1 var(--nexus-catalog-target-height);
         flex-direction: column;
         gap: 0.65em;
-        min-height: min(var(--nexus-catalog-target-height), 100%);
+        min-height: 0;
     }
 
     .catalog-toolbar {
@@ -9058,13 +9064,15 @@
 
     .nexus-scroller {
         display: flex;
-        flex: 1 0 var(--nexus-scroller-target-height);
+        flex: 1 1 var(--nexus-scroller-target-height);
         flex-direction: column;
         gap: 0.65em;
+        height: var(--nexus-scroller-target-height);
+        max-height: var(--nexus-scroller-target-height);
         min-height: min(var(--nexus-scroller-target-height), 100%);
         overflow-y: auto;
-        padding: 0 0.45em var(--app-bottom-safe-area, 42px) 0;
-        scroll-padding-bottom: var(--app-bottom-safe-area, 42px);
+        padding: 0 0.45em var(--nexus-scroll-bottom-guard) 0;
+        scroll-padding-bottom: var(--nexus-scroll-bottom-guard);
         scrollbar-gutter: stable;
     }
 
