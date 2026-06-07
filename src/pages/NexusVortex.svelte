@@ -21,6 +21,7 @@
         getNexusModDownloadUrl,
         getNexusModPageUrl,
         getNexusSession,
+        mergeNexusMods,
         NEXUS_CACHE_TTL_MINUTES,
         pickRecommendedNexusFile,
         saveNexusApiKey,
@@ -111,6 +112,11 @@
         selectedModTypeFilter: ModTypeFilter;
         selectedNexusSort: NexusSortMode;
         selectedInstalledSort: InstalledSortMode;
+    };
+    type NexusLocalCatalogCache = {
+        schema: number;
+        updatedAt: number;
+        mods: NexusMod[];
     };
     type ResolvedDependency = NexusModDependency & {
         match: InstalledInventoryEntry | null;
@@ -203,6 +209,10 @@
     let selectedNexusSort: NexusSortMode = "attention";
     let selectedInstalledSort: InstalledSortMode = "attention";
     let nexusCatalogLoadedAt: number | null = null;
+    let nexusLocalCatalogLoadedAt: number | null = null;
+    let nexusLocalCatalogCount = 0;
+    let nexusLatestApiRowCount = 0;
+    let nexusCatalogUsedLocalFallback = false;
     let nexusCategoryOptions: string[] = [];
     let nexusCategoryFilterOptions: FilterCountOption[] = [];
     let installFilterOptions: FilterCountOption<InstallFilter>[] = [];
@@ -281,6 +291,8 @@
     let ssoTimeout: number | null = null;
     let refreshCooldownSeconds = 0;
     let refreshCooldownTimer: number | null = null;
+    let nexusCatalogAutoRefreshTimer: number | null = null;
+    let nexusCatalogAutoRefreshInFlight = false;
     let nexusUiPreferencesLoaded = false;
     let nexusPageElement: HTMLDivElement | null = null;
     let nexusLayoutObserver: ResizeObserver | null = null;
@@ -301,6 +313,10 @@
     const NEXUS_SSO_UUID_KEY = "openacai-nexus-sso-request-id";
     const NEXUS_SSO_TOKEN_KEY = "openacai-nexus-sso-connection-token";
     const NEXUS_UI_PREFERENCES_KEY = "openacai-nexus-ui-preferences";
+    const NEXUS_LOCAL_CATALOG_KEY = "openacai-nexus-sotf-catalog-v1";
+    const NEXUS_LOCAL_CATALOG_SCHEMA = 1;
+    const NEXUS_LOCAL_CATALOG_MAX_MODS = 5000;
+    const NEXUS_CATALOG_AUTO_REFRESH_MS = NEXUS_CACHE_TTL_MINUTES * 60 * 1000;
     const NEXUS_AUTO_ENDORSE_KEY = "openacai-nexus-auto-endorse-downloaded";
     const NEXUS_AUTO_ENDORSE_ATTEMPTED_KEY = "openacai-nexus-auto-endorse-attempted";
     const MAX_AUTO_ENDORSE_PER_REFRESH = 3;
@@ -676,6 +692,7 @@
 
     onMount(async () => {
         setupNexusLayoutObserver();
+        setupNexusCatalogAutoRefresh();
         loadNexusUiPreferences();
         if (sharedSearchVersion > 0) {
             applySharedSearch(sharedSearchTerm);
@@ -686,6 +703,7 @@
         await refreshSession();
 
         if (session.is_connected) {
+            applyNexusLocalCatalogCache();
             await loadMods();
         }
 
@@ -695,6 +713,7 @@
     onDestroy(() => {
         cleanupSso();
         cleanupManualRefreshCooldown();
+        cleanupNexusCatalogAutoRefresh();
         clearNxmCopyFeedback();
         cleanupNexusLayoutObserver();
     });
@@ -854,6 +873,100 @@
         return typeof value === "string" && options.includes(value as T) ? value as T : fallback;
     }
 
+    function readNexusLocalCatalog(): NexusLocalCatalogCache | null {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(NEXUS_LOCAL_CATALOG_KEY) ?? "null") as Partial<NexusLocalCatalogCache> | null;
+            if (!parsed || parsed.schema !== NEXUS_LOCAL_CATALOG_SCHEMA || !Array.isArray(parsed.mods)) {
+                return null;
+            }
+
+            const cachedMods = mergeNexusMods(parsed.mods
+                .map(mod => cacheableNexusCatalogMod(mod))
+                .filter(mod => mod.mod_id > 0))
+                .slice(0, NEXUS_LOCAL_CATALOG_MAX_MODS);
+            return {
+                schema: NEXUS_LOCAL_CATALOG_SCHEMA,
+                updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
+                mods: cachedMods
+            };
+        } catch {
+            localStorage.removeItem(NEXUS_LOCAL_CATALOG_KEY);
+            return null;
+        }
+    }
+
+    function applyNexusLocalCatalogCache(): NexusMod[] {
+        const cache = readNexusLocalCatalog();
+        if (!cache) {
+            nexusLocalCatalogLoadedAt = null;
+            nexusLocalCatalogCount = 0;
+            return [];
+        }
+
+        nexusLocalCatalogLoadedAt = cache.updatedAt || null;
+        nexusLocalCatalogCount = cache.mods.length;
+        if (cache.mods.length > 0) {
+            mods = mergeNexusMods([...mods, ...cache.mods]);
+            catalogPreviewCacheVersion += 1;
+        }
+
+        return cache.mods;
+    }
+
+    function persistNexusLocalCatalog(rows: NexusMod[]): NexusMod[] {
+        const cachedRows = readNexusLocalCatalog()?.mods ?? [];
+        const mergedRows = mergeNexusMods([
+            ...rows.map(mod => cacheableNexusCatalogMod(mod)),
+            ...cachedRows
+        ])
+            .filter(mod => mod.mod_id > 0)
+            .slice(0, NEXUS_LOCAL_CATALOG_MAX_MODS);
+        const cache: NexusLocalCatalogCache = {
+            schema: NEXUS_LOCAL_CATALOG_SCHEMA,
+            updatedAt: Date.now(),
+            mods: mergedRows
+        };
+
+        try {
+            localStorage.setItem(NEXUS_LOCAL_CATALOG_KEY, JSON.stringify(cache));
+        } catch (error) {
+            console.log("Failed to persist Nexus catalog cache", error);
+        }
+
+        nexusLocalCatalogLoadedAt = cache.updatedAt;
+        nexusLocalCatalogCount = mergedRows.length;
+        return mergedRows;
+    }
+
+    function cacheableNexusCatalogMod(mod: NexusMod): NexusMod {
+        const imageUrls = uniquePreviewUrls([
+            ...(mod.image_urls ?? []),
+            mod.picture_url
+        ]).slice(0, 12);
+
+        return {
+            mod_id: Number(mod.mod_id) || 0,
+            name: mod.name ?? `Nexus Mod #${mod.mod_id}`,
+            summary: mod.summary,
+            version: mod.version,
+            author: mod.author,
+            uploaded_by: mod.uploaded_by,
+            picture_url: mod.picture_url ?? imageUrls[0],
+            image_urls: imageUrls,
+            category_id: mod.category_id,
+            category_name: mod.category_name,
+            category_source: mod.category_source,
+            endorsement_count: mod.endorsement_count,
+            mod_downloads: mod.mod_downloads,
+            mod_unique_downloads: mod.mod_unique_downloads,
+            created_timestamp: mod.created_timestamp,
+            updated_timestamp: mod.updated_timestamp,
+            created_time: mod.created_time,
+            updated_time: mod.updated_time,
+            loader_type: mod.loader_type
+        };
+    }
+
     function applySharedSearch(value: string) {
         if (value === nexusSearchTerm) {
             return;
@@ -977,6 +1090,7 @@
         try {
             session = await saveNexusApiKey(apiKey);
             apiKey = "";
+            applyNexusLocalCatalogCache();
             await loadMods();
         } catch (error) {
             await dialog.message(`${error}`, {
@@ -1020,6 +1134,7 @@
 
         try {
             session = await saveNexusApiKey(payload.data.api_key);
+            applyNexusLocalCatalogCache();
             await loadMods();
         } catch (error) {
             await dialog.message(`${error}`, {
@@ -1110,6 +1225,58 @@
         refreshCooldownSeconds = 0;
     }
 
+    function setupNexusCatalogAutoRefresh() {
+        if (nexusCatalogAutoRefreshTimer !== null) {
+            return;
+        }
+
+        nexusCatalogAutoRefreshTimer = window.setInterval(() => {
+            void maybeAutoRefreshNexusCatalog();
+        }, NEXUS_CATALOG_AUTO_REFRESH_MS);
+    }
+
+    function cleanupNexusCatalogAutoRefresh() {
+        if (nexusCatalogAutoRefreshTimer !== null) {
+            window.clearInterval(nexusCatalogAutoRefreshTimer);
+            nexusCatalogAutoRefreshTimer = null;
+        }
+
+        nexusCatalogAutoRefreshInFlight = false;
+    }
+
+    async function maybeAutoRefreshNexusCatalog() {
+        if (!session.is_connected || isLoading || nexusCatalogAutoRefreshInFlight) {
+            return;
+        }
+
+        const cacheAge = nexusLocalCatalogLoadedAt ? Date.now() - nexusLocalCatalogLoadedAt : NEXUS_CATALOG_AUTO_REFRESH_MS;
+        if (cacheAge < NEXUS_CATALOG_AUTO_REFRESH_MS) {
+            return;
+        }
+
+        nexusCatalogAutoRefreshInFlight = true;
+        try {
+            const response = await fetchNexusSotfMods("all");
+            nexusLatestApiRowCount = response.mods.length;
+            const rememberedRows = persistNexusLocalCatalog(response.mods);
+            if (selectedView === "all") {
+                mods = mergeNexusMods([...rememberedRows, ...mods]);
+            }
+            nexusCategories = response.categories;
+            nexusCatalogLoadedAt = Date.now();
+            nexusCatalogUsedLocalFallback = false;
+            session = {
+                ...session,
+                rate_limit: response.rate_limit
+            };
+        } catch (error) {
+            console.log("Background Nexus catalog sync failed", error);
+            nexusCatalogUsedLocalFallback = (readNexusLocalCatalog()?.mods.length ?? 0) > 0;
+        } finally {
+            nexusCatalogAutoRefreshInFlight = false;
+        }
+    }
+
     async function disconnect() {
         cleanupSso();
         cleanupManualRefreshCooldown();
@@ -1122,6 +1289,8 @@
         catalogPreviewCacheVersion += 1;
         nexusCategories = [];
         nexusCatalogLoadedAt = null;
+        nexusLatestApiRowCount = 0;
+        nexusCatalogUsedLocalFallback = false;
         endorsements = [];
         endorsementsLoaded = false;
         trackedMods = [];
@@ -1134,6 +1303,10 @@
             return;
         }
 
+        const isAllCatalog = selectedView === "all";
+        const localRows = isAllCatalog ? applyNexusLocalCatalogCache() : [];
+        nexusCatalogUsedLocalFallback = false;
+
         if (forceRefresh) {
             const now = Date.now();
             const cooldownSeconds = secondsUntilManualRefresh(now);
@@ -1145,18 +1318,21 @@
             }
 
             beginManualRefreshCooldown(now);
-            knownNexusDetails = {};
-            knownNexusPreviewUrls = {};
-            catalogPreviewCacheVersion += 1;
         }
 
         isLoading = true;
-        status = forceRefresh ? "Refreshing Nexus mods..." : "Loading Nexus mods...";
+        status = forceRefresh
+            ? "Refreshing Nexus catalog..."
+            : localRows.length > 0
+                ? "Syncing Nexus catalog..."
+                : "Loading Nexus catalog...";
 
         try {
             await refreshInventory();
             const response = await fetchNexusSotfMods(selectedView, { force: forceRefresh });
-            mods = response.mods;
+            nexusLatestApiRowCount = response.mods.length;
+            const rememberedRows = persistNexusLocalCatalog(response.mods);
+            mods = isAllCatalog ? rememberedRows : response.mods;
             nexusCategories = response.categories;
             nexusCatalogLoadedAt = Date.now();
             session = {
@@ -1167,6 +1343,12 @@
             await refreshTrackedMods(forceRefresh);
             await maybeAutoEndorseInstalledVortexMods();
         } catch (error) {
+            const cachedRows = isAllCatalog ? applyNexusLocalCatalogCache() : [];
+            if (cachedRows.length > 0) {
+                nexusCatalogUsedLocalFallback = true;
+                return;
+            }
+
             await dialog.message(`${error}`, {
                 title: "Nexus Mods error",
                 kind: "error"
@@ -2518,13 +2700,19 @@
             return;
         }
 
+        const mergedDetails = {
+            ...(knownNexusDetails[details.mod_id] ?? {}),
+            ...details
+        };
         knownNexusDetails = {
             ...knownNexusDetails,
-            [details.mod_id]: {
-                ...(knownNexusDetails[details.mod_id] ?? {}),
-                ...details
-            }
+            [details.mod_id]: mergedDetails
         };
+
+        const rememberedRows = persistNexusLocalCatalog([mergedDetails]);
+        if (selectedView === "all") {
+            mods = mergeNexusMods([mergedDetails, ...mods, ...rememberedRows]);
+        }
     }
 
     function rememberNexusPreviewUrls(modId: number | undefined, urls: string[]) {
@@ -4264,7 +4452,9 @@
 
         return {
             title: "No Nexus catalog rows loaded",
-            detail: `The ${viewLabel(selectedView)} feed for ${modeLabel} did not return visible rows yet. Refresh the catalog or choose another feed.`,
+            detail: selectedView === "all"
+                ? "The official Nexus catalog sync and local cache do not have visible Sons Of The Forest rows yet. Refresh the catalog after connecting Nexus, or choose a narrower feed."
+                : `The ${viewLabel(selectedView)} feed for ${modeLabel} did not return visible rows yet. Refresh the catalog or choose another feed.`,
             chips
         };
     }
@@ -4295,7 +4485,31 @@
             return `${trackedCount} tracked`;
         }
 
-        return "Cached Nexus feed";
+        return catalogMode === "online" ? "Known Nexus catalog" : "Cached Nexus feed";
+    }
+
+    function nexusCatalogCacheSummary(): string {
+        const parts = [`Official metadata sync cached for ${NEXUS_CACHE_TTL_MINUTES} minutes.`];
+
+        if (nexusLocalCatalogCount > 0) {
+            parts.push(`${formatNumber(nexusLocalCatalogCount)} remembered locally.`);
+        }
+
+        if (nexusLatestApiRowCount > 0) {
+            parts.push(`${formatNumber(nexusLatestApiRowCount)} refreshed from Nexus.`);
+        }
+
+        if (nexusCatalogUsedLocalFallback) {
+            parts.push("Using local catalog fallback.");
+        }
+
+        if (nexusCatalogLoadedAt) {
+            parts.push(formatCatalogLoadedAt(nexusCatalogLoadedAt));
+        } else if (nexusLocalCatalogLoadedAt) {
+            parts.push(`Remembered ${new Date(nexusLocalCatalogLoadedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`);
+        }
+
+        return parts.join(" ");
     }
 
     function buildNexusEmptyChips(): string[] {
@@ -7673,9 +7887,9 @@
             </div>
 
             <div class="notice api-note">
-                <span>Nexus requests are cached locally for {NEXUS_CACHE_TTL_MINUTES} minutes. {formatCatalogLoadedAt(nexusCatalogLoadedAt)}.</span>
+                <span>{nexusCatalogCacheSummary()}</span>
                 {#if catalogMode === "online"}
-                    <span>{visibleNexusMods.length} shown from {mods.length} loaded. {onlineAttentionCount > 0 ? `${onlineAttentionCount} need attention.` : ""} {trackedModsLoaded ? `${trackedCount} tracked.` : ""} {conflictCount > 0 ? `${conflictCount} in conflicts.` : ""}</span>
+                    <span>{visibleNexusMods.length} shown from {mods.length} known. {onlineAttentionCount > 0 ? `${onlineAttentionCount} need attention.` : ""} {trackedModsLoaded ? `${trackedCount} tracked.` : ""} {conflictCount > 0 ? `${conflictCount} in conflicts.` : ""}</span>
                 {:else}
                     <span>{visibleInstalledEntries.length} shown from {installedCount} installed. {installedAttentionCount > 0 ? `${installedAttentionCount} need attention.` : ""} {trackedModsLoaded ? `${trackedCount} tracked.` : ""} {conflictCount > 0 ? `${conflictCount} in conflicts.` : ""}</span>
                 {/if}

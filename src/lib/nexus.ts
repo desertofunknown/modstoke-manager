@@ -108,6 +108,13 @@ type RawNexusModsResponse = {
     rate_limit: NexusRateLimit;
 };
 
+type RawNexusGraphqlModsResponse = {
+    mods: Array<NexusMod & Record<string, unknown>> | { data?: Array<NexusMod & Record<string, unknown>>; nodes?: Array<NexusMod & Record<string, unknown>> };
+    total_count?: number;
+    nodes_count?: number;
+    rate_limit: NexusRateLimit;
+};
+
 type RawNexusGameInfoResponse = {
     game: unknown;
     rate_limit: NexusRateLimit;
@@ -184,7 +191,9 @@ export type NexusView = "all" | "trending" | "latest_added" | "latest_updated";
 export const NEXUS_CACHE_TTL_MINUTES = 10;
 
 const NEXUS_CACHE_TTL_MS = NEXUS_CACHE_TTL_MINUTES * 60 * 1000;
-const ALL_NEXUS_FEEDS = ["trending", "latest_added", "latest_updated", "updated"] as const;
+const NEXUS_GRAPHQL_CATALOG_PAGE_SIZE = 80;
+const NEXUS_GRAPHQL_CATALOG_MAX_PAGES = 12;
+const ALL_NEXUS_FEEDS = ["trending", "latest_added", "latest_updated"] as const;
 const LOCAL_SOTF_NEXUS_CATEGORIES: NexusCategory[] = [
     { category_id: 4, name: "Gameplay", source: "local" },
     { category_id: 2, name: "Miscellaneous", source: "local" },
@@ -378,22 +387,12 @@ export async function fetchNexusSotfMods(view: NexusView, options: { force?: boo
             return await existingRequest;
         }
 
-        const request = Promise.allSettled(ALL_NEXUS_FEEDS.map(feed => fetchSingleNexusSotfMods(feed, categories, options)))
-            .then((responses) => {
-                const successful = responses
-                    .filter((response): response is PromiseFulfilledResult<NexusModsResponse> => response.status === "fulfilled")
-                    .map(response => response.value);
-
-                if (successful.length === 0) {
-                    const firstError = responses.find((response): response is PromiseRejectedResult => response.status === "rejected");
-                    throw new Error(firstError ? `${firstError.reason}` : "No Nexus feed returned mods.");
-                }
-
-                const merged = {
-                    mods: mergeNexusMods(successful.flatMap(response => response.mods)),
-                    categories,
-                    rate_limit: successful[successful.length - 1].rate_limit
-                };
+        const request = fetchGraphqlNexusSotfCatalog(categories)
+            .catch(async (error) => {
+                console.log("Falling back to legacy Nexus feeds after GraphQL catalog sync failed", error);
+                return await fetchLegacyNexusSotfFeeds(categories, options);
+            })
+            .then((merged) => {
                 modsCache.set(cacheKey, { value: merged, cachedAt: Date.now() });
                 return merged;
             })
@@ -406,6 +405,66 @@ export async function fetchNexusSotfMods(view: NexusView, options: { force?: boo
     }
 
     return await fetchSingleNexusSotfMods(view, categories, options);
+}
+
+async function fetchGraphqlNexusSotfCatalog(categories: NexusCategory[]): Promise<NexusModsResponse> {
+    const mods: NexusMod[] = [];
+    let totalCount: number | undefined;
+    let rateLimit: NexusRateLimit = {};
+
+    for (let page = 0; page < NEXUS_GRAPHQL_CATALOG_MAX_PAGES; page += 1) {
+        const offset = page * NEXUS_GRAPHQL_CATALOG_PAGE_SIZE;
+        if (totalCount !== undefined && offset >= totalCount) {
+            break;
+        }
+
+        const response = await invoke<RawNexusGraphqlModsResponse>("nexus_fetch_sotf_mods_graphql", {
+            offset,
+            count: NEXUS_GRAPHQL_CATALOG_PAGE_SIZE
+        });
+        const rawMods = Array.isArray(response.mods)
+            ? response.mods
+            : response.mods.nodes ?? response.mods.data ?? [];
+        const normalized = rawMods
+            .map(mod => normalizeNexusMod(mod, categories))
+            .filter(mod => mod.mod_id > 0);
+
+        mods.push(...normalized);
+        totalCount = response.total_count ?? totalCount;
+        rateLimit = response.rate_limit;
+
+        if (rawMods.length === 0 || rawMods.length < NEXUS_GRAPHQL_CATALOG_PAGE_SIZE) {
+            break;
+        }
+    }
+
+    if (mods.length === 0) {
+        throw new Error("Nexus GraphQL catalog sync did not return mods.");
+    }
+
+    return {
+        mods: mergeNexusMods(mods),
+        categories,
+        rate_limit: rateLimit
+    };
+}
+
+async function fetchLegacyNexusSotfFeeds(categories: NexusCategory[], options: { force?: boolean } = {}): Promise<NexusModsResponse> {
+    const responses = await Promise.allSettled(ALL_NEXUS_FEEDS.map(feed => fetchSingleNexusSotfMods(feed, categories, options)));
+    const successful = responses
+        .filter((response): response is PromiseFulfilledResult<NexusModsResponse> => response.status === "fulfilled")
+        .map(response => response.value);
+
+    if (successful.length === 0) {
+        const firstError = responses.find((response): response is PromiseRejectedResult => response.status === "rejected");
+        throw new Error(firstError ? `${firstError.reason}` : "No Nexus feed returned mods.");
+    }
+
+    return {
+        mods: mergeNexusMods(successful.flatMap(response => response.mods)),
+        categories,
+        rate_limit: successful[successful.length - 1].rate_limit
+    };
 }
 
 async function fetchSingleNexusSotfMods(view: string, categories: NexusCategory[], options: { force?: boolean } = {}): Promise<NexusModsResponse> {
@@ -650,7 +709,7 @@ export function pickRecommendedNexusFile(files: NexusModFile[]): NexusModFile | 
         ?? null;
 }
 
-function mergeNexusMods(input: NexusMod[]): NexusMod[] {
+export function mergeNexusMods(input: NexusMod[]): NexusMod[] {
     const byId = new Map<number, NexusMod>();
     for (const mod of input) {
         const existing = byId.get(mod.mod_id);
@@ -831,15 +890,24 @@ function categorySourceRank(source: NexusCategorySource): number {
 }
 
 function normalizeNexusMod(raw: NexusMod & Record<string, unknown>, categories: NexusCategory[] = LOCAL_SOTF_NEXUS_CATEGORIES): NexusMod {
-    const modId = numberField(raw.mod_id) ?? numberField(raw.id) ?? 0;
+    const uploader = objectField(raw.uploader);
+    const modId = numberField(raw.mod_id)
+        ?? numberField(raw.modId)
+        ?? numberField(raw.game_scoped_id)
+        ?? numberField(raw.gameScopedId)
+        ?? numberField(raw.id)
+        ?? 0;
     const rawSummary = stringField(raw.summary)
         ?? stringField(raw.description)
         ?? stringField(raw.short_description);
     const resolvedCategory = resolveNexusCategory(raw, categories);
     const imageUrls = imageUrlsFrom(raw);
     const pictureUrl = normalizeImageUrl(stringField(raw.picture_url))
+        ?? normalizeImageUrl(stringField(raw.pictureUrl))
         ?? normalizeImageUrl(stringField(raw.picture))
         ?? normalizeImageUrl(stringField(raw.thumbnail_url))
+        ?? normalizeImageUrl(stringField(raw.thumbnailUrl))
+        ?? normalizeImageUrl(stringField(raw.thumbnailLargeUrl))
         ?? normalizeImageUrl(stringField(raw.screenshot_url))
         ?? normalizeImageUrl(stringField(raw.image_url))
         ?? imageUrls[0];
@@ -853,18 +921,18 @@ function normalizeNexusMod(raw: NexusMod & Record<string, unknown>, categories: 
             ?? `Nexus Mod #${modId}`,
         summary: cleanSummary(rawSummary, { normalizeWordSeparators: true }),
         version: stringField(raw.version) ?? stringField(raw.latest_version),
-        author: stringField(raw.author) ?? stringField(raw.uploaded_by),
-        uploaded_by: stringField(raw.uploaded_by),
+        author: stringField(raw.author) ?? stringField(raw.uploaded_by) ?? stringField(uploader?.name),
+        uploaded_by: stringField(raw.uploaded_by) ?? stringField(uploader?.name),
         picture_url: pictureUrl,
         image_urls: uniqueImageUrls([pictureUrl, ...imageUrls]),
         category_id: resolvedCategory.category_id,
         category_name: resolvedCategory.name,
         category_source: resolvedCategory.source,
-        endorsement_count: numberField(raw.endorsement_count),
+        endorsement_count: numberField(raw.endorsement_count) ?? numberField(raw.endorsements),
         mod_downloads: numberField(raw.mod_downloads) ?? numberField(raw.downloads),
         mod_unique_downloads: numberField(raw.mod_unique_downloads) ?? numberField(raw.unique_downloads),
-        created_timestamp: numberField(raw.created_timestamp),
-        updated_timestamp: numberField(raw.updated_timestamp) ?? numberField(raw.latest_file_update),
+        created_timestamp: timestampField(raw.created_timestamp) ?? timestampField(raw.createdAt),
+        updated_timestamp: timestampField(raw.updated_timestamp) ?? timestampField(raw.updatedAt) ?? timestampField(raw.latest_file_update),
         created_time: stringField(raw.created_time),
         updated_time: stringField(raw.updated_time),
         loader_type: inferLoaderType(raw)
@@ -873,12 +941,15 @@ function normalizeNexusMod(raw: NexusMod & Record<string, unknown>, categories: 
 
 function resolveNexusCategory(raw: Record<string, unknown>, categories: NexusCategory[]): NexusCategory {
     const nestedCategory = objectField(raw.category);
+    const nestedModCategory = objectField(raw.modCategory);
     const categoryId = numberField(raw.category_id)
         ?? numberField(raw.categoryId)
         ?? numberField(raw.cat)
         ?? numberField(raw.category)
         ?? numberField(nestedCategory?.category_id)
-        ?? numberField(nestedCategory?.id);
+        ?? numberField(nestedCategory?.id)
+        ?? numberField(nestedModCategory?.category_id)
+        ?? numberField(nestedModCategory?.id);
     const categoryById = categoryId !== undefined
         ? categories.find(category => category.category_id === categoryId)
         : undefined;
@@ -886,6 +957,8 @@ function resolveNexusCategory(raw: Record<string, unknown>, categories: NexusCat
         ?? stringField(raw.categoryName)
         ?? stringField(nestedCategory?.name)
         ?? stringField(nestedCategory?.category_name)
+        ?? stringField(nestedModCategory?.name)
+        ?? stringField(nestedModCategory?.category_name)
         ?? stringField(raw.category);
     const categoryByName = rawName
         ? categories.find(category => nexusCategoryNameKey(category.name) === nexusCategoryNameKey(rawName))
@@ -1487,8 +1560,11 @@ function inferLoaderType(raw: Record<string, unknown>): string {
 function imageUrlsFrom(raw: Record<string, unknown>): string[] {
     const urls: Array<string | undefined> = [
         stringField(raw.picture_url),
+        stringField(raw.pictureUrl),
         stringField(raw.picture),
         stringField(raw.thumbnail_url),
+        stringField(raw.thumbnailUrl),
+        stringField(raw.thumbnailLargeUrl),
         stringField(raw.screenshot_url),
         stringField(raw.image_url)
     ];
@@ -1695,6 +1771,21 @@ function numberField(value: unknown): number | undefined {
     }
 
     return undefined;
+}
+
+function timestampField(value: unknown): number | undefined {
+    const numeric = numberField(value);
+    if (numeric !== undefined) {
+        return numeric;
+    }
+
+    const text = stringField(value);
+    if (!text) {
+        return undefined;
+    }
+
+    const parsed = Date.parse(text);
+    return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : undefined;
 }
 
 type CleanSummaryOptions = {

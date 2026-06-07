@@ -23,6 +23,7 @@ use windows::{
 
 const SOTF_APP_ID: &str = "1326470";
 const NEXUS_API_BASE: &str = "https://api.nexusmods.com";
+const NEXUS_GRAPHQL_ENDPOINT: &str = "https://api.nexusmods.com/v2/graphql";
 const NEXUS_GAME_DOMAIN: &str = "sonsoftheforest";
 const NEXUS_CREDENTIAL_SERVICE: &str = "OpenACAI Mod Manager";
 const NEXUS_CREDENTIAL_ACCOUNT: &str = "nexusmods-api-key";
@@ -74,6 +75,14 @@ struct NexusSession {
 #[derive(Serialize)]
 struct NexusModsResponse {
     mods: serde_json::Value,
+    rate_limit: NexusRateLimit,
+}
+
+#[derive(Serialize)]
+struct NexusGraphqlModsResponse {
+    mods: serde_json::Value,
+    total_count: Option<u64>,
+    nodes_count: Option<u64>,
     rate_limit: NexusRateLimit,
 }
 
@@ -244,6 +253,110 @@ async fn nexus_fetch_sotf_mods(view: String) -> Result<NexusModsResponse, String
         .await
         .map_err(|e| e.to_string())?;
     Ok(NexusModsResponse { mods, rate_limit })
+}
+
+#[tauri::command]
+async fn nexus_fetch_sotf_mods_graphql(
+    offset: u64,
+    count: u64,
+) -> Result<NexusGraphqlModsResponse, String> {
+    let query = r#"
+        query OpenAcaiSotfMods($filter: ModsFilter, $sort: [ModsSort!], $offset: Int, $count: Int) {
+            mods(filter: $filter, sort: $sort, offset: $offset, count: $count) {
+                nodesCount
+                totalCount
+                nodes {
+                    modId
+                    name
+                    summary
+                    author
+                    category
+                    createdAt
+                    updatedAt
+                    downloads
+                    endorsements
+                    pictureUrl
+                    thumbnailUrl
+                    thumbnailLargeUrl
+                    version
+                    supportsVortex
+                    status
+                    modCategory {
+                        id
+                        name
+                    }
+                    uploader {
+                        name
+                    }
+                }
+            }
+        }
+    "#;
+    let page_count = count.clamp(1, 80);
+    let payload = serde_json::json!({
+        "query": query,
+        "variables": {
+            "filter": {
+                "gameDomainName": [
+                    {
+                        "value": NEXUS_GAME_DOMAIN,
+                        "op": "EQUALS"
+                    }
+                ]
+            },
+            "sort": [
+                {
+                    "updatedAt": {
+                        "direction": "DESC"
+                    }
+                }
+            ],
+            "offset": offset,
+            "count": page_count
+        }
+    });
+
+    let response = nexus_public_client()
+        .post(NEXUS_GRAPHQL_ENDPOINT)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let rate_limit = read_rate_limit(response.headers());
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Nexus catalog sync request failed: {}",
+            response.status()
+        ));
+    }
+
+    let value = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some(errors) = value.get("errors") {
+        return Err(format!("Nexus catalog sync returned errors: {errors}"));
+    }
+
+    let mods_page = value
+        .get("data")
+        .and_then(|data| data.get("mods"))
+        .ok_or_else(|| "Nexus catalog sync did not return a mods page.".to_string())?;
+    let mods = mods_page
+        .get("nodes")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!([]));
+    let total_count = mods_page.get("totalCount").and_then(|count| count.as_u64());
+    let nodes_count = mods_page.get("nodesCount").and_then(|count| count.as_u64());
+
+    Ok(NexusGraphqlModsResponse {
+        mods,
+        total_count,
+        nodes_count,
+        rate_limit,
+    })
 }
 
 #[tauri::command]
@@ -766,6 +879,24 @@ fn nexus_client(api_key: &str) -> reqwest::Client {
         .expect("failed to build Nexus API client")
 }
 
+fn nexus_public_client() -> reqwest::Client {
+    let mut headers = HeaderMap::new();
+    headers.insert("User-Agent", HeaderValue::from_static(NEXUS_USER_AGENT));
+    headers.insert(
+        "Application-Name",
+        HeaderValue::from_static(NEXUS_APPLICATION_NAME),
+    );
+    headers.insert(
+        "Application-Version",
+        HeaderValue::from_static(NEXUS_APPLICATION_VERSION),
+    );
+
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .expect("failed to build Nexus public API client")
+}
+
 fn read_rate_limit(headers: &HeaderMap) -> NexusRateLimit {
     NexusRateLimit {
         hourly_limit: read_header(headers, "X-RL-Hourly-Limit"),
@@ -1077,6 +1208,7 @@ fn main() {
             nexus_get_session,
             nexus_clear_api_key,
             nexus_fetch_sotf_mods,
+            nexus_fetch_sotf_mods_graphql,
             nexus_fetch_sotf_game_info,
             nexus_fetch_mod_details,
             nexus_fetch_mod_files,
