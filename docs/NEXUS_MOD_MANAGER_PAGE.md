@@ -78,7 +78,7 @@ Use the manager's **Verify / Repair** flow whenever a loader update is available
 
 OpenACAI Mod Manager is being built as a focused one-game Nexus/Vortex companion for Sons Of The Forest. The top-level Mods page now switches between the SOTF Mods storefront and the Nexus/Vortex source so players can browse either storefront from one workspace. It is intended to support mod browsing, install-state detection, file selection, dependency awareness, tracking, endorsement, and Vortex handoff without excessive API calls.
 
-Dependency checks resolve selected game-scoped Nexus file IDs to v3 mod-file IDs before requesting materialized dependency metadata, with a fallback to the original selected file ID if the v3 resolver endpoint is unavailable.
+Dependency checks resolve game-scoped file IDs through the v3 `mod-file-versions` endpoint, then request materialized dependency ranges using the returned global version ID. Global version IDs are kept separate from parent file-group IDs and v1 catalog UIDs. Requirements retain their compatible file alternatives; one matching enabled install can satisfy a requirement. Unresolved choices and version ranges remain visible for review. Recursive checks continue in bounded batches and keep unfinished lookups available for retry.
 
 Nexus features must follow the Nexus Mods API acceptable use policy. The manager identifies itself with application headers, caches feed/detail/session data, rate-limits manual refresh actions, and stores user credentials locally through the OS credential vault. Public browser SSO requires a Nexus-approved application slug before it should be treated as production-ready.
 

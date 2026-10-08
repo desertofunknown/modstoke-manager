@@ -449,66 +449,61 @@ async fn nexus_fetch_file_dependencies(
     let key =
         read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
     let client = nexus_client(&key);
+    let supplied_version_id = nexus_file_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty());
+    let mut failures = Vec::new();
 
-    let mut dependency_file_ids = Vec::new();
-    if let Some(id) = nexus_file_id {
-        push_dependency_file_id(&mut dependency_file_ids, &id);
+    if let Some(version_id) = supplied_version_id {
+        match nexus_request_dependencies_for_version(&client, version_id).await {
+            Ok(result) => return Ok(result),
+            Err(error) => failures.push(error),
+        }
     }
-    if let Ok(Some(resolved_id)) = nexus_resolve_v3_mod_file_id(&client, file_id).await {
-        push_dependency_file_id(&mut dependency_file_ids, &resolved_id);
-    }
-    push_dependency_file_id(&mut dependency_file_ids, &file_id.to_string());
 
-    let (value, rate_limit) =
-        nexus_request_dependencies_for_candidate_files(&client, &dependency_file_ids).await?;
-    let dependencies = value.get("dependencies").cloned().unwrap_or(value);
-    Ok(NexusModDependenciesResponse {
-        dependencies,
-        rate_limit,
-    })
+    match nexus_resolve_v3_mod_file_version_id(&client, file_id).await {
+        Ok(version_id) if Some(version_id.as_str()) != supplied_version_id => {
+            match nexus_request_dependencies_for_version(&client, &version_id).await {
+                Ok(result) => return Ok(result),
+                Err(error) => failures.push(error),
+            }
+        }
+        Ok(_) => {}
+        Err(error) => failures.push(error),
+    }
+
+    Err(format!(
+        "Could not read Nexus dependencies for game file {file_id}. {}",
+        failures.join("; ")
+    ))
 }
 
-fn push_dependency_file_id(ids: &mut Vec<String>, id: &str) {
-    let trimmed = id.trim();
-    if trimmed.is_empty() || ids.iter().any(|existing| existing == trimmed) {
-        return;
-    }
-
-    ids.push(trimmed.to_string());
-}
-
-async fn nexus_request_dependencies_for_candidate_files(
+async fn nexus_request_dependencies_for_version(
     client: &reqwest::Client,
-    candidate_file_ids: &[String],
-) -> Result<(serde_json::Value, NexusRateLimit), String> {
-    let mut first_empty_result: Option<(serde_json::Value, NexusRateLimit)> = None;
-    let mut last_error: Option<String> = None;
+    version_id: &str,
+) -> Result<NexusModDependenciesResponse, String> {
+    let mut first_empty_result = None;
+    let mut failures = Vec::new();
 
-    for file_id in candidate_file_ids {
-        match nexus_request_materialized_dependencies(client, file_id).await {
-            Ok(result) if nexus_dependency_payload_has_rows(&result.0) => return Ok(result),
-            Ok(result) => {
+    for route in ["ranges/materialized", "ranges"] {
+        match nexus_request_dependency_route(client, version_id, route).await {
+            Ok((value, rate_limit)) => {
+                let has_rows = nexus_dependency_payload_has_rows(&value);
+                let result = NexusModDependenciesResponse {
+                    dependencies: value.get("dependencies").cloned().unwrap_or(value),
+                    rate_limit,
+                };
+                if has_rows {
+                    return Ok(result);
+                }
                 first_empty_result.get_or_insert(result);
             }
-            Err(error) => {
-                last_error = Some(error);
-            }
-        }
-
-        match nexus_request_dependency_ranges(client, file_id).await {
-            Ok(result) if nexus_dependency_payload_has_rows(&result.0) => return Ok(result),
-            Ok(result) => {
-                first_empty_result.get_or_insert(result);
-            }
-            Err(error) => {
-                last_error = Some(error);
-            }
+            Err(error) => failures.push(error),
         }
     }
 
-    first_empty_result.ok_or_else(|| {
-        last_error.unwrap_or_else(|| "Nexus dependency request did not return a usable response.".to_string())
-    })
+    first_empty_result.ok_or_else(|| failures.join("; "))
 }
 
 fn nexus_dependency_payload_has_rows(value: &serde_json::Value) -> bool {
@@ -573,80 +568,64 @@ fn nexus_dependency_container_has_rows(value: &serde_json::Value, depth: usize) 
         })
 }
 
-async fn nexus_resolve_v3_mod_file_id(
+async fn nexus_resolve_v3_mod_file_version_id(
     client: &reqwest::Client,
     game_scoped_file_id: u64,
-) -> Result<Option<String>, String> {
-    let url =
-        format!("{NEXUS_API_BASE}/v3/games/{NEXUS_GAME_DOMAIN}/mod-files/{game_scoped_file_id}");
-    let response = client.get(url).send().await.map_err(|e| e.to_string())?;
+) -> Result<String, String> {
+    let url = format!(
+        "{NEXUS_API_BASE}/v3/games/{NEXUS_GAME_DOMAIN}/mod-file-versions/{game_scoped_file_id}"
+    );
+    let context = format!("Version lookup for game file {game_scoped_file_id}");
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|error| format!("{context} failed: {error}"))?;
 
     if !response.status().is_success() {
-        return Ok(None);
+        return Err(format!("{context} failed: {}", response.status()));
     }
 
     let value = response
         .json::<serde_json::Value>()
         .await
-        .map_err(|e| e.to_string())?;
-    let data = value.get("data").unwrap_or(&value);
-
-    if let Some(id) = data
-        .get("id")
-        .and_then(|id| id.as_str())
-        .filter(|id| !id.trim().is_empty())
-    {
-        return Ok(Some(id.to_string()));
-    }
-
-    Ok(data
-        .get("id")
-        .and_then(|id| id.as_u64())
-        .map(|id| id.to_string()))
+        .map_err(|error| format!("{context} returned invalid JSON: {error}"))?;
+    value
+        .get("data")
+        .and_then(|data| data.get("id"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| format!("{context} returned no global version ID"))
 }
 
-async fn nexus_request_materialized_dependencies(
+async fn nexus_request_dependency_route(
     client: &reqwest::Client,
-    file_id: &str,
+    version_id: &str,
+    route: &str,
 ) -> Result<(serde_json::Value, NexusRateLimit), String> {
-    let url = format!("{NEXUS_API_BASE}/v3/mod-files/{file_id}/dependencies/materialized");
-    let response = client.get(url).send().await.map_err(|e| e.to_string())?;
+    let mut url = reqwest::Url::parse(NEXUS_API_BASE).expect("Nexus API base URL is valid");
+    url.path_segments_mut()
+        .expect("Nexus API URL supports path segments")
+        .extend(["v3", "mod-file-versions", version_id, "dependencies"])
+        .extend(route.split('/'));
+    let context = format!("Dependencies ({route}) for version {version_id}");
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|error| format!("{context} failed: {error}"))?;
     let rate_limit = read_rate_limit(response.headers());
 
     if !response.status().is_success() {
-        return Err(format!(
-            "Nexus dependency request failed: {}",
-            response.status()
-        ));
+        return Err(format!("{context} failed: {}", response.status()));
     }
 
     let value = response
         .json::<serde_json::Value>()
         .await
-        .map_err(|e| e.to_string())?;
-
-    Ok((value, rate_limit))
-}
-
-async fn nexus_request_dependency_ranges(
-    client: &reqwest::Client,
-    file_id: &str,
-) -> Result<(serde_json::Value, NexusRateLimit), String> {
-    let url = format!("{NEXUS_API_BASE}/v3/mod-files/{file_id}/dependencies/ranges");
-    let response = client.get(url).send().await.map_err(|e| e.to_string())?;
-    let rate_limit = read_rate_limit(response.headers());
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "Nexus dependency range request failed: {}",
-            response.status()
-        ));
-    }
-
-    let value = response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| format!("{context} returned invalid JSON: {error}"))?;
 
     Ok((value, rate_limit))
 }

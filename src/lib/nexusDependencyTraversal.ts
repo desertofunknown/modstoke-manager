@@ -37,7 +37,8 @@ export function createNestedDependencyTraversal(dependencies: NexusModDependency
     const queuedFileKeys = new Set<string>();
 
     for (const dependency of dependencies) {
-        if (typeof dependency.file_id !== "number") {
+        if (dependency.candidates || (dependency.version_requirement && !dependency.version)
+            || typeof dependency.file_id !== "number") {
             continue;
         }
         const key = fileKey(dependency.file_id, dependency.nexus_file_id);
@@ -66,7 +67,8 @@ export function createNestedDependencyTraversal(dependencies: NexusModDependency
 
 export async function advanceNestedDependencyTraversal(
     previous: NestedDependencyTraversal,
-    isCurrent: () => boolean
+    isCurrent: () => boolean,
+    selectDependency: (dependency: NexusModDependency) => NexusModDependency
 ): Promise<NestedDependencyTraversal | null> {
     if (!isCurrent()) {
         return null;
@@ -133,18 +135,20 @@ export async function advanceNestedDependencyTraversal(
                     });
                 }
 
-                if (typeof dependency.file_id !== "number") {
+                const selected = selectDependency(dependency);
+                if (selected.candidates || (selected.version_requirement && !selected.version)
+                    || typeof selected.file_id !== "number") {
                     continue;
                 }
-                const childKey = fileKey(dependency.file_id, dependency.nexus_file_id);
+                const childKey = fileKey(selected.file_id, selected.nexus_file_id);
                 if (traversal.visitedFileKeys.has(childKey) || queuedFileKeys.has(childKey)) {
                     continue;
                 }
                 queuedFileKeys.add(childKey);
                 traversal.pending.push({
-                    fileId: dependency.file_id,
-                    nexusFileId: dependency.nexus_file_id,
-                    parentName: dependency.mod_name,
+                    fileId: selected.file_id,
+                    nexusFileId: selected.nexus_file_id,
+                    parentName: selected.mod_name,
                     depth: current.depth + 1
                 });
             }

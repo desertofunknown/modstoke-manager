@@ -130,6 +130,7 @@
     type ResolvedDependency = NexusModDependency & {
         match: InstalledInventoryEntry | null;
         status: DependencyStatus;
+        selectedCandidate?: NexusModDependency;
     };
     type ResolvedNestedDependency = Omit<NestedDependencySource, "dependency"> & {
         dependency: ResolvedDependency;
@@ -548,7 +549,7 @@
     $: selectedDependencyLookupState = installPlanDependencyLookupState(selectedDependencyMessage);
     $: apiDependencyNeedsReview = selectedDependencyLookupState === "checking" || selectedDependencyLookupState === "failed";
     $: nestedDependencyCheckPending = isResolvingNestedDependencies
-        || (resolvedDependencies.some(dependency => typeof dependency.file_id === "number")
+        || (resolvedDependencies.some(canCheckNestedDependency)
             && nestedDependencyTraversal?.status !== "complete");
     $: nestedDependencySummary = isResolvingNestedDependencies
         ? `Checking up to ${NESTED_DEPENDENCY_BATCH_SIZE} remaining dependency files...`
@@ -1088,7 +1089,11 @@
         if (isDestroyed || requestId !== inventoryRequestId || exePath !== $gameExePath || !$isPathValid) {
             return;
         }
+        const previousChoices = nestedDependencyChoices();
         inventory = entries;
+        if (isResolvingNestedDependencies || previousChoices !== nestedDependencyChoices()) {
+            clearNestedDependencyCheck();
+        }
         vortexStagingPath = vortex.stagingPath;
     }
 
@@ -2970,7 +2975,27 @@
     }
 
     function nestedDependencyCheckAvailable(): boolean {
-        return resolvedDependencies.some(dependency => typeof dependency.file_id === "number");
+        return resolvedDependencies.some(canCheckNestedDependency);
+    }
+
+    function dependencyForNestedCheck(dependency: NexusModDependency): NexusModDependency {
+        return resolveDependencyStatus(dependency).selectedCandidate ?? dependency;
+    }
+
+    function nestedDependencyChoices(): string {
+        return JSON.stringify([
+            ...selectedDependencies,
+            ...nestedDependencySources.map(source => source.dependency)
+        ].filter(dependency => dependency.candidates).map(dependency => {
+            const selected = resolveDependencyStatus(dependency).selectedCandidate;
+            return [dependency.id, selected?.file_id, selected?.nexus_file_id];
+        }));
+    }
+
+    function canCheckNestedDependency(dependency: NexusModDependency): boolean {
+        const selected = dependencyForNestedCheck(dependency);
+        return !selected.candidates && !(selected.version_requirement && !selected.version)
+            && typeof selected.file_id === "number";
     }
 
     function nestedDependencyStatusLabel(source: ResolvedNestedDependency): string {
@@ -2985,7 +3010,7 @@
         const checked = `${traversal.checkedFiles} dependency file${traversal.checkedFiles === 1 ? "" : "s"} checked`;
         const found = `${traversal.sources.length} nested dependency row${traversal.sources.length === 1 ? "" : "s"} found`;
         if (traversal.status === "complete") {
-            return `${checked}; ${found}. All discovered file IDs have been checked. Author-only requirements still need review.`;
+            return `${checked}; ${found}. All selected dependency files have been checked. Review any unresolved alternatives and author requirements below.`;
         }
 
         const remaining = `${traversal.pending.length} discovered file${traversal.pending.length === 1 ? " remains" : "s remain"} unchecked`;
@@ -3002,13 +3027,14 @@
             return;
         }
 
-        const traversal = nestedDependencyTraversal ?? createNestedDependencyTraversal(resolvedDependencies);
+        const traversal = nestedDependencyTraversal ?? createNestedDependencyTraversal(resolvedDependencies.map(dependencyForNestedCheck));
         const requestId = ++nestedDependencyRequestId;
         isResolvingNestedDependencies = true;
         try {
             const result = await advanceNestedDependencyTraversal(
                 traversal,
-                () => requestId === nestedDependencyRequestId
+                () => requestId === nestedDependencyRequestId,
+                dependencyForNestedCheck
             );
             if (!result || requestId !== nestedDependencyRequestId) {
                 return;
@@ -3246,6 +3272,25 @@
     }
 
     function resolveDependencyStatus(dependency: NexusModDependency): ResolvedDependency {
+        if (dependency.candidates) {
+            const candidates = dependency.candidates.map(resolveDependencyStatus);
+            const installed = candidates.find(candidate => candidate.status === "installed");
+            if (installed) {
+                return {
+                    ...installed,
+                    id: dependency.id,
+                    candidates: dependency.candidates,
+                    selectedCandidate: dependency.candidates[candidates.indexOf(installed)]
+                };
+            }
+
+            return {
+                ...dependency,
+                match: candidates.find(candidate => candidate.match)?.match ?? null,
+                status: "review"
+            };
+        }
+
         const match = findMatchingInstall(inventory, dependency.mod_name, dependency.mod_id, [
             dependency.file_name ?? "",
             dependency.group_name ?? "",
@@ -3254,6 +3299,10 @@
 
         if (!match) {
             return { ...dependency, match: null, status: "missing" };
+        }
+
+        if (!match.enabled) {
+            return { ...dependency, match, status: "review" };
         }
 
         if (dependency.version_requirement && !dependency.version) {
@@ -3493,6 +3542,15 @@
     }
 
     function dependencyStatusLabel(dependency: ResolvedDependency): string {
+        if (dependency.candidates && !dependency.selectedCandidate) {
+            return dependency.candidates.length > 0
+                ? "Choose one compatible file below; no enabled installed candidate satisfies this requirement."
+                : "Nexus returned this requirement without a compatible file. Review the author's requirements.";
+        }
+        if (dependency.match && !dependency.match.enabled) {
+            return "Installed but disabled; enable this dependency before using the mod.";
+        }
+
         switch (dependency.status) {
             case "installed":
                 return dependency.match
@@ -8839,10 +8897,29 @@
                         {/if}
                     {/snippet}
 
+                    {#snippet dependencyAlternativesBlock(dependency: ResolvedDependency)}
+                        {#if dependency.candidates && dependency.candidates.length > 0}
+                            <details class="dependency-alternatives">
+                                <summary>Accepts one of {dependency.candidates.length} compatible files</summary>
+                                {#each dependency.candidates as candidate}
+                                    <div class="dependency-alternative">
+                                        <span>{candidate.mod_name} · {candidate.file_name ?? candidate.group_name ?? "Candidate file"} {dependencyRequirementLabel(candidate) ? `· ${dependencyRequirementLabel(candidate)}` : ""}</span>
+                                        {#if candidate.mod_id}
+                                            <button type="button" on:click={() => openDependencyDetails(resolveDependencyStatus(candidate))}>Details</button>
+                                        {/if}
+                                    </div>
+                                {/each}
+                            </details>
+                        {/if}
+                    {/snippet}
+
                     {#snippet dependencyBoxBlock()}
                         <div class="dependency-box" tabindex="-1" bind:this={detailDependenciesSectionElement}>
                             <div class="dependency-box-head">
                                 <span class="detail-section-title">Dependencies</span>
+                                {#if selectedDependencyLookupState === "failed" && selectedFileId !== null}
+                                    <button type="button" on:click={() => selectedFileId !== null && loadDependenciesForFile(selectedFileId)}>Retry Lookup</button>
+                                {/if}
                                 <button
                                     type="button"
                                     disabled={!nestedDependencyCheckPending || isResolvingNestedDependencies}
@@ -8916,13 +8993,14 @@
                                         class:dependency-review={dependency.status === "review"}
                                     >
                                         <div class="dependency-head">
-                                            <span>{dependency.mod_name}</span>
+                                            <span>{dependency.candidates?.length && !dependency.selectedCandidate ? "Choose a compatible dependency" : dependency.mod_name}</span>
                                             <b>{dependency.status === "installed" ? "Installed" : dependency.status === "missing" ? "Missing" : dependency.status === "version-mismatch" ? "Version" : "Review"}</b>
                                         </div>
                                         <small>{dependency.file_name ?? dependency.group_name ?? "Candidate file"} {dependencyRequirementLabel(dependency) ? `· ${dependencyRequirementLabel(dependency)}` : ""}</small>
                                         <small>{dependencyStatusLabel(dependency)}</small>
+                                        {@render dependencyAlternativesBlock(dependency)}
                                         <div class="dependency-actions">
-                                            {#if dependency.mod_id}
+                                            {#if dependency.mod_id && (!dependency.candidates || dependency.selectedCandidate)}
                                                 <button
                                                     class="dependency-primary-action"
                                                     class:dependency-primary-warn={dependency.status === "missing" || dependency.status === "version-mismatch"}
@@ -8955,14 +9033,15 @@
                                             class:dependency-review={source.dependency.status === "review"}
                                         >
                                             <div class="dependency-head">
-                                                <span>{source.dependency.mod_name}</span>
+                                                <span>{source.dependency.candidates?.length && !source.dependency.selectedCandidate ? "Choose a compatible dependency" : source.dependency.mod_name}</span>
                                                 <b>{source.dependency.status === "installed" ? "Installed" : source.dependency.status === "missing" ? "Missing" : source.dependency.status === "version-mismatch" ? "Version" : "Review"}</b>
                                             </div>
                                             <small>From {source.parentName} · depth {source.depth}</small>
                                             <small>{source.dependency.file_name ?? source.dependency.group_name ?? "Candidate file"} {dependencyRequirementLabel(source.dependency) ? `· ${dependencyRequirementLabel(source.dependency)}` : ""}</small>
                                             <small>{nestedDependencyStatusLabel(source)}</small>
+                                            {@render dependencyAlternativesBlock(source.dependency)}
                                             <div class="dependency-actions">
-                                                {#if source.dependency.mod_id}
+                                                {#if source.dependency.mod_id && (!source.dependency.candidates || source.dependency.selectedCandidate)}
                                                     <button
                                                         class="dependency-primary-action"
                                                         class:dependency-primary-warn={source.dependency.status === "missing" || source.dependency.status === "version-mismatch"}
@@ -12806,6 +12885,38 @@
         flex-wrap: wrap;
         gap: 0.35em;
         margin-top: 0.25em;
+    }
+
+    .dependency-alternatives summary {
+        color: #78d9f4;
+        cursor: pointer;
+        font-size: 0.85em;
+        padding: 0.4em 0;
+    }
+
+    .dependency-alternative {
+        align-items: center;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        gap: 0.6em;
+        padding: 0.5em 0;
+    }
+
+    .dependency-alternative span {
+        color: #aab8c5;
+        flex: 1;
+        font-size: 0.85em;
+        font-weight: 400;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .dependency-alternative button {
+        flex: 0 0 auto;
+        font-size: 0.72em;
+        margin: 0;
+        min-width: 5em;
+        padding: 0.35em 0.55em;
     }
 
     .dependency-actions button {

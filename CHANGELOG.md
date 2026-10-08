@@ -1,4 +1,6 @@
 - Unreleased
+  - Correct Nexus dependency requests to the documented v3 mod-file-version routes, preserve version identities and alternative requirements, and show unresolved choices for review.
+  - Retain useful lookup failure details, offer retry from the dependency panel, and treat disabled dependencies as needing review.
   - Continue nested Nexus dependency checks in bounded batches, retain unfinished and failed lookups for retry, and keep incomplete checks visible in dependency and installation readiness.
   - Download native-store updates before removing the installed version, report download/extraction failures, and keep dependency installs in the same game folder without repeating dependency cycles.
   - Return catalogs to the first result when changing filters or modes, and keep Nexus preview, thumbnails, description, and changelog in reading order on narrow windows.
