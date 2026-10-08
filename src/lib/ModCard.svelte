@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { processProgress, processing } from './store';
+  import { processName, processProgress, processing } from './store';
     import { createEventDispatcher } from 'svelte';
     import { ModDatabase, modPreviewUrls, type Mod } from './mods';
     import { storeRichTextPlainText } from './richText';
@@ -11,6 +11,7 @@
     import LucideImages from "~icons/lucide/images";
 
     export let mod: Mod;
+    export let actionsDisabled = false;
     export let detailActionsOnly = false;
     export let showDetailsButton = true;
     export let sortMetricLabel = "";
@@ -85,10 +86,11 @@
         return;
       }
 
-      await uninstall();
-      await install();
-
-      dispatch("refreshMods");
+      const installedMod = mod.installedMod;
+      await runOperation(async () => {
+        await ModDatabase.uninstallMod(installedMod);
+        await ModDatabase.installMod(mod);
+      });
     }
 
     async function uninstall() {
@@ -102,77 +104,47 @@
         return;
       }
 
-      processing.set(true);
-      processProgress.set(0);
-
-      try {
-        await ModDatabase.uninstallMod(mod.installedMod);
-        await refresh();
-      } finally {
-        processing.set(false);
-      }
-
-      dispatch("refreshMods");
+      const installedMod = mod.installedMod;
+      await runOperation(() => ModDatabase.uninstallMod(installedMod));
     }
 
     async function install() {
+      await runOperation(() => ModDatabase.installMod(mod));
+    }
+
+    async function runOperation(operation: () => Promise<void>) {
+      if ($processing || actionsDisabled) return;
       processing.set(true);
       processProgress.set(0);
 
       try {
-        await ModDatabase.installMod(mod);
-        await refresh();
+        await operation();
+      } catch (error) {
+        await dialog.message(`${error}`, { title: `${mod.name} operation failed`, kind: "error" });
       } finally {
         processing.set(false);
+        processName.set("");
+        processProgress.set(0);
+        mod = mod;
+        dispatch("refreshMods");
       }
-
-      dispatch("refreshMods");
-    }
-
-    async function enableMod() {
-      if (!mod.installedMod) {
-        return;
-      }
-
-      if (isVortexManagedMod) {
-        await showVortexManagedMessage("enable");
-        return;
-      }
-
-      await ModDatabase.toggleMod(mod.installedMod, true);
-      await refresh();
-    }
-
-    async function disableMod() {
-      if (!mod.installedMod) {
-        return;
-      }
-
-      if (isVortexManagedMod) {
-        await showVortexManagedMessage("disable");
-        return;
-      }
-
-      await ModDatabase.toggleMod(mod.installedMod, false);
-      await refresh();
     }
 
     async function handleEnabledChange(event: Event) {
-      const checked = (event.currentTarget as HTMLInputElement).checked;
-      if (checked) {
-        await enableMod();
+      const input = event.currentTarget as HTMLInputElement;
+      if (!mod.installedMod) {
         return;
       }
 
-      await disableMod();
-    }
+      const checked = input.checked;
+      input.checked = mod.installedMod.isEnabled;
+      if (isVortexManagedMod) {
+        await showVortexManagedMessage(checked ? "enable" : "disable");
+        return;
+      }
 
-    async function refresh() {
-      mod = mod;
-      //installedMod = ModDatabase.getInstalledMod(mod.mod_id);
-      //isModInstalled = installedMod !== undefined;
-
-      //isUpdateAvailable = false;
+      const installedMod = mod.installedMod;
+      await runOperation(() => ModDatabase.toggleMod(installedMod, checked));
     }
 
     function formatDate(dateString: string) {
@@ -235,14 +207,14 @@
         <input
           type="checkbox"
           checked={!!mod.installedMod?.isEnabled}
-          disabled={isVortexManagedMod}
+          disabled={isVortexManagedMod || actionsDisabled || $processing}
           on:change={handleEnabledChange}
         />
         <span>{mod.installedMod?.isEnabled ? "Enabled" : "Disabled"}</span>
       </label>
     {/if}
 
-    <StatusButton isUpdateAvailable={mod.hasUpdate} isModInstalled={mod.isInstalled} update={update} uninstall={uninstall} install={install} />
+    <StatusButton disabled={actionsDisabled || $processing} isUpdateAvailable={mod.hasUpdate} isModInstalled={mod.isInstalled} update={update} uninstall={uninstall} install={install} />
   </div>
 {:else}
 <div class="feature-container description">
@@ -321,14 +293,14 @@
           <input
             type="checkbox"
             checked={!!mod.installedMod?.isEnabled}
-            disabled={isVortexManagedMod}
+            disabled={isVortexManagedMod || actionsDisabled || $processing}
             on:change={handleEnabledChange}
           />
           <span>{mod.installedMod?.isEnabled ? "Enabled" : "Disabled"}</span>
         </label>
       {/if}
 
-      <StatusButton isUpdateAvailable={mod.hasUpdate} isModInstalled={mod.isInstalled} update={update} uninstall={uninstall} install={install} />
+      <StatusButton disabled={actionsDisabled || $processing} isUpdateAvailable={mod.hasUpdate} isModInstalled={mod.isInstalled} update={update} uninstall={uninstall} install={install} />
       {#if showDetailsButton}
         <button class="details-button" type="button" on:click={showDetails}>Details</button>
       {/if}

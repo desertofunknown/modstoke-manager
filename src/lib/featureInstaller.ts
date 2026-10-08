@@ -2,7 +2,7 @@ import { DebugInstaller } from "./debugInstaller";
 import type { BaseInstaller } from "./baseInstaller";
 import { getDirectoryPath, processName } from "./store";
 import { BaseUninstaller } from "./baseUninstaller";
-import { writable, get } from "svelte/store";
+import { get } from "svelte/store";
 import { GithubInstaller } from "./githubInstaller";
 import { redLoaderInfo, unityExplorerInfo } from "./githubInfo";
 import { invoke } from "@tauri-apps/api/core";
@@ -28,6 +28,7 @@ export class FeatureInstaller {
     private _installer: BaseInstaller | null;
     private _uninstaller: BaseUninstaller;
     private _versionCheckPath: string | null = null;
+    private _modeRefreshGeneration = 0;
 
     public currentMode: InstallMode = InstallMode.Install;
     public currentModeState: string = "Install";
@@ -141,25 +142,33 @@ export class FeatureInstaller {
         }
     }
 
-    public async refreshMode() : Promise<void> {
-        if(await this._uninstaller.isInstalled()){
-            if(await this.checkRemoteVersion() === VersionResult.Greater) {
-                this.setMode(InstallMode.Update);
-            }else {
-                this.setMode(InstallMode.Uninstall);                
-            }
-        }else {
-            this.setMode(InstallMode.Install);
+    public async refreshMode(): Promise<InstallMode> {
+        const generation = ++this._modeRefreshGeneration;
+        const exePath = get(gameExePath);
+        const gameRoot = await path.dirname(exePath);
+        let mode = InstallMode.Install;
+
+        if (await this._uninstaller.isInstalled(gameRoot)) {
+            mode = await this.checkRemoteVersion(gameRoot) === VersionResult.Greater
+                ? InstallMode.Update
+                : InstallMode.Uninstall;
         }
+
+        // Instances survive component remounts, so only the latest scan may publish mode.
+        if (generation === this._modeRefreshGeneration && exePath === get(gameExePath)) {
+            this.setMode(mode);
+        }
+
+        return mode;
     }
 
-    public async checkRemoteVersion(): Promise<VersionResult | null> {
+    public async checkRemoteVersion(gameRoot?: string): Promise<VersionResult | null> {
         if(!this._versionCheckPath)
         {
             return null;
         }
 
-        let localVersion = await this.getLocalVersion();
+        let localVersion = await this.getLocalVersion(gameRoot);
         if(!localVersion)
         {
             return null;
@@ -183,14 +192,14 @@ export class FeatureInstaller {
         }
     }
 
-    async getLocalVersion(): Promise<string | null> {
+    async getLocalVersion(gameRoot?: string): Promise<string | null> {
         if(!this._versionCheckPath)
         {
             return null;
         }
 
         try {
-            const exeDir = await path.dirname(get(gameExePath));
+            const exeDir = gameRoot ?? await getDirectoryPath();
             if (this._versionCheckPath.toLowerCase().endsWith(".json")) {
                 const manifestPath = await path.join(exeDir, this._versionCheckPath);
                 if (!await fs.exists(manifestPath)) {
@@ -211,13 +220,13 @@ export class FeatureInstaller {
         return null;
     }
 
-    public async canDoAction(): Promise<Boolean>{
-        if(!this.expectedMode)
+    public async canDoAction(mode: InstallMode = this.getMode()): Promise<boolean>{
+        if(this.expectedMode === null)
         {
             return true;
         }
 
-        if(this.expectedMode !== this.getMode()){
+        if(this.expectedMode !== mode){
             return false;
         }
 

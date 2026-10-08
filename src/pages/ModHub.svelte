@@ -2,6 +2,7 @@
     import { onDestroy, onMount, tick } from "svelte";
     import SOTFMods from "./Mods.svelte";
     import NexusVortex from "./NexusVortex.svelte";
+    import { gameExePath } from "../lib/store";
     import LucideCloudDownload from "~icons/lucide/cloud-download";
     import LucideLayoutGrid from "~icons/lucide/layout-grid";
     import LucideMaximize2 from "~icons/lucide/maximize-2";
@@ -346,6 +347,7 @@
                     </span>
                 </div>
                 <div class="source-section-body">
+                    {#key $gameExePath}
                     <SOTFMods
                         embeddedStorePreview={activeSource === "all"}
                         embeddedControlsExpanded={allStoresSotfControlsExpanded}
@@ -355,6 +357,7 @@
                         on:searchChange={(event) => setSharedSearchTerm(event.detail)}
                         on:summaryChange={(event) => updateSourceSummary("sotf", event.detail)}
                     />
+                    {/key}
                 </div>
             </section>
 
@@ -381,6 +384,7 @@
                     </span>
                 </div>
                 <div class="source-section-body nexus-source-section-body">
+                    {#key $gameExePath}
                     <NexusVortex
                         embeddedStorePreview={activeSource === "all"}
                         embeddedControlsExpanded={allStoresNexusControlsExpanded}
@@ -390,6 +394,7 @@
                         on:searchChange={(event) => setSharedSearchTerm(event.detail)}
                         on:summaryChange={(event) => updateSourceSummary("nexus", event.detail)}
                     />
+                    {/key}
                 </div>
             </section>
 

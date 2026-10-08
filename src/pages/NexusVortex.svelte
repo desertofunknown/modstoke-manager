@@ -7,6 +7,7 @@
     import LucideExternalLink from "~icons/lucide/external-link";
     import LucideImages from "~icons/lucide/images";
     import nexusFallbackImage from "../assets/sons-ui/blurred-title-screen-texture2d-14.png";
+    import { modalFocus } from "../lib/modalFocus";
     import {
         clearNexusApiKey,
         endorseNexusSotfMod,
@@ -47,7 +48,7 @@
         setInventoryEntryEnabled,
         type InstalledInventoryEntry
     } from "../lib/modInventory";
-    import { getDirectoryPath, isPathValid } from "../lib/store";
+    import { gameExePath, getDirectoryPath, isPathValid } from "../lib/store";
     import * as dialog from "@tauri-apps/plugin-dialog"
     import * as shell from "@tauri-apps/plugin-shell"
     import { Command } from "@tauri-apps/plugin-shell";
@@ -199,6 +200,8 @@
     let trackedMods: NexusTrackedMod[] = [];
     let trackedModsLoaded = false;
     let inventory: InstalledInventoryEntry[] = [];
+    let inventoryRequestId = 0;
+    let isDestroyed = false;
     let selectedView: NexusView = "all";
     let catalogMode: CatalogMode = "online";
     let nexusSearchTerm = "";
@@ -236,6 +239,8 @@
     let status = "";
     let vortexStagingPath: string | null = null;
     let selectedMod: NexusMod | null = null;
+    let detailGeneration = 0;
+    let dependencyRequestId = 0;
     let selectedModDetails: NexusMod | null = null;
     let selectedModFiles: NexusModFile[] = [];
     let selectedFileId: number | null = null;
@@ -700,7 +705,9 @@
         }
         loadEndorsementPreferences();
         await refreshInventory();
+        if (isDestroyed) return;
         await refreshSession();
+        if (isDestroyed) return;
 
         if (session.is_connected) {
             applyNexusLocalCatalogCache();
@@ -711,6 +718,10 @@
     });
 
     onDestroy(() => {
+        isDestroyed = true;
+        inventoryRequestId += 1;
+        detailGeneration += 1;
+        clearNestedDependencyCheck();
         cleanupSso();
         cleanupManualRefreshCooldown();
         cleanupNexusCatalogAutoRefresh();
@@ -983,12 +994,21 @@
     }
 
     async function refreshInventory() {
-        if (!$isPathValid) {
+        const requestId = ++inventoryRequestId;
+        const exePath = $gameExePath;
+        if (!$isPathValid || !exePath || isDestroyed) {
             return;
         }
 
-        inventory = await scanInstalledInventory();
-        const vortex = await readVortexDeployment(await getDirectoryPath());
+        const gameRoot = await getDirectoryPath();
+        const [entries, vortex] = await Promise.all([
+            scanInstalledInventory(gameRoot),
+            readVortexDeployment(gameRoot)
+        ]);
+        if (isDestroyed || requestId !== inventoryRequestId || exePath !== $gameExePath || !$isPathValid) {
+            return;
+        }
+        inventory = entries;
         vortexStagingPath = vortex.stagingPath;
     }
 
@@ -2597,6 +2617,8 @@
     }
 
     async function openModDetails(mod: NexusMod, options: { pushCurrent?: boolean } = {}) {
+        const generation = ++detailGeneration;
+        const isCurrent = () => generation === detailGeneration && selectedMod === mod;
         if (options.pushCurrent && selectedMod && selectedMod.mod_id !== mod.mod_id) {
             detailBackStack = [...detailBackStack, selectedModDetails ?? selectedMod].slice(-8);
         }
@@ -2623,6 +2645,9 @@
                 fetchNexusModFiles(mod.mod_id),
                 fetchNexusModChangelogs(mod.mod_id).catch(() => ({ changelogs: [], rate_limit: session.rate_limit ?? {} }))
             ]);
+            if (!isCurrent()) {
+                return;
+            }
             const mergedDetails = {
                 ...mod,
                 ...detailResponse.details,
@@ -2653,12 +2678,17 @@
                 await loadDependenciesForFile(selectedFileId);
             }
         } catch (error) {
+            if (!isCurrent()) {
+                return;
+            }
             await dialog.message(`${error}`, {
                 title: "Nexus mod details",
                 kind: "error"
             });
         } finally {
-            isDetailLoading = false;
+            if (isCurrent()) {
+                isDetailLoading = false;
+            }
         }
     }
 
@@ -2672,6 +2702,7 @@
             deployment: detailFooterElement
         }[target];
 
+        element?.focus({ preventScroll: true });
         element?.scrollIntoView({ block: "start", behavior: "smooth" });
     }
 
@@ -2763,6 +2794,8 @@
     }
 
     function closeModDetails() {
+        detailGeneration += 1;
+        isDetailLoading = false;
         selectedMod = null;
         selectedModDetails = null;
         selectedDetailPreviewIndex = 0;
@@ -2799,13 +2832,25 @@
             return;
         }
 
-        await selectNexusFile(recommendedNexusFile.file_id);
+        const generation = detailGeneration;
+        const fileId = recommendedNexusFile.file_id;
+        await selectNexusFile(fileId);
+        if (generation !== detailGeneration || selectedFileId !== fileId) {
+            return;
+        }
         selectedFileListFilter = "selected";
         await tick();
-        detailFilesSectionElement?.scrollIntoView({ block: "start", behavior: "smooth" });
+        if (generation === detailGeneration && selectedFileId === fileId) {
+            scrollDetailSection("files");
+        }
     }
 
     async function loadDependenciesForFile(fileId: number) {
+        const generation = detailGeneration;
+        const requestId = ++dependencyRequestId;
+        const mod = selectedMod;
+        const isCurrent = () => generation === detailGeneration && requestId === dependencyRequestId
+            && selectedMod === mod && selectedFileId === fileId;
         selectedDependencies = [];
         selectedDependencyMessage = "Checking Nexus dependency metadata...";
         clearNestedDependencyCheck();
@@ -2814,7 +2859,7 @@
             const response = await fetchNexusFileDependencies(fileId, {
                 nexusFileId: selectedFile?.nexus_file_id
             });
-            if (selectedFileId !== fileId) {
+            if (!isCurrent()) {
                 return;
             }
             selectedDependencies = response.dependencies;
@@ -2826,7 +2871,7 @@
                 rate_limit: response.rate_limit
             };
         } catch (error) {
-            if (selectedFileId !== fileId) {
+            if (!isCurrent()) {
                 return;
             }
             selectedDependencies = [];
@@ -8312,10 +8357,11 @@
 
 {#if selectedMod}
     <div class="detail-backdrop" role="presentation">
-        <section class="detail-panel" aria-label={`${selectedMod.name} details`}>
+        <button class="detail-backdrop-dismiss" type="button" tabindex="-1" aria-label="Close Nexus mod details" on:click={closeModDetails}></button>
+        <div class="detail-panel" role="dialog" aria-modal="true" aria-labelledby="nexus-detail-title" tabindex="-1" use:modalFocus={{ generation: detailGeneration, close: closeModDetails }}>
             <div class="detail-header">
                 <div class="detail-title">
-                    <span class="panel-title">{selectedModDetails?.name ?? selectedMod.name}</span>
+                    <span class="panel-title" id="nexus-detail-title">{selectedModDetails?.name ?? selectedMod.name}</span>
                     <span class="panel-subtitle" title={nexusCategorySourceTitle(selectedModDetails ?? selectedMod)}>
                         {selectedModDetails?.category_name ?? selectedMod.category_name ?? "Nexus"}
                         {#if nexusCategorySourceBadge(selectedModDetails?.category_source ?? selectedMod.category_source)}
@@ -8418,7 +8464,7 @@
                         </div>
                     {/if}
 
-                    <div class="detail-text" bind:this={detailDescriptionSectionElement}>
+                    <div class="detail-text" tabindex="-1" bind:this={detailDescriptionSectionElement}>
                         <div class="detail-text-head">
                             <span class="detail-section-title">Directions / Description</span>
                             {#if selectedDetailDescriptionCanToggle}
@@ -8436,12 +8482,12 @@
                     </div>
 
                     {#if selectedChangelogs.length === 0}
-                        <div class="changelog-compact-note" bind:this={detailChangelogSectionElement}>
+                        <div class="changelog-compact-note" tabindex="-1" bind:this={detailChangelogSectionElement}>
                             <span class="detail-section-title">Changelog</span>
                             <span class="dependency-empty">No API-listed changelog entries were returned for this mod.</span>
                         </div>
                     {:else}
-                        <div class="changelog-box" bind:this={detailChangelogSectionElement}>
+                        <div class="changelog-box" tabindex="-1" bind:this={detailChangelogSectionElement}>
                             <span class="detail-section-title">Changelog</span>
                             {#each selectedChangelogs as changelog (`${changelog.version}:${changelog.updated_at ?? ""}`)}
                                 <div class="changelog-row">
@@ -8473,6 +8519,7 @@
                         class:install-plan-review={selectedInstallPlan.tone === "review"}
                         class:install-plan-blocked={selectedInstallPlan.tone === "blocked"}
                         bind:this={detailInstallPlanSectionElement}
+                        tabindex="-1"
                     >
                         <div class="install-plan-head">
                             <span class="detail-section-title">Install Plan</span>
@@ -8581,7 +8628,7 @@
                         </div>
                     {/if}
 
-                    <div class="file-picker" bind:this={detailFilesSectionElement}>
+                    <div class="file-picker" tabindex="-1" bind:this={detailFilesSectionElement}>
                         <div class="file-picker-head">
                             <span class="detail-section-title">Files</span>
                             {#if selectedFileCanUseRecommended}
@@ -8753,7 +8800,7 @@
                     {/snippet}
 
                     {#snippet dependencyBoxBlock()}
-                        <div class="dependency-box" bind:this={detailDependenciesSectionElement}>
+                        <div class="dependency-box" tabindex="-1" bind:this={detailDependenciesSectionElement}>
                             <div class="dependency-box-head">
                                 <span class="detail-section-title">Dependencies</span>
                                 <button
@@ -8902,7 +8949,7 @@
                 </div>
             </div>
 
-            <div class="detail-footer" aria-label="Nexus deployment actions" bind:this={detailFooterElement}>
+            <div class="detail-footer" aria-label="Nexus deployment actions" tabindex="-1" bind:this={detailFooterElement}>
                 <div class="detail-footer-copy">
                     <span class="detail-section-title">Deployment</span>
                     <small title={selectedInstallFileLabel}>{selectedInstallFileLabel}</small>
@@ -8979,7 +9026,7 @@
                     {/each}
                 </div>
             </div>
-        </section>
+        </div>
     </div>
 {/if}
 
@@ -10458,6 +10505,22 @@
         z-index: 20;
     }
 
+    .detail-backdrop-dismiss {
+        background: transparent;
+        border: 0;
+        box-shadow: none;
+        cursor: default;
+        height: auto;
+        inset: 0;
+        margin: 0;
+        min-width: 0;
+        padding: 0;
+        position: absolute;
+        width: auto;
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+
     .detail-panel {
         --detail-panel-height: calc(100vh - clamp(1.2em, 3vh, 2.2em));
         --detail-scroll-section-max: clamp(280px, calc((var(--detail-panel-height) - 15em) / 1.65), 560px);
@@ -10473,6 +10536,7 @@
         max-width: min(97vw, var(--app-content-max-width, 1680px));
         min-height: min(82vh, 820px);
         padding: clamp(1em, 2vh, 1.35em);
+        position: relative;
         width: 100%;
     }
 

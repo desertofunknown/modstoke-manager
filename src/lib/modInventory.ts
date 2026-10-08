@@ -1,5 +1,6 @@
 import * as path from "@tauri-apps/api/path";
-import { getDirectoryPath } from "./store";
+import { gameExePath, getDirectoryPath, isPathValid } from "./store";
+import { get } from "svelte/store";
 import * as fs from "@tauri-apps/plugin-fs"
 
 export type LoaderType = "redloader-mod" | "redloader-library" | "bepinex-plugin";
@@ -18,6 +19,7 @@ export type VortexDeployment = {
 };
 
 export type InstalledInventoryEntry = {
+    gameRoot: string;
     id: string;
     name: string;
     version?: string;
@@ -52,8 +54,8 @@ type FsDirEntry = {
 const MAX_SCAN_DEPTH = 4;
 const BepInExSupportFolders = new Set(["openacailoader", "redloaderbepinexcompat"]);
 
-export async function scanInstalledInventory(): Promise<InstalledInventoryEntry[]> {
-    const gameRoot = await getDirectoryPath();
+export async function scanInstalledInventory(root?: string): Promise<InstalledInventoryEntry[]> {
+    const gameRoot = root ?? await getDirectoryPath();
     const vortex = await readVortexDeployment(gameRoot);
     const entries: InstalledInventoryEntry[] = [];
 
@@ -134,7 +136,18 @@ export function describeInstallSource(entry: InstalledInventoryEntry | null | un
     return "Manual / local";
 }
 
+export async function assertCurrentGameRoot(gameRoot: string): Promise<void> {
+    const exePath = get(gameExePath);
+    const selectedRoot = await getDirectoryPath();
+    if (!get(isPathValid) || exePath !== get(gameExePath)
+        || normalizePath(gameRoot) !== normalizePath(selectedRoot)) {
+        throw new Error("The selected game folder has changed. Refresh the installed mods before changing this mod.");
+    }
+}
+
 export async function setInventoryEntryEnabled(entry: InstalledInventoryEntry, shouldEnable: boolean): Promise<void> {
+    await assertCurrentGameRoot(entry.gameRoot);
+    const gameRoot = entry.gameRoot;
     if (entry.installSource === "vortex") {
         throw new Error("This mod is managed by Vortex. Use Vortex to enable or disable it so deployment metadata stays consistent.");
     }
@@ -145,7 +158,6 @@ export async function setInventoryEntryEnabled(entry: InstalledInventoryEntry, s
             return;
         }
 
-        const gameRoot = await getDirectoryPath();
         const packageName = await path.basename(entry.packagePath);
         const enabledPackagePath = await path.join(gameRoot, "BepInEx", "plugins", packageName);
         const oldPackagePath = entry.packagePath;
@@ -190,7 +202,6 @@ export async function setInventoryEntryEnabled(entry: InstalledInventoryEntry, s
         return;
     }
 
-    const gameRoot = await getDirectoryPath();
     const packageName = await path.basename(entry.packagePath);
     const rootPath = entry.expectedLocation === "Libs"
         ? await path.join(gameRoot, "Libs")
@@ -245,6 +256,7 @@ async function scanRedLoaderRoot(
         const name = manifest.name ?? manifest.id ?? packageName;
 
         entries.push({
+            gameRoot,
             id,
             name,
             version: manifest.version,
@@ -286,6 +298,7 @@ async function scanBepInExPlugins(gameRoot: string, vortex: VortexDeployment): P
         const packageName = await path.basename(packagePath);
 
         entries.push({
+            gameRoot,
             id: assemblyName,
             name: assemblyName,
             loaderType: "bepinex-plugin",

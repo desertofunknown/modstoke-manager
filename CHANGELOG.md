@@ -1,4 +1,7 @@
 - Unreleased
+  - Refresh inventory and feature controls when the selected game installation changes, keep scans tied to their original folder, and reject actions on stale installed entries.
+  - Keep mod actions unavailable until the local inventory is ready, with visible scan retries and operation errors.
+  - Add keyboard focus, Tab wrapping, Escape dismissal, and focus restoration to mod detail dialogs; discard late Nexus detail and dependency responses after changing selection.
   - Validate OpenACAI loader downloads before removing the installed runtime, preserve BepInEx configuration after extraction failures, and require installed file verification before reporting success.
   - Surface feature installation failures, refresh action state after partial failures, and clear temporary web downloads on both success and failure.
   - Preserve catalog filters, sorting, and loaded results when switching tabs or stores, and load secondary pages only when opened.

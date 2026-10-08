@@ -18,8 +18,8 @@ export class BaseUninstaller {
         this.name = name;
     }
 
-    protected async getFilePath(fileName: string): Promise<string> {
-        const directoryPath = await getDirectoryPath();
+    protected async getFilePath(fileName: string, gameRoot?: string): Promise<string> {
+        const directoryPath = gameRoot ?? await getDirectoryPath();
         return `${directoryPath}/${fileName}`;
     }
 
@@ -32,26 +32,28 @@ export class BaseUninstaller {
     }
 
     public async uninstall(): Promise<void> {
+        const gameRoot = await getDirectoryPath();
         for (const folder of this.foldersToClear) {
-            const folderPath = await this.getFilePath(folder);
+            const folderPath = await this.getFilePath(folder, gameRoot);
             if (await fs.exists(folderPath)) {
                 await fs.remove(folderPath, { recursive: true });
             }
         }
 
         for (const file of this.filesToClear) {
-            const filePath = await this.getFilePath(file);
+            const filePath = await this.getFilePath(file, gameRoot);
             if (await fs.exists(filePath)) {
                 await fs.remove(filePath);
             }
         }
     }
 
-    public async isInstalled(): Promise<boolean> {
+    public async isInstalled(gameRoot?: string): Promise<boolean> {
+        const directoryPath = gameRoot ?? await getDirectoryPath();
 
         if (this.overrideCheckFiles) {
             for (const file of this.overrideCheckFiles) {
-                const filePath = await this.getFilePath(file);
+                const filePath = await this.getFilePath(file, directoryPath);
                 if (await fs.exists(filePath)) {
                     return true;
                 }
@@ -60,14 +62,14 @@ export class BaseUninstaller {
         }
 
         for (const folder of this.foldersToClear) {
-            const folderPath = await this.getFilePath(folder);
+            const folderPath = await this.getFilePath(folder, directoryPath);
             if (await fs.exists(folderPath)) {
                 return true;
             }
         }
 
         for (const file of this.filesToClear) {
-            const filePath = await this.getFilePath(file);
+            const filePath = await this.getFilePath(file, directoryPath);
             if (await fs.exists(filePath)) {
                 return true;
             }

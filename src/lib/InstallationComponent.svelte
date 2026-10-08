@@ -1,65 +1,113 @@
 <script lang="ts">
-  import { processName, processProgress, processing } from './store';
+  import { gameExePath, isPathValid, processName, processProgress, processing } from './store';
   import { message } from '@tauri-apps/plugin-dialog';
   import { InstallMode, type FeatureInstaller } from "./featureInstaller";
-    import { onMount } from 'svelte';
+  import { onMount } from 'svelte';
 
   export let feature: FeatureInstaller;
 
-  $: currentMode = feature.currentModeState;
+  let currentMode = 'Install';
+  let readyMode = InstallMode.Install;
+  let readyPath: string | null = null;
+  let readyFeature: FeatureInstaller | null = null;
+  let shouldBeVisible = false;
+  let featureLabel = '';
+  let loading = true;
+  let statusError: string | null = null;
+  let mounted = false;
+  let refreshGeneration = 0;
+
   $: currentClass = currentMode.toLowerCase();
-  $: shouldBeVisible = false;
   $: description = feature.description;
+  $: if (mounted) {
+    void refreshStatus(feature, $gameExePath, $isPathValid);
+  }
 
-  $: featureLabel = feature.getName();
-  $: loading = true;
+  onMount(() => {
+    mounted = true;
+    return () => {
+      mounted = false;
+      ++refreshGeneration;
+    };
+  });
 
-  async function handleWrapper(callback: () => Promise<void>) {
+  function isCurrentRefresh(generation: number, selectedFeature: FeatureInstaller, selectedPath: string) {
+    return mounted && generation === refreshGeneration && selectedFeature === feature
+      && selectedPath === $gameExePath && $isPathValid;
+  }
+
+  async function refreshStatus(selectedFeature: FeatureInstaller, selectedPath: string, pathValid: boolean) {
+    const generation = ++refreshGeneration;
+    loading = pathValid && !!selectedPath;
+    shouldBeVisible = false;
+    readyPath = null;
+    readyFeature = null;
+    statusError = null;
+    featureLabel = selectedFeature.getName();
+
+    if (!loading) {
+      return;
+    }
+
+    try {
+      const mode = await selectedFeature.refreshMode();
+      if (!isCurrentRefresh(generation, selectedFeature, selectedPath)) {
+        return;
+      }
+
+      const label = await selectedFeature.getRemoteVersionString(true) ?? selectedFeature.getName();
+      const visible = await selectedFeature.canDoAction(mode);
+      if (!isCurrentRefresh(generation, selectedFeature, selectedPath)) {
+        return;
+      }
+
+      currentMode = InstallMode[mode];
+      readyMode = mode;
+      featureLabel = label;
+      shouldBeVisible = visible;
+      readyPath = selectedPath;
+      readyFeature = selectedFeature;
+    } catch (error) {
+      if (isCurrentRefresh(generation, selectedFeature, selectedPath)) {
+        statusError = `Could not check ${selectedFeature.getName()} installation: ${error}`;
+      }
+    } finally {
+      if (isCurrentRefresh(generation, selectedFeature, selectedPath)) {
+        loading = false;
+      }
+    }
+  }
+
+  async function handleAction(mode: InstallMode) {
+    if (loading || $processing || !shouldBeVisible || !$isPathValid
+      || readyPath !== $gameExePath || readyFeature !== feature) {
+      return;
+    }
+
+    const selectedFeature = feature;
+    ++refreshGeneration;
+    loading = true;
+    shouldBeVisible = false;
+    readyPath = null;
     processing.set(true);
     processProgress.set(0);
 
     try {
-      await callback();
+      await selectedFeature.handle(mode);
     } catch (error) {
-      await message(`${error}`, { title: `${feature.getName()} operation failed`, kind: 'error' });
+      try {
+        await message(`${error}`, { title: `${selectedFeature.getName()} operation failed`, kind: 'error' });
+      } catch (dialogError) {
+        console.error('Failed to show operation error', error, dialogError);
+      }
     } finally {
       processing.set(false);
       processName.set('');
       processProgress.set(0);
-      currentMode = feature.currentModeState;
-      await refreshVisibility();
+      if (mounted) {
+        await refreshStatus(feature, $gameExePath, $isPathValid);
+      }
     }
-  }
-
-  async function handleDefault() {
-    await handleWrapper(async () => {
-      await feature.handleCurrentMode();
-    });
-  }  
-
-  async function handleUpdate() {
-    await handleWrapper(async () => {
-      await feature.handle(InstallMode.Update);
-    });
-  }
-
-  async function handleUninstall() {
-    await handleWrapper(async () => {
-      await feature.handle(InstallMode.Uninstall);
-    });
-  }
-
-  onMount( async () => {
-    await feature.refreshMode();
-    currentMode = feature.currentModeState;
-    featureLabel = await feature.getRemoteVersionString(true)??feature.getName();
-    await refreshVisibility();
-    loading = false;
-  });
-
-  async function refreshVisibility()
-  {
-    shouldBeVisible = await feature.canDoAction() as boolean;
   }
 </script>
 
@@ -67,20 +115,23 @@
   <div class="feature-container">
     <span class="description-content">Checking {feature.getName()} installation...</span>
   </div>
-{/if}
-
-{#if shouldBeVisible}
+{:else if statusError}
+  <div class="feature-container">
+    <span class="description-content" role="alert">{statusError}</span>
+    <button disabled={$processing || !$isPathValid} on:click={() => refreshStatus(feature, $gameExePath, $isPathValid)}>Retry {feature.getName()} check</button>
+  </div>
+{:else if shouldBeVisible && readyPath === $gameExePath && readyFeature === feature && $isPathValid}
   <div class="feature-container" class:description={description}>
     {#if description}
         <span class="description-content">{description}</span>
     {/if}
   {#if currentMode==="Update"}
     <div class="horizontal">
-      <button on:click={handleUpdate} class="update btn-left">Update {featureLabel}</button>
-      <button on:click={handleUninstall} class="uninstall btn-right">Uninstall {feature.getName()}</button>
+      <button disabled={$processing} on:click={() => handleAction(InstallMode.Update)} class="update btn-left">Update {featureLabel}</button>
+      <button disabled={$processing} on:click={() => handleAction(InstallMode.Uninstall)} class="uninstall btn-right">Uninstall {feature.getName()}</button>
     </div>
   {:else}
-    <button on:click={handleDefault} class="{currentClass}">{currentMode} {featureLabel}</button>
+    <button disabled={$processing} on:click={() => handleAction(readyMode)} class="{currentClass}">{currentMode} {featureLabel}</button>
   {/if}
   </div>
 {/if}

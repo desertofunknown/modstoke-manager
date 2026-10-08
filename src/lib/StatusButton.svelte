@@ -1,6 +1,7 @@
 <script lang="ts">
     export let isUpdateAvailable: boolean;
     export let isModInstalled: boolean;
+    export let disabled = false;
 
     export let update: () => Promise<void>;
     export let uninstall: () => Promise<void>;
@@ -9,14 +10,14 @@
 
 {#if isUpdateAvailable}
     <div class="horizontal">
-        <button class="update btn-left button-wrapper" on:click={update}>Update</button>
-        <button class="uninstall btn-right button-wrapper" on:click={uninstall}>Uninstall</button>
+        <button {disabled} class="update btn-left button-wrapper" on:click={update}>Update</button>
+        <button {disabled} class="uninstall btn-right button-wrapper" on:click={uninstall}>Uninstall</button>
     </div>
 {:else}
     {#if isModInstalled}
-        <button class="uninstall button-wrapper" on:click={uninstall}>Uninstall</button>
+        <button {disabled} class="uninstall button-wrapper" on:click={uninstall}>Uninstall</button>
     {:else}
-        <button class="install button-wrapper" on:click={install}>Install</button>
+        <button {disabled} class="install button-wrapper" on:click={install}>Install</button>
     {/if}
 {/if}
 

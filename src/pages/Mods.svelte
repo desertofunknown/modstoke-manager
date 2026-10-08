@@ -6,6 +6,7 @@
     import { ModDatabase, modDependencies, modPreviewUrls, Sorting } from "../lib/mods";
     import { renderStoreRichText } from "../lib/richText";
     import { fallbackPreviewUrl } from "../lib/modPreview";
+    import { modalFocus } from "../lib/modalFocus";
     import InfiniteScroll from "../lib/InfiniteScroll.svelte";
     import { debounce } from "lodash";
     import SvgSpinnersBlocksWave from '~icons/svg-spinners/blocks-wave'
@@ -72,6 +73,8 @@
     let onlineCatalogGeneration = 0;
     let latestOnlineFetchId = 0;
     let installedInventoryWarning = "";
+    let isScanningInventory = true;
+    let inventoryReady = false;
     let modsPageElement: HTMLDivElement | null = null;
     let modsLayoutObserver: ResizeObserver | null = null;
     let modsLayoutFrame: number | null = null;
@@ -90,6 +93,7 @@
     let selectedDetailDependencyRows: DetailDependencyRow[] = [];
     let detailDependencyLookupToken = 0;
     let detailModLookupToken = 0;
+    let detailGeneration = 0;
 
     const SOTF_DETAIL_FALLBACK_IMAGE = fallbackPreviewUrl;
     const detailModCache = new Map<string, Mod>();
@@ -202,27 +206,10 @@
 
     onMount(async () => {
         setupModsLayoutObserver();
-        //processing.set(true);
-        //processProgress.set(0);
-        //processName.set("Loading mods...");
-        //await ModDatabase.refreshAll(false);
-
-        //await filter();
-        //processing.set(false);
+        ModDatabase.invalidateInstalledMods();
         
-        await Promise.all([loadCategories(), reloadOnline()]);
+        await Promise.all([loadCategories(), reloadOnline(), refreshInstalledState()]);
         if (isDestroyed) return;
-
-        try {
-            await ModDatabase.initDatabase();
-            if (isDestroyed) return;
-            await ModDatabase.initModList(filtered);
-            filtered = [...filtered];
-            installedInventoryWarning = "";
-        } catch (error) {
-            installedInventoryWarning = `Installed mod scan failed: ${error}`;
-            console.log(installedInventoryWarning);
-        }
 
         await measureModsLayoutAfterTick();
 
@@ -234,6 +221,7 @@
         onlineCatalogGeneration += 1;
         detailDependencyLookupToken += 1;
         detailModLookupToken += 1;
+        detailGeneration += 1;
         cleanupModsLayoutObserver();
     });
 
@@ -461,15 +449,35 @@
         //await filter();
     }
 
-    async function refreshMods() {
+    async function refreshInstalledState() {
+        if (isDestroyed) return;
+        isScanningInventory = true;
+        inventoryReady = false;
         try {
             await ModDatabase.loadInstalledMods();
+            if (isDestroyed) return;
+            ModDatabase.initModList(filtered);
+            filtered = [...filtered];
+            if (selectedDetailMod) {
+                ModDatabase.initModList([selectedDetailMod]);
+                selectedDetailMod = { ...selectedDetailMod };
+                resolveSelectedDetailDependencies(selectedDetailMod);
+            }
+            inventoryReady = true;
             installedInventoryWarning = "";
         } catch (error) {
+            if (isDestroyed) return;
+            ModDatabase.invalidateInstalledMods();
             installedInventoryWarning = `Installed mod scan failed: ${error}`;
             console.log(installedInventoryWarning);
+        } finally {
+            if (!isDestroyed) isScanningInventory = false;
         }
-        
+    }
+
+    async function refreshMods() {
+        await refreshInstalledState();
+        if (isDestroyed || !inventoryReady) return;
         if (onlineSelected) {
             await toggleOnline();
             return;
@@ -479,11 +487,13 @@
     }
 
     async function refreshModsFromDetail() {
+        const generation = detailGeneration;
         const selectedKey = selectedDetailMod ? modIdentityKey(selectedDetailMod) : "";
         await refreshMods();
         await tick();
 
-        if (!selectedKey) {
+        if (isDestroyed || generation !== detailGeneration || !selectedKey
+            || !selectedDetailMod || modIdentityKey(selectedDetailMod) !== selectedKey) {
             return;
         }
 
@@ -496,6 +506,7 @@
     }
 
     function openModDetails(mod: Mod) {
+        detailGeneration += 1;
         selectedDetailMod = mod;
         selectedDetailPreviewIndex = 0;
         selectedDetailLoadError = "";
@@ -504,6 +515,7 @@
     }
 
     function closeModDetails() {
+        detailGeneration += 1;
         selectedDetailMod = null;
         selectedDetailIsLoading = false;
         selectedDetailLoadError = "";
@@ -1005,7 +1017,7 @@
                 <button class="btn-left cat-btn" class:cat-btn-selected={onlineSelected} on:click={toggleOnline}>Online</button>
                 <button class="btn-right cat-btn" class:cat-btn-selected={installedSelected} on:click={toggleInstalled}>Installed</button>
             </div>
-            <button class="refresh-small icon-text-button" disabled={isLoading} on:click={refreshMods} title="Refresh mods">
+            <button class="refresh-small icon-text-button" disabled={isLoading || isScanningInventory} on:click={refreshMods} title="Refresh mods">
                 <LucideRefreshCw aria-hidden="true" />
                 <span>Refresh</span>
             </button>
@@ -1055,6 +1067,7 @@
 
         <div class="mods-note">
             <span>{visibleMods.length} shown from {filtered.length} {onlineSelected ? "loaded" : "installed"}.</span>
+            {#if isScanningInventory}<span>Checking installed mods...</span>{/if}
             <span>Compact list.</span>
             {#if categories.length > 0}
                 <span>{categories.length} categories.</span>
@@ -1076,14 +1089,18 @@
             </div>
         {/if}
 
-        {#if installedInventoryWarning && onlineSelected}
-            <div class="catalog-error subtle warning-note">{installedInventoryWarning}</div>
+        {#if installedInventoryWarning}
+            <div class="catalog-error subtle warning-note">
+                <span>{installedInventoryWarning}</span>
+                <button disabled={isScanningInventory} on:click={refreshMods}>Retry scan</button>
+            </div>
         {/if}
 
         <div class="scroller" class:grid={isGrid}>
             {#each visibleMods as mod (mod.mod_id ?? mod.slug ?? mod.name)}
                 <ModCard
                     mod={mod}
+                    actionsDisabled={!inventoryReady}
                     sortMetricLabel={activeSortMetricLabel}
                     sortMetricValue={rowSortMetricValue(mod, selectedSort)}
                     on:details={(event) => openModDetails(event.detail)}
@@ -1109,8 +1126,8 @@
 
         {#if selectedDetailMod}
             <div class="sotf-detail-backdrop">
-                <button class="sotf-detail-backdrop-dismiss" type="button" aria-label="Close SOTF Mods details" on:click={closeModDetails}></button>
-                <div class="sotf-detail-panel" role="dialog" aria-modal="true" aria-labelledby="sotf-detail-title" tabindex="-1">
+                <button class="sotf-detail-backdrop-dismiss" type="button" tabindex="-1" aria-label="Close SOTF Mods details" on:click={closeModDetails}></button>
+                <div class="sotf-detail-panel" role="dialog" aria-modal="true" aria-labelledby="sotf-detail-title" tabindex="-1" use:modalFocus={{ generation: detailGeneration, close: closeModDetails }}>
                     <header class="sotf-detail-header">
                         <div class="sotf-detail-title">
                             <span id="sotf-detail-title">{selectedDetailMod.name}</span>
@@ -1278,6 +1295,7 @@
                             <ModCard
                                 detailActionsOnly={true}
                                 mod={selectedDetailMod}
+                                actionsDisabled={!inventoryReady}
                                 on:refreshMods={refreshModsFromDetail}
                             />
                             <button class="sotf-detail-open-page" type="button" on:click={openSelectedDetailPage}>
