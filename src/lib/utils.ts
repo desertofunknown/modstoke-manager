@@ -17,7 +17,7 @@ export async function downloadAndInstall(
     destination: string,
     downloadUrl: string,
     downloadName: string,
-    beforeInstall?: () => Promise<void>): Promise<void> {
+    installArchive?: (sourcePath: string) => Promise<void>): Promise<void> {
     processName.set(`Downloading ${downloadName}...`);
 
     if (!downloadUrl) {
@@ -41,9 +41,12 @@ export async function downloadAndInstall(
         }
       );
 
-      await beforeInstall?.();
-      processName.set(`Extracting ${downloadName}...`);
-      await unzip(tempPath, destination);
+      processName.set(`Installing ${downloadName}...`);
+      if (installArchive) {
+        await installArchive(tempPath);
+      } else {
+        await unzip(tempPath, destination);
+      }
     } finally {
       await TempFileCache.clearCache();
     }

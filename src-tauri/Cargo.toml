@@ -24,6 +24,7 @@ winreg = "*"
 keyring = "2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.10"
+tempfile = "3"
 tauri-plugin-shell = "2"
 tauri-plugin-http = "2"
 tauri-plugin-fs = "2"

@@ -1,4 +1,5 @@
 - Unreleased
+  - Stage native mod updates before replacing files, preserve disabled paths and files absent from the release, and restore overwritten files after installation failures. Keep recovery backups when restoration fails and refuse to overwrite Vortex-managed files.
   - Keep expanded Nexus descriptions and file notes inside the scrolling detail layout on short, narrow windows.
   - Match local package names to possessive Nexus titles, prefer explicit Nexus identities, and stop treating author names as installed mods.
   - Correct Nexus dependency requests to the documented v3 mod-file-version routes, preserve version identities and alternative requirements, and show unresolved choices for review.

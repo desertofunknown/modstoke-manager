@@ -1,7 +1,8 @@
 import * as path from "@tauri-apps/api/path";
+import { invoke } from '@tauri-apps/api/core';
 import { gameExePath, getDirectoryPath, getLibsDir, getModsDir, isPathValid, processName, processProgress } from './store';
 import { get } from 'svelte/store';
-import { downloadAndInstall, showMessageBox } from './utils';
+import { downloadAndInstall, showMessageBox, unzip } from './utils';
 import { assertCurrentGameRoot, scanInstalledInventory, type InstallSource, type LoaderType } from './modInventory';
 import * as fs from "@tauri-apps/plugin-fs"
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
@@ -707,14 +708,14 @@ export class ModDatabase {
         }
 
         const gameRoot = installedMod.gameRoot;
-        await this.installModAtRoot(mod, gameRoot, new Set<string>(), () => this.uninstallMod(installedMod));
+        await this.installModAtRoot(mod, gameRoot, new Set<string>(), installedMod);
     }
 
     private static async installModAtRoot(
         mod: Mod,
         gameRoot: string,
         visited: Set<string>,
-        beforeInstall?: () => Promise<void>): Promise<void> {
+        previousInstall?: InstalledMod): Promise<void> {
         if (visited.has(mod.mod_id)) {
             return;
         }
@@ -722,9 +723,23 @@ export class ModDatabase {
 
         await assertCurrentGameRoot(gameRoot);
         const modUrl = `${MOD_REPOSITORY_WEB}/mods/${mod.user.slug}/${mod.slug}/download/${mod.latestVersion}`;
-        await downloadAndInstall(gameRoot, modUrl, mod.name, async () => {
+        await downloadAndInstall(gameRoot, modUrl, mod.name, async (sourcePath) => {
             await assertCurrentGameRoot(gameRoot);
-            await beforeInstall?.();
+            if (previousInstall) {
+                await invoke('update_native_mod', {
+                    source: sourcePath,
+                    destination: gameRoot,
+                    previousInstall: {
+                        assemblyPath: previousInstall.assemblyPath,
+                        enabledAssemblyPath: previousInstall.enabledAssemblyPath,
+                        packagePath: previousInstall.packagePath,
+                        enabledPackagePath: previousInstall.enabledPackagePath,
+                        isEnabled: previousInstall.isEnabled
+                    }
+                });
+            } else {
+                await unzip(sourcePath, gameRoot);
+            }
         });
 
         for (const dependency of modDependencies(mod)) {

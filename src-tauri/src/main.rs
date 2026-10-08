@@ -6,6 +6,8 @@ use std::fs::File;
 use std::io::Read;
 use zip::read::ZipArchive;
 
+mod mod_update;
+
 use regex::Regex;
 use serde::Serialize;
 use std::io::{BufRead, BufReader};
@@ -1178,6 +1180,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             unzip_handler,
+            mod_update::update_native_mod,
             inspect_openacai_loader_zip,
             get_steam_path,
             is_dotnet10_installed,
