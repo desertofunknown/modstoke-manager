@@ -1,6 +1,5 @@
 import { BaseZipInstaller } from "./baseZipInstaller";
-import { getDirectoryPath, gameExePath, processName, processProgress } from "./store"
-import { get } from 'svelte/store'
+import { getDirectoryPath, processName, processProgress } from "./store"
 import { TempFileCache } from "./tempFileCache";
 import { download } from "@tauri-apps/plugin-upload";
 
@@ -19,8 +18,7 @@ export abstract class BaseWebInstaller extends BaseZipInstaller {
 
     const selectedVersion = await this.getTargetVersion();
     if (!selectedVersion) {
-      console.log(`Couldn't find a target version for ${this.getName()}!`);
-      return;
+      throw new Error(`Couldn't find a target version for ${this.getName()}!`);
     }
 
     await this.newInstall(exeDir, selectedVersion);
@@ -37,8 +35,7 @@ export abstract class BaseWebInstaller extends BaseZipInstaller {
     const downloadUrl = await this.getDownloadUrl(selectedVersion);
 
     if (!downloadUrl) {
-      console.log(`Couldn't find download url for ${this.getName()}!`);
-      return;
+      throw new Error(`Couldn't find a download URL for ${this.getName()}!`);
     }
 
     const tempPath = await TempFileCache.createFile();
@@ -58,32 +55,11 @@ export abstract class BaseWebInstaller extends BaseZipInstaller {
         }
       );
 
-      // let client = await http.getClient();
-      // const response = await client.get<Uint8Array>(downloadUrl, {
-      //   timeout: 30,
-      //   responseType: http.ResponseType.Binary,
-      // });
-    
-      // const binaryData = response.data;
-    
-      // await fs.writeBinaryFile(tempPath, binaryData);
-    } catch (error) {
-      console.log(error);
-      return;
-    }
-
-    //processProgress.set(50);
-
-    processName.set(`Extracting ${this.getName()}...`);
-
-    try {
+      processName.set(`Extracting ${this.getName()}...`);
       await this.unzip(tempPath, destination);
-    } catch (error) {
-      console.log(error);
-      return;
+    } finally {
+      await TempFileCache.clearCache();
     }
-
-    await TempFileCache.clearCache();
   }
 }
 

@@ -1,4 +1,6 @@
 - Unreleased
+  - Validate OpenACAI loader downloads before removing the installed runtime, preserve BepInEx configuration after extraction failures, and require installed file verification before reporting success.
+  - Surface feature installation failures, refresh action state after partial failures, and clear temporary web downloads on both success and failure.
   - Preserve catalog filters, sorting, and loaded results when switching tabs or stores, and load secondary pages only when opened.
   - Add keyboard tab navigation and Ctrl+F search with Escape to clear, and keep store labels readable on smaller windows.
   - Keep disabled BepInEx plugins visible and restore disabled packages before re-enabling their assemblies.

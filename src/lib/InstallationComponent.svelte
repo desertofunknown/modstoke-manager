@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { processProgress, processing } from './store';
+  import { processName, processProgress, processing } from './store';
+  import { message } from '@tauri-apps/plugin-dialog';
   import { InstallMode, type FeatureInstaller } from "./featureInstaller";
     import { onMount } from 'svelte';
 
@@ -19,8 +20,12 @@
 
     try {
       await callback();
+    } catch (error) {
+      await message(`${error}`, { title: `${feature.getName()} operation failed`, kind: 'error' });
     } finally {
       processing.set(false);
+      processName.set('');
+      processProgress.set(0);
       currentMode = feature.currentModeState;
       await refreshVisibility();
     }

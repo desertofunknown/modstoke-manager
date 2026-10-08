@@ -55,9 +55,14 @@ export class FeatureInstaller {
             return;
         }
 
-        await this.uninstall();
-        processName.set("Installing " + this.getName() + "...");
-        await this._installer.install();
+        if (this._installer instanceof OpenAcaiLoaderInstaller) {
+            // Keep the working loader until its replacement passes package validation.
+            await this._installer.install(() => this.uninstall());
+        } else {
+            await this.uninstall();
+            processName.set("Installing " + this.getName() + "...");
+            await this._installer.install();
+        }
 
         if(this.additionalFoldersToCreate)
         {
@@ -76,16 +81,24 @@ export class FeatureInstaller {
     }
 
     public async handle(mode: InstallMode): Promise<void> {
-        switch (mode) {
-            case InstallMode.Install:
-                await this.install();
-                break;
-            case InstallMode.Update:
-                await this.install();
-                break;
-            case InstallMode.Uninstall:
-                await this.uninstall();
-                break;
+        try {
+            switch (mode) {
+                case InstallMode.Install:
+                case InstallMode.Update:
+                    await this.install();
+                    break;
+                case InstallMode.Uninstall:
+                    await this.uninstall();
+                    break;
+            }
+        } catch (error) {
+            // A failed operation may still have changed the installed files.
+            try {
+                await this.refreshMode();
+            } catch (refreshError) {
+                console.error("Failed to refresh installation state", refreshError);
+            }
+            throw error;
         }
 
         await this.refreshMode();

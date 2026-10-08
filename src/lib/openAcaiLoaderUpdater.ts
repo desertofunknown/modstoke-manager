@@ -75,9 +75,9 @@ export class OpenAcaiLoaderInstaller extends BaseZipInstaller {
         return true;
     }
 
-    public async install(): Promise<void> {
+    public async install(beforeInstall?: () => Promise<void>): Promise<void> {
         const manifest = this.manifest ?? await fetchLatestLoaderManifest();
-        await downloadVerifyAndInstallLoader(manifest);
+        await downloadVerifyAndInstallLoader(manifest, beforeInstall);
         this.manifest = null;
     }
 
@@ -178,14 +178,15 @@ export async function ensureLatestOpenAcaiLoader(): Promise<LoaderIntegrityRepor
         return report;
     }
 
-    await downloadVerifyAndInstallLoader(manifest);
-    return await verifyInstalledLoader(manifest);
+    return await downloadVerifyAndInstallLoader(manifest);
 }
 
-export async function downloadVerifyAndInstallLoader(manifest: LoaderUpdateManifest): Promise<void> {
+export async function downloadVerifyAndInstallLoader(
+    manifest: LoaderUpdateManifest,
+    beforeInstall?: () => Promise<void>
+): Promise<LoaderIntegrityReport> {
     const gameRoot = await getDirectoryPath();
     const tempPath = await TempFileCache.createFile();
-    const existingBepInExConfig = await readExistingBepInExConfig(gameRoot);
 
     try {
         processName.set(`Downloading OpenACAI Endnight Loader ${manifest.version}...`);
@@ -216,9 +217,37 @@ export async function downloadVerifyAndInstallLoader(manifest: LoaderUpdateManif
             throw new Error(inspection.errors.join("\n") || "Downloaded loader package failed validation.");
         }
 
-        processName.set(`Installing OpenACAI Endnight Loader ${manifest.version}...`);
-        await thisUnzip(tempPath, gameRoot);
+        const existingBepInExConfig = await readExistingBepInExConfig(gameRoot);
+        try {
+            await beforeInstall?.();
+            processName.set(`Installing OpenACAI Endnight Loader ${manifest.version}...`);
+            await thisUnzip(tempPath, gameRoot);
+        } catch (installError) {
+            try {
+                await restoreBepInExConfig(gameRoot, existingBepInExConfig);
+            } catch (restoreError) {
+                throw new AggregateError(
+                    [installError, restoreError],
+                    `Loader installation failed: ${installError}\nRestoring BepInEx configuration also failed: ${restoreError}`
+                );
+            }
+
+            throw installError;
+        }
+
         await restoreBepInExConfig(gameRoot, existingBepInExConfig);
+
+        const report = await verifyInstalledLoader(manifest);
+        if (report.needsUpdate) {
+            const details = report.issues.map(issue => `${issue.path}: ${issue.reason}`);
+            if (!report.installedVersion) {
+                details.unshift("Installed loader version metadata is missing or unreadable.");
+            }
+
+            throw new Error(`OpenACAI Endnight Loader verification failed after installation:\n${details.join("\n")}`);
+        }
+
+        return report;
     } finally {
         await TempFileCache.clearCache();
     }
@@ -290,12 +319,8 @@ async function thisUnzip(sourcePath: string, destinationPath: string): Promise<v
 }
 
 async function readExistingBepInExConfig(gameRoot: string): Promise<string | null> {
-    try {
-        const configPath = await path.join(gameRoot, "BepInEx/config/BepInEx.cfg");
-        return await fs.exists(configPath) ? await fs.readTextFile(configPath) : null;
-    } catch {
-        return null;
-    }
+    const configPath = await path.join(gameRoot, "BepInEx/config/BepInEx.cfg");
+    return await fs.exists(configPath) ? await fs.readTextFile(configPath) : null;
 }
 
 async function restoreBepInExConfig(gameRoot: string, config: string | null): Promise<void> {
