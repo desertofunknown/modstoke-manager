@@ -693,23 +693,51 @@ export class ModDatabase {
     }
 
     public static async installMod(mod: Mod): Promise<void> {
-        let gamePath = await getDirectoryPath();
-        let modUrl = `${MOD_REPOSITORY_WEB}/mods/${mod.user.slug}/${mod.slug}/download/${mod.latestVersion}`;
-        await downloadAndInstall(gamePath, modUrl, mod.name);
+        const gameRoot = await getDirectoryPath();
+        await this.installModAtRoot(mod, gameRoot, new Set<string>());
+    }
 
-        for (const dependency of modDependencies(mod)) {
-            if(!dependency || dependency.length === 0) 
-                continue;
-            
-            await showMessageBox("Installing dependency", `Installing dependency ${dependency} for mod ${mod.name} (a refresh may be needed to show the dependency as installed)`);
-
-            let dependencyMod = await this.fetchMod(dependency);
-            if(dependencyMod) {
-                await this.installMod(dependencyMod);
-            }
+    public static async updateMod(mod: Mod): Promise<void> {
+        const installedMod = mod.installedMod;
+        if (!installedMod) {
+            throw new Error(`${mod.name} is not installed. Refresh the installed mods before updating it.`);
+        }
+        if (installedMod.installSource === "vortex") {
+            throw new Error("This mod is managed by Vortex. Use Vortex to update it so deployment metadata stays consistent.");
         }
 
-        //await this.refreshAll(false);
+        const gameRoot = installedMod.gameRoot;
+        await this.installModAtRoot(mod, gameRoot, new Set<string>(), () => this.uninstallMod(installedMod));
+    }
+
+    private static async installModAtRoot(
+        mod: Mod,
+        gameRoot: string,
+        visited: Set<string>,
+        beforeInstall?: () => Promise<void>): Promise<void> {
+        if (visited.has(mod.mod_id)) {
+            return;
+        }
+        visited.add(mod.mod_id);
+
+        await assertCurrentGameRoot(gameRoot);
+        const modUrl = `${MOD_REPOSITORY_WEB}/mods/${mod.user.slug}/${mod.slug}/download/${mod.latestVersion}`;
+        await downloadAndInstall(gameRoot, modUrl, mod.name, async () => {
+            await assertCurrentGameRoot(gameRoot);
+            await beforeInstall?.();
+        });
+
+        for (const dependency of modDependencies(mod)) {
+            if (visited.has(dependency)) {
+                continue;
+            }
+
+            const dependencyMod = await this.fetchMod(dependency);
+            if (dependencyMod && !visited.has(dependencyMod.mod_id)) {
+                await showMessageBox("Installing dependency", `Installing dependency ${dependency} for mod ${mod.name} (a refresh may be needed to show the dependency as installed)`);
+                await this.installModAtRoot(dependencyMod, gameRoot, visited);
+            }
+        }
     }
 
     private static async getPathsForMod(mod: InstalledMod): Promise<[string | undefined, string | undefined]> {

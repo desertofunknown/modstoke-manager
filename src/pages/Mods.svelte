@@ -76,6 +76,7 @@
     let isScanningInventory = true;
     let inventoryReady = false;
     let modsPageElement: HTMLDivElement | null = null;
+    let catalogScroller: HTMLDivElement | null = null;
     let modsLayoutObserver: ResizeObserver | null = null;
     let modsLayoutFrame: number | null = null;
     let modsWindowResizeHandler: (() => void) | null = null;
@@ -98,6 +99,21 @@
     const SOTF_DETAIL_FALLBACK_IMAGE = fallbackPreviewUrl;
     const detailModCache = new Map<string, Mod>();
     const detailDependencyCache = new Map<string, Mod | null>();
+
+    $: {
+        onlineSelected;
+        filterTerm;
+        selectedCategory;
+        selectedType;
+        selectedCompatibility;
+        selectedSort;
+        void resetCatalogScroll();
+    }
+
+    async function resetCatalogScroll() {
+        await tick();
+        if (catalogScroller) catalogScroller.scrollTop = 0;
+    }
 
     $: {
         filterTerm;
@@ -1096,7 +1112,7 @@
             </div>
         {/if}
 
-        <div class="scroller" class:grid={isGrid}>
+        <div class="scroller" class:grid={isGrid} bind:this={catalogScroller}>
             {#each visibleMods as mod (mod.mod_id ?? mod.slug ?? mod.name)}
                 <ModCard
                     mod={mod}

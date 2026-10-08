@@ -13,12 +13,15 @@ export async function unzip(sourcePath: string, destinationPath: string) {
     await invoke('unzip_handler', { source: src, destination: dest });
 }
 
-export async function downloadAndInstall(destination: string, downloadUrl: string, downloadName: string): Promise<void> {
+export async function downloadAndInstall(
+    destination: string,
+    downloadUrl: string,
+    downloadName: string,
+    beforeInstall?: () => Promise<void>): Promise<void> {
     processName.set(`Downloading ${downloadName}...`);
 
     if (!downloadUrl) {
-      console.log(`Couldn't find download url for ${downloadName}!`);
-      return;
+      throw new Error(`Couldn't find download URL for ${downloadName}!`);
     }
 
     const tempPath = await TempFileCache.createFile();
@@ -38,21 +41,12 @@ export async function downloadAndInstall(destination: string, downloadUrl: strin
         }
       );
 
-    } catch (error) {
-      console.log(error);
-      return;
-    }
-
-    processName.set(`Extracting ${downloadName}...`);
-
-    try {
+      await beforeInstall?.();
+      processName.set(`Extracting ${downloadName}...`);
       await unzip(tempPath, destination);
-    } catch (error) {
-      console.log(error);
-      return;
+    } finally {
+      await TempFileCache.clearCache();
     }
-
-    await TempFileCache.clearCache();
   }
 
   export async function showMessageBox(title: string, message: string): Promise<void> {

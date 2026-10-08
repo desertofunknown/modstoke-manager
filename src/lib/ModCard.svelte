@@ -86,11 +86,7 @@
         return;
       }
 
-      const installedMod = mod.installedMod;
-      await runOperation(async () => {
-        await ModDatabase.uninstallMod(installedMod);
-        await ModDatabase.installMod(mod);
-      });
+      await runOperation(() => ModDatabase.updateMod(mod));
     }
 
     async function uninstall() {

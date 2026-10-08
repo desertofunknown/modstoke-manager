@@ -202,6 +202,7 @@
     let inventory: InstalledInventoryEntry[] = [];
     let inventoryRequestId = 0;
     let isDestroyed = false;
+    let catalogScroller: HTMLDivElement | null = null;
     let selectedView: NexusView = "all";
     let catalogMode: CatalogMode = "online";
     let nexusSearchTerm = "";
@@ -693,6 +694,23 @@
         selectedDependencies.length;
         resolvedNestedDependencies.length;
         void measureNexusLayoutAfterTick();
+    }
+
+    $: {
+        catalogMode;
+        selectedView;
+        nexusSearchTerm;
+        selectedNexusCategory;
+        selectedInstallFilter;
+        selectedModTypeFilter;
+        selectedNexusSort;
+        selectedInstalledSort;
+        void resetCatalogScroll();
+    }
+
+    async function resetCatalogScroll() {
+        await tick();
+        if (catalogScroller) catalogScroller.scrollTop = 0;
     }
 
     onMount(async () => {
@@ -8078,7 +8096,7 @@
                 </div>
             {/if}
 
-            <div class="nexus-scroller" aria-live="polite">
+            <div class="nexus-scroller" aria-live="polite" bind:this={catalogScroller}>
                 {#if catalogMode === "online"}
                     {#each visibleNexusMods as mod (mod.mod_id)}
                         {@const match = installedMatch(mod)}
@@ -12817,7 +12835,8 @@
             display: contents;
         }
 
-        .detail-media-frame {
+        .detail-media-frame,
+        .detail-media-strip {
             order: 1;
         }
 
@@ -12885,7 +12904,8 @@
             overflow: hidden;
         }
 
-        .changelog-box {
+        .changelog-box,
+        .changelog-compact-note {
             flex: 0 0 auto;
             min-height: 0;
             order: 4;

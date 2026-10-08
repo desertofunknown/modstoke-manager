@@ -1,4 +1,6 @@
 - Unreleased
+  - Download native-store updates before removing the installed version, report download/extraction failures, and keep dependency installs in the same game folder without repeating dependency cycles.
+  - Return catalogs to the first result when changing filters or modes, and keep Nexus preview, thumbnails, description, and changelog in reading order on narrow windows.
   - Refresh inventory and feature controls when the selected game installation changes, keep scans tied to their original folder, and reject actions on stale installed entries.
   - Keep mod actions unavailable until the local inventory is ready, with visible scan retries and operation errors.
   - Add keyboard focus, Tab wrapping, Escape dismissal, and focus restoration to mod detail dialogs; discard late Nexus detail and dependency responses after changing selection.
