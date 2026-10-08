@@ -40,6 +40,14 @@
         type NexusView
     } from "../lib/nexus";
     import {
+        advanceNestedDependencyTraversal,
+        createNestedDependencyTraversal,
+        NESTED_DEPENDENCY_BATCH_SIZE,
+        NESTED_DEPENDENCY_DEPTH_STEP,
+        type NestedDependencySource,
+        type NestedDependencyTraversal
+    } from "../lib/nexusDependencyTraversal";
+    import {
         describeInstallSource,
         findMatchingInstall,
         normalizeMatchKey,
@@ -122,14 +130,6 @@
     type ResolvedDependency = NexusModDependency & {
         match: InstalledInventoryEntry | null;
         status: DependencyStatus;
-    };
-    type NestedDependencySource = {
-        key: string;
-        parentFileId: number;
-        parentNexusFileId?: string;
-        parentName: string;
-        depth: number;
-        dependency: NexusModDependency;
     };
     type ResolvedNestedDependency = Omit<NestedDependencySource, "dependency"> & {
         dependency: ResolvedDependency;
@@ -260,10 +260,18 @@
     let authorRequirementDetectedCount = 0;
     let authorRequirementWarningCount = 0;
     let nestedDependencySources: NestedDependencySource[] = [];
+    let nestedDependencyTraversal: NestedDependencyTraversal | null = null;
     let resolvedNestedDependencies: ResolvedNestedDependency[] = [];
     let isResolvingNestedDependencies = false;
     let nestedDependencySummary = "";
     let nestedDependencyRequestId = 0;
+    let dependencySummaryText = "";
+    let apiDependencyReadinessText = "";
+    let authorRequirementReadinessText = "";
+    let nestedDependencyReadinessText = "";
+    let showDependencyFooterReview = false;
+    let dependencyFooterReviewText = "";
+    let dependencyFooterReviewTooltip = "";
     let selectedChangelogs: NexusModChangelog[] = [];
     let detailBackStack: NexusMod[] = [];
     let selectedInstallMatch: InstalledInventoryEntry | null = null;
@@ -326,8 +334,6 @@
     const NEXUS_AUTO_ENDORSE_KEY = "openacai-nexus-auto-endorse-downloaded";
     const NEXUS_AUTO_ENDORSE_ATTEMPTED_KEY = "openacai-nexus-auto-endorse-attempted";
     const MAX_AUTO_ENDORSE_PER_REFRESH = 3;
-    const MAX_NESTED_DEPENDENCY_FILES = 8;
-    const MAX_NESTED_DEPENDENCY_DEPTH = 2;
     const MAX_AUTHOR_REQUIREMENT_LINKS = 6;
     const MAX_AUTHOR_REQUIREMENT_HINTS = 8;
     const MAX_AUTHOR_INSTRUCTION_HINTS = 5;
@@ -538,6 +544,24 @@
         inventory;
         resolvedDependencies = selectedDependencies.map(resolveDependencyStatus);
     }
+    $: nestedDependencySources = nestedDependencyTraversal?.sources ?? [];
+    $: selectedDependencyLookupState = installPlanDependencyLookupState(selectedDependencyMessage);
+    $: apiDependencyNeedsReview = selectedDependencyLookupState === "checking" || selectedDependencyLookupState === "failed";
+    $: nestedDependencyCheckPending = isResolvingNestedDependencies
+        || (resolvedDependencies.some(dependency => typeof dependency.file_id === "number")
+            && nestedDependencyTraversal?.status !== "complete");
+    $: nestedDependencySummary = isResolvingNestedDependencies
+        ? `Checking up to ${NESTED_DEPENDENCY_BATCH_SIZE} remaining dependency files...`
+        : describeNestedDependencyTraversal(nestedDependencyTraversal);
+    $: nestedDependencyProgressLabel = isResolvingNestedDependencies
+        ? "Checking nested files"
+        : nestedDependencyTraversal?.status === "failed"
+            ? "Check stopped"
+            : nestedDependencyTraversal?.status === "partial"
+                ? `${nestedDependencyTraversal.pending.length} file${nestedDependencyTraversal.pending.length === 1 ? "" : "s"} remaining`
+                : nestedDependencyTraversal?.status === "complete"
+                    ? "Check complete"
+                    : nestedDependencyCheckPending ? "Not checked" : "No nested file IDs";
     $: {
         inventory;
         nestedDependencySources;
@@ -580,6 +604,35 @@
     $: authorRequirementWarningCount = selectedAuthorRequirements.filter(requirement => requirement.status === "warning").length;
     $: totalDependencyIssueCount = dependencyIssueCount + nestedDependencyIssueCount;
     $: totalDependencyReviewCount = dependencyReviewCount + nestedDependencyReviewCount + authorRequirementReviewCount + authorRequirementWarningCount;
+    $: {
+        selectedDependencyMessage;
+        resolvedDependencies;
+        resolvedNestedDependencies;
+        selectedAuthorRequirements;
+        totalDependencyIssueCount;
+        totalDependencyReviewCount;
+        dependencyInstalledCount;
+        dependencyMissingCount;
+        dependencyMismatchCount;
+        dependencyReviewCount;
+        nestedDependencyInstalledCount;
+        nestedDependencyMissingCount;
+        nestedDependencyMismatchCount;
+        nestedDependencyReviewCount;
+        authorRequirementDetectedCount;
+        authorRequirementReviewCount;
+        authorRequirementWarningCount;
+        nestedDependencyCheckPending;
+        nestedDependencyProgressLabel;
+        selectedDependencyLookupState;
+        dependencySummaryText = dependencySummaryLabel();
+        apiDependencyReadinessText = apiDependencyReadinessLabel();
+        authorRequirementReadinessText = authorRequirementReadinessLabel();
+        nestedDependencyReadinessText = nestedDependencyReadinessLabel();
+        showDependencyFooterReview = shouldShowDependencyFooterReviewAction();
+        dependencyFooterReviewText = dependencyFooterReviewLabel();
+        dependencyFooterReviewTooltip = dependencyFooterReviewTitle();
+    }
     $: detailDependenciesFirst = totalDependencyIssueCount > 0
         || totalDependencyReviewCount > 0
         || resolvedDependencies.length > 0
@@ -592,7 +645,10 @@
         resolvedDependencies.length,
         resolvedNestedDependencies.length,
         selectedAuthorRequirements.length,
-        authorRequirementWarningCount
+        authorRequirementWarningCount,
+        selectedDependencyLookupState === "failed" ? "Lookup failed"
+            : selectedDependencyLookupState === "checking" ? "Checking API rows"
+            : nestedDependencyCheckPending ? nestedDependencyProgressLabel : ""
     );
     $: selectedInstallMatch = selectedMod
         ? findMatchingInstall(inventory, selectedMod.name, selectedMod.mod_id, [
@@ -613,7 +669,8 @@
         resolvedNestedDependencies,
         selectedAuthorRequirements,
         selectedDependencyMessage,
-        nestedDependencyCheckAvailable(),
+        nestedDependencyCheckPending,
+        nestedDependencySummary,
         isResolvingNestedDependencies,
         vortexStagingPath,
         selectedInstallPlacement
@@ -651,6 +708,11 @@
         resolvedNestedDependencies;
         nestedDependencySources;
         nestedDependencySummary;
+        nestedDependencyCheckPending;
+        nestedDependencyProgressLabel;
+        apiDependencyReadinessText;
+        authorRequirementReadinessText;
+        nestedDependencyReadinessText;
         isResolvingNestedDependencies;
         vortexStagingPath;
         selectedInstallConflict;
@@ -2724,7 +2786,7 @@
         element?.scrollIntoView({ block: "start", behavior: "smooth" });
     }
 
-    function describeDetailDependencyNav(issueCount: number, reviewCount: number, apiCount: number, nestedCount: number, authorCount: number, authorWarningCount: number): string {
+    function describeDetailDependencyNav(issueCount: number, reviewCount: number, apiCount: number, nestedCount: number, authorCount: number, authorWarningCount: number, pendingCheckLabel: string): string {
         if (issueCount > 0) {
             return `${issueCount} issue${issueCount === 1 ? "" : "s"}`;
         }
@@ -2738,6 +2800,10 @@
 
         if (reviewCount > 0) {
             return `${reviewCount} review`;
+        }
+
+        if (pendingCheckLabel) {
+            return pendingCheckLabel;
         }
 
         const total = apiCount + nestedCount + authorCount;
@@ -2899,117 +2965,62 @@
 
     function clearNestedDependencyCheck() {
         nestedDependencyRequestId += 1;
-        nestedDependencySources = [];
-        nestedDependencySummary = "";
+        nestedDependencyTraversal = null;
         isResolvingNestedDependencies = false;
     }
 
     function nestedDependencyCheckAvailable(): boolean {
-        return resolvedDependencies.some(dependency => Boolean(dependency.file_id));
+        return resolvedDependencies.some(dependency => typeof dependency.file_id === "number");
     }
 
     function nestedDependencyStatusLabel(source: ResolvedNestedDependency): string {
         return dependencyStatusLabel(source.dependency);
     }
 
+    function describeNestedDependencyTraversal(traversal: NestedDependencyTraversal | null): string {
+        if (!traversal) {
+            return "";
+        }
+
+        const checked = `${traversal.checkedFiles} dependency file${traversal.checkedFiles === 1 ? "" : "s"} checked`;
+        const found = `${traversal.sources.length} nested dependency row${traversal.sources.length === 1 ? "" : "s"} found`;
+        if (traversal.status === "complete") {
+            return `${checked}; ${found}. All discovered file IDs have been checked. Author-only requirements still need review.`;
+        }
+
+        const remaining = `${traversal.pending.length} discovered file${traversal.pending.length === 1 ? " remains" : "s remain"} unchecked`;
+        if (traversal.status === "failed") {
+            return `${checked}; ${remaining}. Check stopped: ${traversal.error}. Retry to continue from this file.`;
+        }
+
+        return `${checked}; ${found}; ${remaining}. Continue to check the next batch. Deeper files may reveal more requirements.`;
+    }
+
     async function resolveNestedDependencies() {
-        if (isResolvingNestedDependencies || resolvedDependencies.length === 0) {
+        if (isResolvingNestedDependencies || !nestedDependencyCheckAvailable()
+            || nestedDependencyTraversal?.status === "complete") {
             return;
         }
 
-        const initialQueue = resolvedDependencies
-            .filter(dependency => typeof dependency.file_id === "number")
-            .map(dependency => ({
-                fileId: dependency.file_id as number,
-                nexusFileId: dependency.nexus_file_id,
-                parentName: dependency.mod_name,
-                depth: 1
-            }));
-
-        if (initialQueue.length === 0) {
-            nestedDependencySources = [];
-            nestedDependencySummary = "No dependency file IDs were returned for recursive checks.";
-            return;
-        }
-
-        isResolvingNestedDependencies = true;
+        const traversal = nestedDependencyTraversal ?? createNestedDependencyTraversal(resolvedDependencies);
         const requestId = ++nestedDependencyRequestId;
-        nestedDependencySummary = `Checking up to ${MAX_NESTED_DEPENDENCY_FILES} dependency files...`;
-        const queue = [...initialQueue];
-        const visitedFileKeys = new Set<string>();
-        const rowKeys = new Set<string>();
-        const collected: NestedDependencySource[] = [];
-        let checkedFiles = 0;
-
+        isResolvingNestedDependencies = true;
         try {
-            while (queue.length > 0 && checkedFiles < MAX_NESTED_DEPENDENCY_FILES) {
-                const current = queue.shift();
-                const currentKey = current ? dependencyFileLookupKey(current.fileId, current.nexusFileId) : "";
-                if (!current || visitedFileKeys.has(currentKey)) {
-                    continue;
-                }
-
-                visitedFileKeys.add(currentKey);
-                checkedFiles += 1;
-                const response = await fetchNexusFileDependencies(current.fileId, {
-                    nexusFileId: current.nexusFileId
-                });
-                if (requestId !== nestedDependencyRequestId) {
-                    return;
-                }
-                session = { ...session, rate_limit: response.rate_limit };
-
-                for (const dependency of response.dependencies) {
-                    const rowKey = `${current.fileId}:${dependency.id}:${dependency.mod_id ?? "mod"}:${dependency.file_id ?? "file"}`;
-                    if (rowKeys.has(rowKey)) {
-                        continue;
-                    }
-
-                    rowKeys.add(rowKey);
-                    collected.push({
-                        key: rowKey,
-                        parentFileId: current.fileId,
-                        parentNexusFileId: current.nexusFileId,
-                        parentName: current.parentName,
-                        depth: current.depth,
-                        dependency
-                    });
-
-                    if (
-                        typeof dependency.file_id === "number"
-                        && current.depth < MAX_NESTED_DEPENDENCY_DEPTH
-                        && !visitedFileKeys.has(dependencyFileLookupKey(dependency.file_id, dependency.nexus_file_id))
-                    ) {
-                        queue.push({
-                            fileId: dependency.file_id,
-                            nexusFileId: dependency.nexus_file_id,
-                            parentName: dependency.mod_name,
-                            depth: current.depth + 1
-                        });
-                    }
-                }
+            const result = await advanceNestedDependencyTraversal(
+                traversal,
+                () => requestId === nestedDependencyRequestId
+            );
+            if (!result || requestId !== nestedDependencyRequestId) {
+                return;
             }
 
-            if (requestId === nestedDependencyRequestId) {
-                nestedDependencySources = collected;
-                nestedDependencySummary = collected.length > 0
-                    ? `${collected.length} nested dependencies found from ${checkedFiles} checked file${checkedFiles === 1 ? "" : "s"}.`
-                    : `${checkedFiles} dependency file${checkedFiles === 1 ? "" : "s"} checked; no nested dependencies returned.`;
-            }
-        } catch (error) {
-            if (requestId === nestedDependencyRequestId) {
-                nestedDependencySources = collected;
-                nestedDependencySummary = `Nested dependency check stopped: ${error}`;
-            }
+            nestedDependencyTraversal = result;
+            session = { ...session, rate_limit: result.rateLimit ?? session.rate_limit };
         } finally {
             if (requestId === nestedDependencyRequestId) {
                 isResolvingNestedDependencies = false;
             }
         }
-    }
-
-    function dependencyFileLookupKey(fileId: number, nexusFileId?: string): string {
-        return `${fileId}:${nexusFileId?.trim() ?? ""}`;
     }
 
     async function installSelectedFileWithVortex() {
@@ -3261,6 +3272,13 @@
     }
 
     function dependencySummaryLabel(): string {
+        if (selectedDependencyLookupState === "checking") {
+            return "Checking API rows";
+        }
+        if (selectedDependencyLookupState === "failed") {
+            return "Lookup failed";
+        }
+
         if (resolvedDependencies.length === 0 && resolvedNestedDependencies.length === 0) {
             if (selectedAuthorRequirements.length > 0) {
                 return authorRequirementSummaryLabel();
@@ -3275,6 +3293,10 @@
 
         if (totalDependencyReviewCount > 0) {
             return `${totalDependencyReviewCount} review`;
+        }
+
+        if (nestedDependencyCheckPending) {
+            return nestedDependencyProgressLabel;
         }
 
         return "Ready";
@@ -3329,8 +3351,8 @@
     }
 
     function nestedDependencyReadinessLabel(): string {
-        if (isResolvingNestedDependencies) {
-            return "Checking nested files";
+        if (nestedDependencyCheckPending) {
+            return nestedDependencyProgressLabel;
         }
 
         if (resolvedNestedDependencies.length > 0) {
@@ -3343,11 +3365,7 @@
             return parts.length > 0 ? parts.join(" · ") : "Ready";
         }
 
-        if (nestedDependencySummary) {
-            return nestedDependencySummary;
-        }
-
-        return nestedDependencyCheckAvailable() ? "Nested check available" : "No nested file IDs";
+        return nestedDependencyProgressLabel;
     }
 
     function buildDeploymentChecklistItems(): DeploymentChecklistItem[] {
@@ -3356,7 +3374,7 @@
             || totalDependencyReviewCount > 0
             || dependencyLookupState === "checking"
             || dependencyLookupState === "failed"
-            || nestedDependencyCheckAvailable();
+            || nestedDependencyCheckPending;
         const hasPlacementReview = selectedInstallPlacement === "manual-review"
             || selectedInstallPlan.notes.some(note => /placement override|manual placement/i.test(note));
         const hasDeploymentReview = !vortexStagingPath
@@ -3382,7 +3400,7 @@
                 key: "dependencies",
                 label: "Deps",
                 value: deploymentDependencyChecklistValue(),
-                detail: `${apiDependencyReadinessLabel()} · ${authorRequirementReadinessLabel()} · ${nestedDependencyReadinessLabel()}`,
+                detail: `${apiDependencyReadinessText} · ${authorRequirementReadinessText} · ${nestedDependencyReadinessText}`,
                 tone: hasDependencyReview ? "review" : "ready",
                 target: "dependencies"
             },
@@ -3432,18 +3450,20 @@
             return reviewParts.join(" · ");
         }
 
+        if (nestedDependencyCheckPending) {
+            return nestedDependencyProgressLabel;
+        }
+
+        const lookupState = installPlanDependencyLookupState(selectedDependencyMessage);
+        if (lookupState === "checking" || lookupState === "failed") {
+            return lookupState === "checking" ? "Checking" : "Failed";
+        }
+
         if (resolvedDependencies.length > 0 || resolvedNestedDependencies.length > 0 || authorRequirementDetectedCount > 0) {
             return "Ready";
         }
 
-        switch (installPlanDependencyLookupState(selectedDependencyMessage)) {
-            case "checking":
-                return "Checking";
-            case "failed":
-                return "Failed";
-            default:
-                return "None";
-        }
+        return "None";
     }
 
     function dependencyReadinessParts(
@@ -3521,7 +3541,7 @@
         return totalDependencyIssueCount > 0
             || totalDependencyReviewCount > 0
             || selectedAuthorRequirements.length > 0
-            || nestedDependencyCheckAvailable();
+            || nestedDependencyCheckPending;
     }
 
     function dependencyFooterReviewLabel(): string {
@@ -3537,7 +3557,7 @@
             return "Review Requirements";
         }
 
-        if (nestedDependencyCheckAvailable()) {
+        if (nestedDependencyCheckPending) {
             return "Check Dependencies";
         }
 
@@ -3553,7 +3573,7 @@
             return "Jump to API, nested, or author requirement review details before Vortex handoff.";
         }
 
-        if (nestedDependencyCheckAvailable()) {
+        if (nestedDependencyCheckPending) {
             return "Jump to dependency checks; nested dependency lookup is available for this file.";
         }
 
@@ -3573,7 +3593,8 @@
         nestedDependencies: ResolvedNestedDependency[],
         authorRequirements: AuthorRequirementLink[],
         dependencyMessage: string,
-        nestedCheckAvailable: boolean,
+        nestedCheckPending: boolean,
+        nestedCheckSummary: string,
         isCheckingNestedDependencies: boolean,
         stagingPath: string | null,
         placement: InstallPlacement): InstallPlan {
@@ -3599,7 +3620,6 @@
         const nestedMismatchCount = nestedDependencies.filter(source => source.dependency.status === "version-mismatch").length;
         const nestedReviewCount = nestedDependencies.filter(source => source.dependency.status === "review").length;
         const dependencyLookupState = installPlanDependencyLookupState(dependencyMessage);
-        const dependencyFileIdCount = dependencies.filter(dependency => typeof dependency.file_id === "number").length;
 
         if (!stagingPath) {
             reviewNotes.push("Vortex deployment metadata was not detected in this game folder yet.");
@@ -3635,8 +3655,10 @@
 
         if (isCheckingNestedDependencies) {
             reviewNotes.push("Nested dependency check is still running.");
-        } else if (nestedCheckAvailable && nestedDependencies.length === 0) {
-            infoNotes.push(`Nested dependency check is available for ${dependencyFileIdCount} returned dependency file ${dependencyFileIdCount === 1 ? "ID" : "IDs"}.`);
+        } else if (nestedCheckPending) {
+            reviewNotes.push(nestedCheckSummary || "Nested dependency files have not been checked. Check them before handing this file to Vortex.");
+        } else if (nestedCheckSummary) {
+            infoNotes.push(nestedCheckSummary);
         }
 
         if (nestedMissingCount > 0) {
@@ -8528,7 +8550,7 @@
                         <span>Updated <b>{formatTimestamp(selectedModDetails?.updated_timestamp, selectedModDetails?.updated_time)}</b></span>
                         <span>Downloads <b>{formatNumber(selectedModDetails?.mod_downloads)}</b></span>
                         <span>Installed <b>{describeInstallSource(installedMatch(selectedMod))}</b></span>
-                        <span>Dependencies <b class:update-state-update={totalDependencyIssueCount > 0} class:update-state-tracked={totalDependencyReviewCount > 0 && totalDependencyIssueCount === 0} class:update-state-current={(resolvedDependencies.length > 0 || resolvedNestedDependencies.length > 0 || authorRequirementDetectedCount > 0) && totalDependencyIssueCount === 0 && totalDependencyReviewCount === 0}>{dependencySummaryLabel()}</b></span>
+                        <span>Dependencies <b class:update-state-update={totalDependencyIssueCount > 0} class:update-state-tracked={(totalDependencyReviewCount > 0 || nestedDependencyCheckPending || apiDependencyNeedsReview) && totalDependencyIssueCount === 0} class:update-state-current={(resolvedDependencies.length > 0 || resolvedNestedDependencies.length > 0 || authorRequirementDetectedCount > 0) && totalDependencyIssueCount === 0 && totalDependencyReviewCount === 0 && !nestedDependencyCheckPending && !apiDependencyNeedsReview}>{dependencySummaryText}</b></span>
                     </div>
 
                     <div
@@ -8560,10 +8582,10 @@
                             <span>File version <b>{selectedFileVersionLabel}</b></span>
                             <span>Uploaded <b>{selectedFileUploadedLabel}</b></span>
                             <span>Size <b>{selectedFileSizeLabel}</b></span>
-                            <span>API deps <b title={apiDependencyReadinessLabel()}>{resolvedDependencies.length}</b></span>
-                            <span>Author hints <b title={authorRequirementReadinessLabel()}>{authorRequirementReadinessLabel()}</b></span>
+                            <span>API deps <b title={apiDependencyReadinessText}>{resolvedDependencies.length}</b></span>
+                            <span>Author hints <b title={authorRequirementReadinessText}>{authorRequirementReadinessText}</b></span>
                             <span>Instructions <b>{selectedAuthorInstructions.length > 0 ? `${selectedAuthorInstructions.length} found` : "Review text"}</b></span>
-                            <span class="install-plan-file-fact">Nested <b title={nestedDependencyReadinessLabel()}>{nestedDependencyReadinessLabel()}</b></span>
+                            <span class="install-plan-file-fact">Nested <b title={nestedDependencyReadinessText}>{nestedDependencyReadinessText}</b></span>
                         </div>
                         <div class="install-plan-notes">
                             {#each selectedInstallPlan.notes as note (note)}
@@ -8823,13 +8845,19 @@
                                 <span class="detail-section-title">Dependencies</span>
                                 <button
                                     type="button"
-                                    disabled={!nestedDependencyCheckAvailable() || isResolvingNestedDependencies}
+                                    disabled={!nestedDependencyCheckPending || isResolvingNestedDependencies}
                                     title={nestedDependencyCheckAvailable()
-                                        ? `Check up to ${MAX_NESTED_DEPENDENCY_FILES} dependency files across ${MAX_NESTED_DEPENDENCY_DEPTH} nested levels`
+                                        ? nestedDependencyTraversal?.status === "complete"
+                                            ? "All discovered dependency file IDs have been checked"
+                                            : `Check up to ${NESTED_DEPENDENCY_BATCH_SIZE} remaining files; continue up to ${NESTED_DEPENDENCY_DEPTH_STEP} deeper levels when needed`
                                         : "No dependency file IDs were returned for recursive checks"}
                                     on:click={resolveNestedDependencies}
                                 >
-                                    {isResolvingNestedDependencies ? "Checking..." : "Check Nested"}
+                                    {isResolvingNestedDependencies ? "Checking..."
+                                        : nestedDependencyTraversal?.status === "failed" ? "Retry Check"
+                                        : nestedDependencyTraversal?.status === "partial" ? `Check Next ${NESTED_DEPENDENCY_BATCH_SIZE}`
+                                        : nestedDependencyTraversal?.status === "complete" ? "Checked"
+                                        : "Check Nested"}
                                 </button>
                             </div>
                             <div class="dependency-readiness-grid" aria-label="Dependency readiness summary">
@@ -8837,34 +8865,34 @@
                                     class="dependency-readiness-chip"
                                     class:dependency-readiness-ok={resolvedDependencies.length > 0 && dependencyIssueCount === 0 && dependencyReviewCount === 0}
                                     class:dependency-readiness-warn={dependencyIssueCount > 0}
-                                    class:dependency-readiness-review={dependencyReviewCount > 0 && dependencyIssueCount === 0}
-                                    title={apiDependencyReadinessLabel()}
+                                    class:dependency-readiness-review={(dependencyReviewCount > 0 || apiDependencyNeedsReview) && dependencyIssueCount === 0}
+                                    title={apiDependencyReadinessText}
                                 >
                                     <small>API</small>
                                     <b>{resolvedDependencies.length}</b>
-                                    <span>{apiDependencyReadinessLabel()}</span>
+                                    <span>{apiDependencyReadinessText}</span>
                                 </span>
                                 <span
                                     class="dependency-readiness-chip"
                                     class:dependency-readiness-ok={selectedAuthorRequirements.length > 0 && authorRequirementWarningCount === 0 && authorRequirementReviewCount === 0}
                                     class:dependency-readiness-warn={authorRequirementWarningCount > 0}
                                     class:dependency-readiness-review={authorRequirementReviewCount > 0 && authorRequirementWarningCount === 0}
-                                    title={authorRequirementReadinessLabel()}
+                                    title={authorRequirementReadinessText}
                                 >
                                     <small>Author</small>
                                     <b>{selectedAuthorRequirements.length}</b>
-                                    <span>{authorRequirementReadinessLabel()}</span>
+                                    <span>{authorRequirementReadinessText}</span>
                                 </span>
                                 <span
                                     class="dependency-readiness-chip"
-                                    class:dependency-readiness-ok={resolvedNestedDependencies.length > 0 && nestedDependencyIssueCount === 0 && nestedDependencyReviewCount === 0}
+                                    class:dependency-readiness-ok={nestedDependencyTraversal?.status === "complete" && nestedDependencyIssueCount === 0 && nestedDependencyReviewCount === 0}
                                     class:dependency-readiness-warn={nestedDependencyIssueCount > 0}
-                                    class:dependency-readiness-review={(isResolvingNestedDependencies || nestedDependencyReviewCount > 0 || (resolvedNestedDependencies.length === 0 && nestedDependencyCheckAvailable())) && nestedDependencyIssueCount === 0}
-                                    title={nestedDependencyReadinessLabel()}
+                                    class:dependency-readiness-review={(nestedDependencyCheckPending || nestedDependencyReviewCount > 0) && nestedDependencyIssueCount === 0}
+                                    title={nestedDependencyReadinessText}
                                 >
                                     <small>Nested</small>
                                     <b>{resolvedNestedDependencies.length}</b>
-                                    <span>{nestedDependencyReadinessLabel()}</span>
+                                    <span>{nestedDependencyReadinessText}</span>
                                 </span>
                             </div>
                             {#if resolvedDependencies.length === 0}
@@ -9000,13 +9028,13 @@
                             Review File Choice
                         </button>
                     {/if}
-                    {#if shouldShowDependencyFooterReviewAction()}
+                    {#if showDependencyFooterReview}
                         <button
                             class="dependency-review-btn"
-                            title={dependencyFooterReviewTitle()}
+                            title={dependencyFooterReviewTooltip}
                             on:click={() => scrollDetailSection("dependencies")}
                         >
-                            {dependencyFooterReviewLabel()}
+                            {dependencyFooterReviewText}
                         </button>
                     {/if}
                     <button class="install" disabled={!selectedNexusFile} on:click={installSelectedFileWithVortex}>{selectedInstallActionButtonLabel}</button>
