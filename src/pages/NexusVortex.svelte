@@ -652,10 +652,7 @@
             : nestedDependencyCheckPending ? nestedDependencyProgressLabel : ""
     );
     $: selectedInstallMatch = selectedMod
-        ? findMatchingInstall(inventory, selectedMod.name, selectedMod.mod_id, [
-            selectedMod.author ?? "",
-            selectedMod.uploaded_by ?? ""
-        ])
+        ? findMatchingInstall(inventory, selectedMod.name, selectedMod.mod_id)
         : null;
     $: {
         localConflicts;
@@ -3265,10 +3262,7 @@
     }
 
     function installedMatch(mod: NexusMod): InstalledInventoryEntry | null {
-        return findMatchingInstall(inventory, mod.name, mod.mod_id, [
-            mod.author ?? "",
-            mod.uploaded_by ?? ""
-        ]);
+        return findMatchingInstall(inventory, mod.name, mod.mod_id);
     }
 
     function resolveDependencyStatus(dependency: NexusModDependency): ResolvedDependency {
@@ -5077,16 +5071,14 @@
 
     function findOnlineModForEntry(entry: InstalledInventoryEntry): NexusMod | null {
         const entryNexusId = numericNexusId(entry.nexusModId);
-        if (entryNexusId && knownNexusDetails[entryNexusId]) {
-            return knownNexusDetails[entryNexusId];
+        if (entryNexusId) {
+            return knownNexusDetails[entryNexusId]
+                ?? mods.find(mod => mod.mod_id === entryNexusId)
+                ?? null;
         }
 
         return mods.find(mod =>
-            (entryNexusId && mod.mod_id === entryNexusId)
-            || findMatchingInstall([entry], mod.name, mod.mod_id, [
-                mod.author ?? "",
-                mod.uploaded_by ?? ""
-            ]) !== null
+            findMatchingInstall([entry], mod.name, mod.mod_id) !== null
         ) ?? null;
     }
 

@@ -107,17 +107,21 @@ export function normalizeMatchKey(value: string | null | undefined): string {
 export function findMatchingInstall(
     entries: InstalledInventoryEntry[],
     name: string | null | undefined,
-    id?: string | number | null,
+    nexusModId?: string | number | null,
     aliases: string[] = []): InstalledInventoryEntry | null {
-    const candidateKeys = [
-        normalizeMatchKey(name),
-        normalizeMatchKey(id?.toString()),
-        ...aliases.map(alias => normalizeMatchKey(alias))
-    ].filter(key => key.length > 0);
+    const nexusId = nexusModId?.toString();
+    if (nexusId) {
+        const exactMatch = entries.find(entry => entry.nexusModId === nexusId);
+        if (exactMatch) {
+            return exactMatch;
+        }
+    }
+
+    const candidateKeys = buildMatchKeys(name, ...aliases);
 
     return entries.find(entry =>
-        entry.matchKeys.some(key => candidateKeys.includes(key))
-        || (!!id && entry.nexusModId === id.toString())) ?? null;
+        (!nexusId || !entry.nexusModId)
+        && entry.matchKeys.some(key => candidateKeys.includes(key))) ?? null;
 }
 
 export function describeInstallSource(entry: InstalledInventoryEntry | null | undefined): string {
@@ -554,6 +558,7 @@ async function resolveBepInExPackagePath(pluginRoot: string, assemblyPath: strin
 function buildMatchKeys(...values: Array<string | null | undefined>): string[] {
     const keys = values
         .flatMap(value => value ? [value, stripVortexPackageNoise(value), stripExtension(value.split(/[\\/]/).pop() ?? value)] : [])
+        .flatMap(value => [value, value.replace(/['’]s\b/gi, "")])
         .map(normalizeMatchKey)
         .filter(key => key.length > 0);
 
