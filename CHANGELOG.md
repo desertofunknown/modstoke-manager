@@ -1,4 +1,6 @@
 - Unreleased
+  - Preserve catalog filters, sorting, and loaded results when switching tabs or stores, and load secondary pages only when opened.
+  - Add keyboard tab navigation and Ctrl+F search with Escape to clear, and keep store labels readable on smaller windows.
   - Keep disabled BepInEx plugins visible and restore disabled packages before re-enabling their assemblies.
   - Serialize SOTF catalog pagination, retry the failed page or inventory scan, and ignore stale mode/search results.
   - Fill sparse catalog views as space becomes available and release scroll observers when leaving the page.

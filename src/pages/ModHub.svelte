@@ -25,6 +25,7 @@
 
     let activeSource: ModHubSource = "all";
     let sharedSearchTerm = "";
+    let searchInput: HTMLInputElement;
     let sharedSearchVersion = 0;
     let sotfSummary: SourceSummary | null = null;
     let nexusSummary: SourceSummary | null = null;
@@ -79,6 +80,18 @@
 
     function handleSharedSearchInput(event: Event) {
         setSharedSearchTerm((event.currentTarget as HTMLInputElement).value);
+    }
+
+    function handleSearchShortcut(event: KeyboardEvent) {
+        if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "f"
+            && modHubElement?.getClientRects().length) {
+            const hasVisibleDialog = Array.from(modHubElement.querySelectorAll<HTMLElement>('[role="dialog"]'))
+                .some(dialog => dialog.getClientRects().length > 0);
+            if (hasVisibleDialog) return;
+            event.preventDefault();
+            searchInput?.focus();
+            searchInput?.select();
+        }
     }
 
     function clearSharedSearch() {
@@ -239,6 +252,8 @@
     }
 </script>
 
+<svelte:window on:keydown={handleSearchShortcut} />
+
 <div class="mod-hub" bind:this={modHubElement}>
     <div class="hub-toolbar">
         <div class="source-switch" aria-label="Mod source">
@@ -286,7 +301,10 @@
         <label class="hub-search">
             <LucideSearch aria-hidden="true" />
             <input
+                bind:this={searchInput}
                 aria-label="Search mods"
+                title="Search mods (Ctrl+F)"
+                on:keydown={(event) => { if (event.key === "Escape" && sharedSearchTerm) { event.stopPropagation(); clearSharedSearch(); } }}
                 placeholder="Search mods"
                 type="text"
                 value={sharedSearchTerm}
@@ -305,17 +323,8 @@
     </div>
 
     <div class="source-panel" class:all-source-panel={activeSource === "all"} bind:this={sourcePanelElement}>
-        {#if activeSource === "sotf"}
-            <SOTFMods
-                sharedSearchTerm={sharedSearchTerm}
-                sharedSearchVersion={sharedSearchVersion}
-                showEmbeddedSearch={false}
-                on:searchChange={(event) => setSharedSearchTerm(event.detail)}
-                on:summaryChange={(event) => updateSourceSummary("sotf", event.detail)}
-            />
-        {:else if activeSource === "all"}
-            <section class="source-section">
-                <div class="source-section-head">
+            <section class="source-section" class:focused-source={activeSource !== "all"} hidden={activeSource === "nexus"}>
+                <div class="source-section-head" hidden={activeSource !== "all"}>
                     <span class="source-section-title">
                         <span class="source-section-name"><LucideStore aria-hidden="true" /> SOTF Mods</span>
                         <small>{sourceSummaryLine(sotfSummary, "Native store")}</small>
@@ -338,7 +347,7 @@
                 </div>
                 <div class="source-section-body">
                     <SOTFMods
-                        embeddedStorePreview={true}
+                        embeddedStorePreview={activeSource === "all"}
                         embeddedControlsExpanded={allStoresSotfControlsExpanded}
                         sharedSearchTerm={sharedSearchTerm}
                         sharedSearchVersion={sharedSearchVersion}
@@ -349,8 +358,8 @@
                 </div>
             </section>
 
-            <section class="source-section">
-                <div class="source-section-head">
+            <section class="source-section" class:focused-source={activeSource !== "all"} hidden={activeSource === "sotf"}>
+                <div class="source-section-head" hidden={activeSource !== "all"}>
                     <span class="source-section-title">
                         <span class="source-section-name"><LucideCloudDownload aria-hidden="true" /> Nexus / Vortex</span>
                         <small>{sourceSummaryLine(nexusSummary, "Nexus catalog")}</small>
@@ -373,7 +382,7 @@
                 </div>
                 <div class="source-section-body nexus-source-section-body">
                     <NexusVortex
-                        embeddedStorePreview={true}
+                        embeddedStorePreview={activeSource === "all"}
                         embeddedControlsExpanded={allStoresNexusControlsExpanded}
                         sharedSearchTerm={sharedSearchTerm}
                         sharedSearchVersion={sharedSearchVersion}
@@ -383,15 +392,7 @@
                     />
                 </div>
             </section>
-        {:else}
-            <NexusVortex
-                sharedSearchTerm={sharedSearchTerm}
-                sharedSearchVersion={sharedSearchVersion}
-                showEmbeddedSearch={false}
-                on:searchChange={(event) => setSharedSearchTerm(event.detail)}
-                on:summaryChange={(event) => updateSourceSummary("nexus", event.detail)}
-            />
-        {/if}
+
     </div>
 </div>
 
@@ -412,7 +413,7 @@
         display: grid;
         flex: 0 0 auto;
         gap: 0.5em;
-        grid-template-columns: minmax(18em, 0.92fr) minmax(14em, 1fr);
+        grid-template-columns: minmax(28rem, 1.15fr) minmax(12rem, 0.85fr);
         width: 100%;
     }
 
@@ -498,6 +499,10 @@
         display: block;
         font-size: 1.05em;
         stroke-width: 2.35;
+    }
+
+    .hub-search:focus-within {
+        border-color: rgba(98, 240, 155, 0.7);
     }
 
     .hub-search input {
@@ -701,7 +706,32 @@
         height: clamp(44em, 80vh, 58em);
     }
 
-    @media (max-width: 620px) {
+    .source-section[hidden],
+    .source-section-head[hidden] {
+        display: none;
+    }
+
+    .source-section.focused-source {
+        flex: 1 1 0;
+        padding: 0;
+        border: 0;
+        background: none;
+    }
+
+    .focused-source .source-section-body {
+        flex: 1 1 0;
+        height: auto;
+    }
+
+    @media (max-width: 1100px) {
+        .source-switch button {
+            font-size: 0.86em;
+            padding: 0 0.45em;
+            gap: 0.35em;
+        }
+    }
+
+    @media (max-width: 780px) {
         .hub-toolbar {
             grid-template-columns: 1fr;
         }

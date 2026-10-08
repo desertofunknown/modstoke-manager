@@ -8,18 +8,10 @@
     processing,
   } from "./lib/store";
   import Page1 from "./pages/MainPage.svelte";
-  import Page2 from "./pages/ModHub.svelte";
-  import Page4 from "./pages/Modding.svelte";
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
   import { invoke } from "@tauri-apps/api/core";
   import { currentMonitor, getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-
-  let showOverlay: boolean = false;
-
-  processing.subscribe((value) => {
-    showOverlay = value;
-  });
 
   type TabId = "main" | "mods" | "modding";
 
@@ -35,6 +27,9 @@
   ];
 
   let activeTab: TabId = "main";
+  let tabButtons: Partial<Record<TabId, HTMLButtonElement>> = {};
+  let modsPage: Promise<typeof import("./pages/ModHub.svelte")> | null = null;
+  let moddingPage: Promise<typeof import("./pages/Modding.svelte")> | null = null;
   let isWindowMaximized = false;
 
   const MIN_WINDOW_WIDTH = 980;
@@ -43,13 +38,41 @@
   const MAX_WINDOW_HEIGHT = 1240;
 
   function selectTab(tab: TabId) {
+    if (tab === "mods" && !modsPage) {
+      modsPage = import("./pages/ModHub.svelte");
+    } else if (tab === "modding" && !moddingPage) {
+      moddingPage = import("./pages/Modding.svelte");
+    }
     activeTab = tab;
   }
 
-  function handleKeyPress(event: KeyboardEvent, tab: TabId) {
-    if (event.key === "Enter" || event.key === " ") {
-      selectTab(tab);
+  function handleTabKeyDown(event: KeyboardEvent, tab: TabId) {
+    const index = tabs.findIndex((item) => item.id === tab);
+    let nextIndex: number;
+    switch (event.key) {
+      case "ArrowLeft":
+        nextIndex = (index + tabs.length - 1) % tabs.length;
+        break;
+      case "ArrowRight":
+        nextIndex = (index + 1) % tabs.length;
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = tabs.length - 1;
+        break;
+      default:
+        return;
     }
+    event.preventDefault();
+    const nextTab = tabs[nextIndex].id;
+    selectTab(nextTab);
+    tabButtons[nextTab]?.focus();
+  }
+
+  function pageLoadError(error: unknown) {
+    return error instanceof Error ? error.message : String(error);
   }
 
   async function minimizeWindow() {
@@ -149,39 +172,47 @@
     }
   }
 
-  onMount(async () => {
-    await fitWindowToMonitor();
-    await refreshMaximizedState();
-
+  onMount(() => {
     const onResize = () => {
       void refreshMaximizedState();
     };
+    const onContextMenu = (event: MouseEvent) => event.preventDefault();
     window.addEventListener("resize", onResize);
+    document.addEventListener("contextmenu", onContextMenu);
 
-    processing.set(true);
-    processName.set("Initializing...");
+    async function initialize() {
+      await fitWindowToMonitor();
+      await refreshMaximizedState();
 
-    try {
-      let steamPath = await invoke("get_steam_path");
-      console.log(steamPath);
-      gameExePath.set(steamPath as string);
-      isPathValid.set(true);
-    } catch (err) {
-      console.log(err);
+      processing.set(true);
+      processName.set("Initializing...");
+
+      try {
+        let steamPath = await invoke("get_steam_path");
+        console.log(steamPath);
+        gameExePath.set(steamPath as string);
+        isPathValid.set(true);
+      } catch (err) {
+        console.log(err);
+      }
+
+      try {
+        let hasDotnet = await invoke("is_dotnet11_installed");
+        console.log(hasDotnet);
+        isDotnetInstalled.set(hasDotnet as boolean);
+      } catch (err) {
+        console.log(err);
+      } finally {
+        processing.set(false);
+        processName.set("");
+      }
     }
 
-    try {
-      let hasDotnet = await invoke("is_dotnet11_installed");
-      console.log(hasDotnet);
-      isDotnetInstalled.set(hasDotnet as boolean);
-    } catch (err) {
-      console.log(err);
-    } finally {
-      processing.set(false);
-      processName.set("");
-    }
-
-    document.addEventListener("contextmenu", (event) => event.preventDefault());
+    void initialize();
+    return () => {
+      window.removeEventListener("resize", onResize);
+      document.removeEventListener("contextmenu", onContextMenu);
+    };
   });
 </script>
 
@@ -202,32 +233,63 @@
       </div>
     </div>
 
-  <div class="tabs">
+  <div class="tabs" role="tablist" aria-label="Main navigation">
     {#each tabs as tab}
-      <div
+      <button
+        type="button"
+        id="tab-{tab.id}"
         class="tab {tab.id === activeTab ? 'activetab' : ''}"
-        tabindex="0"
-        role="button"
+        tabindex={tab.id === activeTab ? 0 : -1}
+        role="tab"
+        aria-selected={tab.id === activeTab}
+        aria-controls="panel-{tab.id}"
+        bind:this={tabButtons[tab.id]}
         on:click={() => selectTab(tab.id)}
-        on:keydown={(e) => handleKeyPress(e, tab.id)}
+        on:keydown={(event) => handleTabKeyDown(event, tab.id)}
       >
         {tab.label}
-      </div>
+      </button>
     {/each}
   </div>
 
-  <div class="container">
+  <div class="container" id="panel-main" role="tabpanel" aria-labelledby="tab-main" hidden={activeTab !== "main"} tabindex="0">
     {#if activeTab === "main"}
       <Page1 />
-    {:else if activeTab === "mods"}
-      <Page2 />
-    {:else}
-      <Page4 />
+    {/if}
+  </div>
+  <div class="container" id="panel-mods" role="tabpanel" aria-labelledby="tab-mods" hidden={activeTab !== "mods"} tabindex="0">
+    {#if modsPage}
+      {#await modsPage}
+        <div class="page-status" role="status">Loading Mods...</div>
+      {:then module}
+        <module.default />
+      {:catch error}
+        <div class="page-status" role="alert">
+          <strong>Mods could not be loaded.</strong>
+          <p>{pageLoadError(error)}</p>
+          <button type="button" on:click={() => { modsPage = import("./pages/ModHub.svelte"); }}>Retry loading Mods</button>
+        </div>
+      {/await}
+    {/if}
+  </div>
+  <div class="container" id="panel-modding" role="tabpanel" aria-labelledby="tab-modding" hidden={activeTab !== "modding"} tabindex="0">
+    {#if moddingPage}
+      {#await moddingPage}
+        <div class="page-status" role="status">Loading Mod Creation...</div>
+      {:then module}
+        <module.default />
+      {:catch error}
+        <div class="page-status" role="alert">
+          <strong>Mod Creation could not be loaded.</strong>
+          <p>{pageLoadError(error)}</p>
+          <button type="button" on:click={() => { moddingPage = import("./pages/Modding.svelte"); }}>Retry loading Mod Creation</button>
+        </div>
+      {/await}
     {/if}
   </div>
   </div>
 
-  {#if showOverlay}
+  {#if $processing}
     <div class="loading-overlay" transition:fade={{ delay: 0, duration: 150 }}>
       {$processName}
       <div class="progress-bar">
@@ -238,6 +300,45 @@
 </main>
 
 <style>
+  .container[hidden] {
+    display: none;
+  }
+
+  .tab {
+    border: 0;
+    box-shadow: none;
+    box-sizing: content-box;
+    line-height: inherit;
+    margin: 0;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .tab:not(.activetab):not(:hover) {
+    background: transparent;
+  }
+
+  .tab.activetab {
+    border-bottom: 2px solid rgba(255, 255, 255, 0.75);
+  }
+
+  .tab:focus-visible,
+  .page-status button:focus-visible {
+    outline: 2px solid #e5e5e5;
+    outline-offset: -3px;
+  }
+
+  .page-status {
+    margin: auto;
+    padding: 24px;
+    text-align: center;
+  }
+
+  .page-status p {
+    color: #c4c4c4;
+    overflow-wrap: anywhere;
+  }
+
   .app-frame {
     --frame-pad-x: clamp(18px, calc(1.65vw + 0.35vh), 52px);
     --frame-pad-top: clamp(22px, calc(0.7vw + 1.7vh), 50px);

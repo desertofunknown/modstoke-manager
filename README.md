@@ -45,9 +45,8 @@ Upstream/fork lineage is documented in `UPSTREAMS.md`.
 
 ## Prebuilt Downloads
 
-The current Windows builds are published as GitHub Release assets and mirrored in `prebuilt/` for direct repository downloads:
+The signed Windows `0.2.0` baseline builds are available in `prebuilt/` for direct repository downloads. These binaries predate the changes listed under Unreleased in `CHANGELOG.md`; build from source to use those changes until refreshed binaries are published.
 
-- [Latest GitHub release](https://github.com/desertofunknown/openacai-mod-manager/releases/latest)
 - [Windows portable executable](prebuilt/OpenACAI-Mod-Manager-0.2.0-x64-portable.exe)
 - [Windows setup executable](prebuilt/OpenACAI-Mod-Manager-0.2.0-x64-setup.exe)
 - [OpenACAI icon](prebuilt/OpenACAI-Mod-Manager.ico)

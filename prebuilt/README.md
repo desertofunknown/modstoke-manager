@@ -1,6 +1,6 @@
 # Prebuilt Installers
 
-This folder contains the current Windows desktop builds of OpenACAI Mod Manager.
+This folder contains the signed Windows `0.2.0` baseline builds of OpenACAI Mod Manager. These binaries predate the changes listed under Unreleased in `../CHANGELOG.md`; build from source to use those changes until refreshed binaries are published.
 
 - `OpenACAI-Mod-Manager-0.2.0-x64-portable.exe`: direct portable app executable.
 - `OpenACAI-Mod-Manager-0.2.0-x64-setup.exe`: NSIS setup executable.
