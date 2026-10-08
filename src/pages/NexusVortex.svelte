@@ -13091,13 +13091,26 @@
         }
     }
 
+    @media (min-width: 1241px) and (max-height: 900px) {
+        .detail-panel {
+            --detail-scroll-section-max: clamp(230px, 34vh, 430px);
+        }
+
+        .detail-text {
+            max-height: clamp(190px, 30vh, 360px);
+        }
+
+        .selected-file-notes {
+            max-height: clamp(140px, 22vh, 260px);
+        }
+    }
+
     @media (max-height: 900px) {
         .nexus-page {
             gap: 0.45em;
         }
 
         .detail-panel {
-            --detail-scroll-section-max: clamp(230px, 34vh, 430px);
             gap: 0.55em;
             padding: 0.85em;
         }
@@ -13113,14 +13126,6 @@
 
         .detail-img {
             height: clamp(128px, 19vh, 220px);
-        }
-
-        .detail-text {
-            max-height: clamp(190px, 30vh, 360px);
-        }
-
-        .selected-file-notes {
-            max-height: clamp(140px, 22vh, 260px);
         }
 
         .account-panel {

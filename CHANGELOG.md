@@ -1,4 +1,5 @@
 - Unreleased
+  - Keep expanded Nexus descriptions and file notes inside the scrolling detail layout on short, narrow windows.
   - Match local package names to possessive Nexus titles, prefer explicit Nexus identities, and stop treating author names as installed mods.
   - Correct Nexus dependency requests to the documented v3 mod-file-version routes, preserve version identities and alternative requirements, and show unresolved choices for review.
   - Retain useful lookup failure details, offer retry from the dependency panel, and treat disabled dependencies as needing review.
