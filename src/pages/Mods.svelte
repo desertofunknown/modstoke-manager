@@ -5,6 +5,7 @@
     import type { Mod, ModCategory, ModVersion } from "../lib/mods";
     import { ModDatabase, modDependencies, modPreviewUrls, Sorting } from "../lib/mods";
     import { renderStoreRichText } from "../lib/richText";
+    import { fallbackPreviewUrl } from "../lib/modPreview";
     import InfiniteScroll from "../lib/InfiniteScroll.svelte";
     import { debounce } from "lodash";
     import SvgSpinnersBlocksWave from '~icons/svg-spinners/blocks-wave'
@@ -62,8 +63,9 @@
 
     let isGrid = false;
 
-    let page = 1;
-    let newBatch: Mod[] = [];
+    let page = 0;
+    let hasMorePages = false;
+    let isDestroyed = false;
     let isLoading: boolean = false;
     let hasLoadedOnce = false;
     let catalogError: string = "";
@@ -89,7 +91,7 @@
     let detailDependencyLookupToken = 0;
     let detailModLookupToken = 0;
 
-    const SOTF_DETAIL_FALLBACK_IMAGE = "https://placehold.co/900x500/252525/FFF?text=No+Image";
+    const SOTF_DETAIL_FALLBACK_IMAGE = fallbackPreviewUrl;
     const detailModCache = new Map<string, Mod>();
     const detailDependencyCache = new Map<string, Mod | null>();
 
@@ -148,47 +150,55 @@
         void measureModsLayoutAfterTick();
     }
 
-    async function fetchData(requestPage = page, requestGeneration = onlineCatalogGeneration) {
-        //processing.set(true);
-        //processProgress.set(0);
-        //processName.set("Loading mods...");
+    async function fetchData(requestPage = page + 1, requestGeneration = onlineCatalogGeneration) {
+        if (isDestroyed || !onlineSelected) return;
         const fetchId = ++latestOnlineFetchId;
         isLoading = true;
         catalogError = "";
         try {
             let res = await ModDatabase.fetchMods(requestPage, Sorting.newest, true, false, filterTerm, selectedCategory, selectedType);
-            if (requestGeneration !== onlineCatalogGeneration || !onlineSelected) {
+            if (!isCurrentCatalogRequest(requestGeneration) || !onlineSelected || fetchId !== latestOnlineFetchId) {
                 return;
             }
 
             let mods = res.data;
             await ModDatabase.initModList(mods);
-            if (requestGeneration !== onlineCatalogGeneration || !onlineSelected) {
+            if (!isCurrentCatalogRequest(requestGeneration) || !onlineSelected || fetchId !== latestOnlineFetchId) {
                 return;
             }
 
-            newBatch = mods;
-            filtered = requestPage === 1 ? [...newBatch] : [...filtered, ...newBatch];
+            const rows = requestPage === 1 ? mods : [...filtered, ...mods];
+            filtered = [...new Map(rows.map(mod => [modIdentityKey(mod), mod])).values()];
+            page = requestPage;
+            hasMorePages = mods.length > 0 && (!Number.isFinite(res.meta?.pages) || page < res.meta.pages);
             hasLoadedOnce = true;
         } catch (error) {
-            if (requestGeneration !== onlineCatalogGeneration || !onlineSelected) {
+            if (!isCurrentCatalogRequest(requestGeneration) || !onlineSelected || fetchId !== latestOnlineFetchId) {
                 return;
             }
 
-            newBatch = [];
             catalogError = `Failed to load the mod catalog: ${error}`;
         } finally {
-            if (fetchId === latestOnlineFetchId && requestGeneration === onlineCatalogGeneration && onlineSelected) {
+            if (fetchId === latestOnlineFetchId && isCurrentCatalogRequest(requestGeneration) && onlineSelected) {
                 isLoading = false;
             }
         }
-        //processing.set(false);
     };
 
-    // $: filtered = [
-	// 	...filtered,
-    //     ...newBatch
-    // ];
+    function isCurrentCatalogRequest(generation: number) {
+        return !isDestroyed && generation === onlineCatalogGeneration;
+    }
+
+    async function loadMore() {
+        if (!onlineSelected || isLoading || !hasMorePages || catalogError || isDestroyed) return;
+        await fetchData();
+    }
+
+    async function retryCatalog() {
+        if (isLoading) return;
+        if (onlineSelected) await fetchData();
+        else await toggleInstalled();
+    }
 
     onMount(async () => {
         setupModsLayoutObserver();
@@ -200,12 +210,13 @@
         //await filter();
         //processing.set(false);
         
-        await loadCategories();
-        await reloadOnline();
+        await Promise.all([loadCategories(), reloadOnline()]);
+        if (isDestroyed) return;
 
         try {
             await ModDatabase.initDatabase();
-            ModDatabase.initModList(filtered);
+            if (isDestroyed) return;
+            await ModDatabase.initModList(filtered);
             filtered = [...filtered];
             installedInventoryWarning = "";
         } catch (error) {
@@ -218,6 +229,11 @@
     });
 
     onDestroy(() => {
+        isDestroyed = true;
+        debouncedReloadOnline.cancel();
+        onlineCatalogGeneration += 1;
+        detailDependencyLookupToken += 1;
+        detailModLookupToken += 1;
         cleanupModsLayoutObserver();
     });
 
@@ -252,6 +268,7 @@
 
     async function measureModsLayoutAfterTick() {
         await tick();
+        if (isDestroyed) return;
         if (modsLayoutObserver && modsPageElement) {
             modsLayoutObserver.disconnect();
             modsLayoutObserver.observe(modsPageElement);
@@ -334,7 +351,7 @@
     // }
 
     const debouncedReloadOnline = debounce(async () => {
-        if (onlineSelected) {
+        if (onlineSelected && !isDestroyed) {
             await reloadOnline();
         }
     }, 600);
@@ -354,6 +371,9 @@
             dispatch("searchChange", value);
         }
         if (onlineSelected) {
+            onlineCatalogGeneration += 1;
+            hasMorePages = false;
+            isLoading = true;
             if (reloadImmediately || value.trim() === "") {
                 debouncedReloadOnline.cancel();
                 void reloadOnline();
@@ -372,13 +392,15 @@
     }
 
     async function reloadOnline() {
+        if (isDestroyed) return;
+        debouncedReloadOnline.cancel();
         onlineSelected = true;
         installedSelected = false;
         onlineCatalogGeneration += 1;
         const generation = onlineCatalogGeneration;
-        page = 1;
+        page = 0;
         filtered = [];
-        newBatch = [];
+        hasMorePages = false;
         hasLoadedOnce = false;
         await fetchData(1, generation);
     }
@@ -414,18 +436,24 @@
         // installedSelected = !installedSelected;
 
         debouncedReloadOnline.cancel();
-        onlineCatalogGeneration += 1;
+        const generation = ++onlineCatalogGeneration;
         onlineSelected = false;
         installedSelected = true;
         isLoading = true;
         filtered = [];
+        catalogError = "";
+        hasLoadedOnce = false;
         try {
-            filtered = await ModDatabase.getInstalledMods();
+            const mods = await ModDatabase.getInstalledMods();
+            if (!isCurrentCatalogRequest(generation) || !installedSelected) return;
+            filtered = mods;
+            hasLoadedOnce = true;
             catalogError = "";
         } catch (error) {
+            if (!isCurrentCatalogRequest(generation) || !installedSelected) return;
             catalogError = `Failed to scan installed mods: ${error}`;
         } finally {
-            isLoading = false;
+            if (isCurrentCatalogRequest(generation) && installedSelected) isLoading = false;
         }
         // page = 1;
         // filtered = [];
@@ -534,7 +562,7 @@
 
     function handleDetailImageError(event: Event) {
         const image = event.currentTarget instanceof HTMLImageElement ? event.currentTarget : null;
-        if (!image || image.src === SOTF_DETAIL_FALLBACK_IMAGE) {
+        if (!image || image.getAttribute("src") === SOTF_DETAIL_FALLBACK_IMAGE) {
             return;
         }
 
@@ -1044,7 +1072,7 @@
         {#if catalogError}
             <div class="catalog-error">
                 <span>{catalogError}</span>
-                <button on:click={() => fetchData()}>Retry</button>
+                <button disabled={isLoading} on:click={retryCatalog}>Retry</button>
             </div>
         {/if}
 
@@ -1068,9 +1096,11 @@
             {/if}
 
             <InfiniteScroll
-                hasMore={newBatch.length !== 0 && !installedSelected}
+                hasMore={hasMorePages && onlineSelected && !catalogError}
+                loading={isLoading}
+                contentKey={`${visibleMods.length}:${isGrid}`}
                 threshold={100}
-                on:loadMore={() => {page++; fetchData(page, onlineCatalogGeneration)}} />
+                on:loadMore={loadMore} />
         </div>
 
         {#if hasLoadedOnce && !isLoading && !catalogError && visibleMods.length === 0}

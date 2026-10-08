@@ -139,12 +139,36 @@ export async function setInventoryEntryEnabled(entry: InstalledInventoryEntry, s
         throw new Error("This mod is managed by Vortex. Use Vortex to enable or disable it so deployment metadata stays consistent.");
     }
 
+    if (entry.loaderType === "bepinex-plugin" && entry.packagePath
+        && normalizePath(entry.packagePath).includes("/_disabled/")) {
+        if (!shouldEnable) {
+            return;
+        }
+
+        const gameRoot = await getDirectoryPath();
+        const packageName = await path.basename(entry.packagePath);
+        const enabledPackagePath = await path.join(gameRoot, "BepInEx", "plugins", packageName);
+        const oldPackagePath = entry.packagePath;
+        await fs.rename(oldPackagePath, enabledPackagePath);
+        entry.packagePath = enabledPackagePath;
+        if (entry.assemblyPath) {
+            entry.assemblyPath = enabledPackagePath + entry.assemblyPath.slice(oldPackagePath.length);
+        }
+        entry.enabled = !isDisabledPath(entry.assemblyPath);
+        if (entry.enabled) {
+            return;
+        }
+    }
+
     if (entry.assemblyPath) {
         const enabledAssemblyPath = entry.assemblyPath.replace(/\.disabled$/i, ".dll");
         const disabledAssemblyPath = entry.assemblyPath.replace(/\.dll$/i, ".disabled");
 
         if (shouldEnable && await fs.exists(disabledAssemblyPath)) {
             await fs.rename(disabledAssemblyPath, enabledAssemblyPath);
+            if (entry.packagePath === entry.assemblyPath) {
+                entry.packagePath = enabledAssemblyPath;
+            }
             entry.assemblyPath = enabledAssemblyPath;
             entry.enabled = true;
             return;
@@ -152,6 +176,9 @@ export async function setInventoryEntryEnabled(entry: InstalledInventoryEntry, s
 
         if (!shouldEnable && await fs.exists(enabledAssemblyPath)) {
             await fs.rename(enabledAssemblyPath, disabledAssemblyPath);
+            if (entry.packagePath === entry.assemblyPath) {
+                entry.packagePath = disabledAssemblyPath;
+            }
             entry.assemblyPath = disabledAssemblyPath;
             entry.enabled = false;
             return;
@@ -248,7 +275,7 @@ async function scanBepInExPlugins(gameRoot: string, vortex: VortexDeployment): P
         return entries;
     }
 
-    for (const assemblyPath of await findFiles(pluginRoot, file => file.toLowerCase().endsWith(".dll"))) {
+    for (const assemblyPath of await findFiles(pluginRoot, file => /\.(dll|disabled)$/i.test(file))) {
         if (await isBepInExSupportAssembly(pluginRoot, assemblyPath)) {
             continue;
         }
@@ -426,15 +453,19 @@ function findVortexPackage(gameRoot: string, absolutePath: string | null | undef
     }
 
     const normalized = normalizePath(relative);
-    const exact = vortex.byPath.get(normalized);
+    const enabledPath = normalized
+        .replace(/^(bepinex\/plugins|mods|libs)\/_disabled\//, "$1/")
+        .replace(/\.disabled$/, ".dll");
+    const exact = vortex.byPath.get(normalized) ?? vortex.byPath.get(enabledPath);
     if (exact) {
         return exact;
     }
 
     const prefix = normalized.replace(/\/+$/g, "") + "/";
+    const enabledPrefix = enabledPath.replace(/\/+$/g, "") + "/";
     const counts = new Map<string, number>();
     for (const [relPath, source] of vortex.byPath.entries()) {
-        if (relPath.startsWith(prefix)) {
+        if (relPath.startsWith(prefix) || relPath.startsWith(enabledPrefix)) {
             counts.set(source, (counts.get(source) ?? 0) + 1);
         }
     }
@@ -486,9 +517,9 @@ async function isBepInExSupportAssembly(pluginRoot: string, assemblyPath: string
         return true;
     }
 
-    const firstSegment = relative.split(/[\\/]/)[0]?.toLowerCase();
-    return BepInExSupportFolders.has(firstSegment)
-        || relative.toLowerCase().includes(`${normalizePath("_Disabled")}/`);
+    const segments = relative.split(/[\\/]/);
+    const packageSegment = segments[0] === "_disabled" ? segments[1] : segments[0];
+    return BepInExSupportFolders.has(packageSegment);
 }
 
 async function resolveBepInExPackagePath(pluginRoot: string, assemblyPath: string): Promise<string> {
@@ -497,8 +528,14 @@ async function resolveBepInExPackagePath(pluginRoot: string, assemblyPath: strin
         return assemblyPath;
     }
 
-    const firstSegment = relative.split(/[\\/]/)[0];
-    return await path.join(pluginRoot, firstSegment);
+    const segments = relative.split(/[\\/]/);
+    if (segments[0] === "_disabled") {
+        return segments.length === 2
+            ? assemblyPath
+            : await path.join(pluginRoot, segments[0], segments[1]);
+    }
+
+    return await path.join(pluginRoot, segments[0]);
 }
 
 function buildMatchKeys(...values: Array<string | null | undefined>): string[] {

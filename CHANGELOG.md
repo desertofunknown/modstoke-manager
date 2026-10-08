@@ -1,3 +1,8 @@
+- Unreleased
+  - Keep disabled BepInEx plugins visible and restore disabled packages before re-enabling their assemblies.
+  - Serialize SOTF catalog pagination, retry the failed page or inventory scan, and ignore stale mode/search results.
+  - Fill sparse catalog views as space becomes available and release scroll observers when leaving the page.
+  - Use bundled preview artwork when images are missing or unavailable.
 - 0.2.0
   - Moved OpenACAI Endnight Loader update checks to GitHub Release assets instead of raw branch prebuilts.
   - Added live loader-file SHA256 verification progress and cached the latest release manifest for last-known-good comparisons.

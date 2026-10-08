@@ -1,56 +1,59 @@
 <script lang="ts">
-    import { onMount, onDestroy, createEventDispatcher } from "svelte";
+    import { onMount, createEventDispatcher } from "svelte";
 
     export let threshold = 0;
     export let horizontal = false;
-    let elementScroll: any = null;
     export let hasMore = true;
+    export let loading = false;
+    export let contentKey = "";
 
-    const dispatch = createEventDispatcher();
-    let isLoadMore = false;
+    const dispatch = createEventDispatcher<{ loadMore: void }>();
     let component: HTMLDivElement;
+    let scrollElement: HTMLElement | null = null;
+    let frame: number | null = null;
+    let requested = false;
 
+    $: if (!loading) {
+        requested = false;
+    }
     $: {
-        if (component || elementScroll) {
-            const element = elementScroll
-                ? elementScroll
-                : component.parentNode;
+        contentKey;
+        if (scrollElement && hasMore && !loading) scheduleCheck();
+    }
 
-            element.addEventListener("scroll", onScroll);
-            element.addEventListener("resize", onScroll);
+    function scheduleCheck() {
+        if (frame === null && scrollElement) {
+            frame = requestAnimationFrame(checkPosition);
         }
     }
 
-    const onScroll = (e: any) => {
-        //console.log("Scrolling...");
-        const element = e.target;
-
+    function checkPosition() {
+        frame = null;
+        if (!scrollElement || !hasMore || loading || requested || scrollElement.clientHeight === 0) {
+            return;
+        }
         const offset = horizontal
-            ? e.target.scrollWidth - e.target.clientWidth - e.target.scrollLeft
-            : e.target.scrollHeight -
-              e.target.clientHeight -
-              e.target.scrollTop;
-
+            ? scrollElement.scrollWidth - scrollElement.clientWidth - scrollElement.scrollLeft
+            : scrollElement.scrollHeight - scrollElement.clientHeight - scrollElement.scrollTop;
         if (offset <= threshold) {
-            if (!isLoadMore && hasMore) {
-                dispatch("loadMore");
-            }
-            isLoadMore = true;
-        } else {
-            isLoadMore = false;
+            requested = true;
+            dispatch("loadMore");
         }
-    };
+    }
 
-    onDestroy(() => {
-        if (component || elementScroll) {
-            const element = elementScroll
-                ? elementScroll
-                : component.parentNode;
-
-            element.removeEventListener("scroll", null);
-            element.removeEventListener("resize", null);
-        }
+    onMount(() => {
+        scrollElement = component.parentElement;
+        scrollElement?.addEventListener("scroll", scheduleCheck, { passive: true });
+        const observer = new ResizeObserver(scheduleCheck);
+        if (scrollElement) observer.observe(scrollElement);
+        scheduleCheck();
+        return () => {
+            scrollElement?.removeEventListener("scroll", scheduleCheck);
+            observer.disconnect();
+            if (frame !== null) cancelAnimationFrame(frame);
+            scrollElement = null;
+        };
     });
 </script>
 
-<div bind:this={component} style="width:0px"></div>
+<div bind:this={component} aria-hidden="true" style="width: 0; height: 0;"></div>

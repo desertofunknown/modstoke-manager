@@ -3,6 +3,7 @@
     import { createEventDispatcher } from 'svelte';
     import { ModDatabase, modPreviewUrls, type Mod } from './mods';
     import { storeRichTextPlainText } from './richText';
+    import { fallbackPreviewUrl } from './modPreview';
     import StatusButton from './StatusButton.svelte';
     import * as dialog from "@tauri-apps/plugin-dialog"
     import LucideChevronLeft from "~icons/lucide/chevron-left";
@@ -17,6 +18,7 @@
 
     let isLibrary = false;
     let isImageLoaded = false;
+    let hasPreviewFailed = false;
     let activePreviewModKey = "";
     let currentPreviewIndex = 0;
     let previewUrls: string[] = [];
@@ -29,8 +31,6 @@
     let downloadCountLabel = "";
     let isVortexManagedMod = false;
 
-    const fallbackPreviewUrl = "https://placehold.co/600x400/252525/FFF?text=No+Image";
-
     const dispatch = createEventDispatcher<{ refreshMods: void; details: Mod }>();
 
     $: isLibrary = mod.type === "Library" || mod.installedMod?.loaderType === "redloader-library";
@@ -39,7 +39,6 @@
       if (activePreviewModKey !== modKey) {
         activePreviewModKey = modKey;
         currentPreviewIndex = 0;
-        isImageLoaded = false;
       }
     }
     $: previewUrls = modPreviewUrls(mod);
@@ -47,6 +46,11 @@
       currentPreviewIndex = 0;
     }
     $: currentPreviewUrl = previewUrls[currentPreviewIndex] ?? fallbackPreviewUrl;
+    $: {
+      currentPreviewUrl;
+      isImageLoaded = false;
+      hasPreviewFailed = false;
+    }
     $: previewCountLabel = previewUrls.length > 0 ? `${currentPreviewIndex + 1}/${previewUrls.length}` : "Local";
     $: cardSummary = storeRichTextPlainText(mod.shortDescription);
     $: sourceDisplayLabel = !mod.installedMod
@@ -180,8 +184,17 @@
       });
     };
     
-    function onImageLoad() {
-      isImageLoaded = true;
+    function onImageLoad(event: Event) {
+      if ((event.currentTarget as HTMLImageElement).getAttribute("src") === currentPreviewUrl) {
+        isImageLoaded = true;
+      }
+    }
+
+    function onImageError(event: Event) {
+      if ((event.currentTarget as HTMLImageElement).getAttribute("src") === currentPreviewUrl) {
+        hasPreviewFailed = true;
+        isImageLoaded = false;
+      }
     }
 
     function cyclePreview(direction: number) {
@@ -190,7 +203,6 @@
       }
 
       currentPreviewIndex = (currentPreviewIndex + direction + previewUrls.length) % previewUrls.length;
-      isImageLoaded = false;
     }
 
     async function showVortexManagedMessage(action: string) {
@@ -237,24 +249,28 @@
   <div class="mod-card-row">
     <div class="image-container">
       <img
-        class="cover-img main-image"
+        class="cover-img main-image fallback-image"
         class:isImageLoaded={!isImageLoaded}
-        src="https://placehold.co/600x400/252525/FFF?text=Loading"
-        alt="Loading..."
+        src={fallbackPreviewUrl}
+        alt={`Local fallback preview for ${mod.name}`}
       />
-      
-      <img
-        class="cover-img main-image"
-        class:isImageLoaded
-        src={currentPreviewUrl}
-        alt={`Preview for ${mod.name}`}
-        on:load={onImageLoad}
-      />
+      {#key currentPreviewUrl}
+        {#if currentPreviewUrl !== fallbackPreviewUrl && !hasPreviewFailed}
+          <img
+            class="cover-img main-image"
+            class:isImageLoaded
+            src={currentPreviewUrl}
+            alt={`Preview for ${mod.name}`}
+            on:load={onImageLoad}
+            on:error={onImageError}
+          />
+        {/if}
+      {/key}
       <div
         class="preview-count"
-        class:preview-count-fallback={previewUrls.length === 0}
-        aria-label={previewUrls.length > 0 ? `${mod.name} preview image ${currentPreviewIndex + 1} of ${previewUrls.length}` : `${mod.name} uses the local fallback preview image`}
-        title={previewUrls.length > 0 ? `${previewUrls.length} preview ${previewUrls.length === 1 ? "image" : "images"}` : "Local fallback preview"}
+        class:preview-count-fallback={previewUrls.length === 0 || hasPreviewFailed}
+        aria-label={hasPreviewFailed ? `${mod.name} preview image ${currentPreviewIndex + 1} of ${previewUrls.length} is unavailable; showing local fallback` : previewUrls.length > 0 ? `${mod.name} preview image ${currentPreviewIndex + 1} of ${previewUrls.length}` : `${mod.name} uses the local fallback preview image`}
+        title={hasPreviewFailed ? "Preview unavailable; showing local fallback" : previewUrls.length > 0 ? `${previewUrls.length} preview ${previewUrls.length === 1 ? "image" : "images"}` : "Local fallback preview"}
       >
         <LucideImages aria-hidden="true" />
         <span>{previewCountLabel}</span>
@@ -589,6 +605,12 @@
   
   .main-image {
     opacity: 0;
+  }
+
+  .fallback-image {
+    object-fit: contain;
+    padding: 0.6em;
+    box-sizing: border-box;
   }
   
   .main-image.isImageLoaded {
