@@ -1,6 +1,6 @@
 # Code Signing
 
-The public Windows builds should be signed before release. Checksums help users verify that a download matches this repository, but checksums do not replace Authenticode signing.
+The public Windows builds of Modstoke Manager, by OpenACAI, should be signed before release. OpenACAI remains the legal publisher and signing identity. Checksums help users verify that a download matches this repository, but checksums do not replace Authenticode signing.
 
 ## Azure Artifact Signing
 

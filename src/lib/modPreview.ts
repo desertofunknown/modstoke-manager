@@ -1,3 +1,3 @@
-import openAcaiMark from "/openacai-mark.svg";
+import modstokeMark from "/modstoke-mark.svg";
 
-export const fallbackPreviewUrl = openAcaiMark;
+export const fallbackPreviewUrl = modstokeMark;

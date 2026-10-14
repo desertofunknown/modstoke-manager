@@ -1,6 +1,6 @@
 # Prebuilt Installers
 
-This folder contains the signed Windows `0.2.0` baseline builds of OpenACAI Mod Manager. These binaries predate the changes listed under Unreleased in `../CHANGELOG.md`; build from source to use those changes until refreshed binaries are published.
+This folder contains the signed Windows `0.2.0` baseline builds, which retain the OpenACAI Mod Manager name and branding. Build from source for Modstoke Manager, by OpenACAI, and the changes listed under Unreleased in `../CHANGELOG.md`. The binaries and filenames here have not been rebranded.
 
 - `OpenACAI-Mod-Manager-0.2.0-x64-portable.exe`: direct portable app executable.
 - `OpenACAI-Mod-Manager-0.2.0-x64-setup.exe`: NSIS setup executable.
@@ -97,9 +97,9 @@ These builds are signed with the OpenACAI Inc Azure Trusted Signing certificate.
 
 Dependency/source links:
 
-- OpenACAI Endnight Loader package: `https://github.com/desertofunknown/openacai-loader`
+- Modstoke Loader package: `https://github.com/desertofunknown/openacai-loader`
 - BepInEx: `https://github.com/BepInEx/BepInEx`
 - RedLoader/SonsSdk rewrite branch: `https://github.com/ToniMacaroni/RedLoader/tree/rewrite`
 - Original RedManager upstream: `https://github.com/ToniMacaroni/RedManager`
 
-The private OpenACAI anti-cheat/admin mod is not included in this manager or its installers.
+Modstoke Admin, the private anti-cheat/admin mod, is not included in this manager or its installers.

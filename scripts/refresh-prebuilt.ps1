@@ -20,8 +20,8 @@ if ($Build) {
 }
 
 $PortableSource = Join-Path $RepoRoot "src-tauri\target\release\OpenACAI Mod Manager.exe"
-$SetupSource = Join-Path $RepoRoot "src-tauri\target\release\bundle\nsis\OpenACAI Mod Manager_${Version}_x64-setup.exe"
-$IconSource = Join-Path $RepoRoot "src-tauri\icons\openacai.ico"
+$SetupSource = Join-Path $RepoRoot "src-tauri\target\release\bundle\nsis\Modstoke Manager_${Version}_x64-setup.exe"
+$IconSource = Join-Path $RepoRoot "src-tauri\icons\icon.ico"
 
 $Artifacts = @(
     @{

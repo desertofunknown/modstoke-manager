@@ -1,7 +1,7 @@
 # Nexus Source And Build Instructions
 
-This document is for Nexus Mods review of the OpenACAI Mod Manager and the
-OpenACAI Endnight Loader package it installs for Sons Of The Forest.
+This document is for Nexus Mods review of Modstoke Manager, by OpenACAI, and the
+Modstoke Loader package it installs for Sons Of The Forest.
 
 The project is open source. The manager installs and verifies a loader package,
 so the source links and build notes below include the manager, the loader, and
@@ -11,9 +11,9 @@ the loader-side forks used to produce a usable package.
 
 OpenACAI source repositories:
 
-- OpenACAI Mod Manager:
+- Modstoke Manager:
   https://github.com/desertofunknown/openacai-mod-manager/tree/openacai-tauri2-svelte5-shell
-- OpenACAI Endnight Loader:
+- Modstoke Loader:
   https://github.com/desertofunknown/openacai-loader/tree/openacai-net11-preview
 - OpenACAI BepInEx fork:
   https://github.com/desertofunknown/openacai-bepinex/tree/openacai-net11-preview
@@ -39,7 +39,7 @@ Upstream source provenance:
 
 ## Licenses And Credits
 
-The OpenACAI Mod Manager and OpenACAI Endnight Loader source are licensed as
+The Modstoke Manager and Modstoke Loader source are licensed as
 GPL-3.0-or-later where OpenACAI-authored changes are separably licensable.
 Third-party components keep their original licenses. See the repository
 `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES`, and `LICENSES` folders/files for
@@ -73,6 +73,11 @@ installation.
 
 ## Recommended Source Layout
 
+Existing repositories, package files, runtime executable, namespaces, and
+loader build paths retain their compatibility names. The source-built installer
+uses the Modstoke Manager name. Signed `0.2.0` downloads retain the OpenACAI Mod
+Manager name and branding.
+
 The default loader build script expects this workspace layout:
 
 ```text
@@ -104,7 +109,7 @@ Expected unsigned build outputs:
 
 ```text
 src-tauri/target/release/OpenACAI Mod Manager.exe
-src-tauri/target/release/bundle/nsis/OpenACAI Mod Manager_0.2.0_x64-setup.exe
+src-tauri/target/release/bundle/nsis/Modstoke Manager_0.2.0_x64-setup.exe
 ```
 
 To copy the release binaries into the repository `prebuilt` folder and generate

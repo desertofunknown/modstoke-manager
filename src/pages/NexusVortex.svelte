@@ -6,7 +6,7 @@
     import LucideChevronRight from "~icons/lucide/chevron-right";
     import LucideExternalLink from "~icons/lucide/external-link";
     import LucideImages from "~icons/lucide/images";
-    import nexusFallbackImage from "../assets/sons-ui/blurred-title-screen-texture2d-14.png";
+    import { fallbackPreviewUrl } from "../lib/modPreview";
     import { modalFocus } from "../lib/modalFocus";
     import {
         clearNexusApiKey,
@@ -339,8 +339,8 @@
     const MAX_AUTHOR_REQUIREMENT_HINTS = 8;
     const MAX_AUTHOR_INSTRUCTION_HINTS = 5;
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
-    const NEXUS_PLACEHOLDER_IMAGE = nexusFallbackImage;
-    const NEXUS_DETAIL_PLACEHOLDER_IMAGE = nexusFallbackImage;
+    const NEXUS_PLACEHOLDER_IMAGE = fallbackPreviewUrl;
+    const NEXUS_DETAIL_PLACEHOLDER_IMAGE = fallbackPreviewUrl;
     const NEXUS_DESCRIPTION_FALLBACK = "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing.";
     const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "strikethrough", "del", "sub", "sup", "small", "big", "mark", "abbr", "acronym", "cite", "q", "url", "img", "image", "thumb", "thumbnail", "color", "colour", "background", "bgcolor", "bgcolour", "backgroundcolour", "bcolor", "highlight", "size", "center", "centre", "left", "right", "justify", "align", "indent", "code", "pre", "tt", "kbd", "samp", "var", "quote", "spoiler", "collapse", "details", "accordion", "accordionitem", "font", "heading", "h", "header", "title", "subtitle", "caption", "h1", "h2", "h3", "h4", "h5", "h6", "float", "clear", "anchor", "bookmark", "target", "goto", "jump", "youtube", "video", "media", "embed", "columns", "cols", "column", "col", "nextcol", "tabs", "tab", "dl", "dt", "dd", "note", "info", "warning", "important", "tip", "box", "panel", "fieldset", "notice", "success", "danger", "error"]);
     const NEXUS_SAFE_COLOR_NAMES = new Set(["black", "white", "gray", "grey", "silver", "red", "maroon", "orange", "yellow", "olive", "lime", "green", "aqua", "cyan", "teal", "blue", "navy", "fuchsia", "magenta", "purple", "pink"]);
@@ -1159,7 +1159,7 @@
             };
 
             ssoSocket.onerror = async () => {
-                await finishSsoWithError("Nexus login failed before approval. The OpenACAI Mod Manager app slug must be registered with Nexus Mods before browser SSO can complete. Use Advanced manual token until Nexus approves the slug.");
+                await finishSsoWithError("Nexus login failed before approval. The Modstoke Manager app slug must be registered with Nexus Mods before browser SSO can complete. Use Advanced manual token until Nexus approves the slug.");
             };
 
             ssoSocket.onclose = () => {
@@ -2427,7 +2427,7 @@
             "BepInEx / IL2CPP runtime",
             "Author runtime hint",
             /\b(?:bepinex|bepex|il2cpp|unity\.?il2cpp|bepinex\s*6|bepinex6)\b/i,
-            entry => entry.loaderType === "bepinex-plugin" || /bepinex|il2cpp|openacai\s*loader|redloaderbepinexcompat/i.test(authorRequirementEntryText(entry)),
+            entry => entry.loaderType === "bepinex-plugin" || /bepinex|il2cpp|openacai\s*loader|modstoke\s*loader|redloaderbepinexcompat/i.test(authorRequirementEntryText(entry)),
             "Author text mentions BepInEx or IL2CPP. Confirm the BepInEx runtime is installed before Vortex deployment."
         );
         addRuntimeHint(
@@ -2459,16 +2459,16 @@
             ".NET runtime",
             "Author runtime hint",
             /\b(?:\.net|dotnet|net\s*(?:6|7|8|9|10|11)|netstandard)\b/i,
-            entry => /\.net|dotnet|net\s*(?:6|7|8|9|10|11)|openacai\s*loader/i.test(authorRequirementEntryText(entry)),
+            entry => /\.net|dotnet|net\s*(?:6|7|8|9|10|11)|openacai\s*loader|modstoke\s*loader/i.test(authorRequirementEntryText(entry)),
             "Author text mentions a .NET runtime requirement. Confirm the loader/runtime track matches this game install."
         );
         addRuntimeHint(
             "openacai-loader",
-            "OpenACAI Endnight Loader",
+            "Modstoke Loader",
             "Author loader hint",
-            /\b(?:openacai(?:\s+endnight)?\s+loader|openacailoader)\b/i,
-            entry => /openacai\s*(?:endnight)?\s*loader|openacailoader/i.test(authorRequirementEntryText(entry)),
-            "Author text mentions OpenACAI loader support. Confirm the public loader is installed and healthy on the Main tab."
+            /\b(?:openacai(?:\s+endnight)?\s+loader|openacailoader|modstoke\s+loader|modstokeloader)\b/i,
+            entry => /openacai\s*(?:endnight)?\s*loader|openacailoader|modstoke\s*loader/i.test(authorRequirementEntryText(entry)),
+            "Author text mentions Modstoke Loader support. Confirm the public loader is installed and healthy on the Main tab."
         );
 
         return hints;
@@ -4493,7 +4493,7 @@
             case "vortex":
                 return "Vortex";
             case "native":
-                return "OpenACAI store";
+                return "Modstoke";
             case "manual":
                 return "Manual";
             case "tracked":
@@ -4518,7 +4518,7 @@
             case "vortex":
                 return "Vortex / Nexus";
             case "native":
-                return "OpenACAI native";
+                return "Modstoke";
             case "manual":
                 return "Manual / local";
             default:
@@ -8385,7 +8385,7 @@
                                         />
                                         <span>{entry.enabled ? "Enabled" : "Disabled"}</span>
                                     </label>
-                                    <span class="match-detail" class:conflict-detail={!!conflict}>{conflict ? `Conflict: ${conflict.entries.length} matching installs` : entry.installSource === "vortex" ? "Managed by Vortex deployment metadata" : "Managed by OpenACAI Mod Manager"}</span>
+                                    <span class="match-detail" class:conflict-detail={!!conflict}>{conflict ? `Conflict: ${conflict.entries.length} matching installs` : entry.installSource === "vortex" ? "Managed by Vortex deployment metadata" : "Managed by Modstoke Manager"}</span>
 
                                     <div class="button-row">
                                         <button on:click={() => openInventoryLocation(entry)}>Open Folder</button>

@@ -12,8 +12,6 @@
   --sons-box-panel: url("./assets/sons-ui/boxpanel-texture2d-1831.png");
   --sons-box-outline: url("./assets/sons-ui/boxpaneloutline-texture2d-1414.png");
   --sons-blurred-title: url("./assets/sons-ui/blurred-title-screen-texture2d-14.png");
-  --sons-endnight-logo: url("./assets/sons-ui/endnightsplashlogo-texture2d-7.png");
-  --sons-endnight-logo-blur: url("./assets/sons-ui/endnightsplashlogoblur-texture2d-6.png");
   --app-bottom-safe-area: clamp(34px, 4.2vh, 58px);
   --app-content-max-width: 1680px;
   --app-content-side-rail: clamp(52px, 6vw, 156px);

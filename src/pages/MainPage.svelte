@@ -9,7 +9,7 @@
         verifyInstalledLoader,
         type LoaderIntegrityReport
     } from "../lib/openAcaiLoaderUpdater";
-    import openAcaiMark from "/openacai-mark.svg";
+    import modstokeMark from "/modstoke-mark.svg";
     import * as dialog from "@tauri-apps/plugin-dialog"
     import * as shell from "@tauri-apps/plugin-shell"
     import { Command } from "@tauri-apps/plugin-shell";
@@ -50,7 +50,7 @@
                 loaderReport = await ensureLatestOpenAcaiLoader();
                 updateLoaderStatus(loaderReport);
             } catch (error) {
-                await dialog.message(`OpenACAI Endnight Loader could not be verified or updated:\n${error}`, {
+                await dialog.message(`Modstoke Loader could not be verified or updated:\n${error}`, {
                     title: "Loader update failed",
                     kind: "error"
                 });
@@ -125,7 +125,7 @@
         try {
             loaderReport = await ensureLatestOpenAcaiLoader();
             updateLoaderStatus(loaderReport);
-            await dialog.message("OpenACAI Endnight Loader files are verified and current.", {
+            await dialog.message("Modstoke Loader files are verified and current.", {
                 title: "Loader verified",
                 kind: "info"
             });
@@ -174,12 +174,13 @@
 <div class="column main-page">
     <section class="brand-panel">
         <a class="brand-link" href="https://github.com/desertofunknown/openacai-loader" target="_blank" rel="noreferrer">
-            <img class="brand-mark" src={openAcaiMark} alt="OpenACAI" />
+            <img class="brand-mark" src={modstokeMark} alt="" />
             <span class="brand-copy">
-                <span class="brand-title">OpenACAI Endnight Loader</span>
-                <span class="brand-subtitle">OpenACAI Mod Manager</span>
+                <span class="brand-title">Modstoke Loader</span>
+                <span class="brand-subtitle">by OpenACAI</span>
             </span>
         </a>
+        <span class="brand-note">Independent tools for Sons of the Forest.<br />Not affiliated with Endnight Games. Intended website: modstoke.com</span>
     </section>
     <PathSelector />
     {#if $isPathValid}
@@ -187,7 +188,7 @@
             <InstallFeature feature={feature} />
         {/each}
         <section class="loader-health">
-            <span class="description-content">OpenACAI Endnight Loader integrity</span>
+            <span class="description-content">Modstoke Loader integrity</span>
             <span class="health-status {loaderStatusClass}">{loaderStatus}</span>
             {#if loaderDetail(loaderReport)}
                 <span class="health-detail">{loaderDetail(loaderReport)}</span>
@@ -205,7 +206,7 @@
         </div>
     {/if}
     {#if !$isDotnetInstalled}
-        <span class="runtime-note"><a href="https://dotnet.microsoft.com/en-us/download/dotnet/11.0" target="_blank">.NET 11</a> is recommended for current OpenACAI loader builds.</span>
+        <span class="runtime-note"><a href="https://dotnet.microsoft.com/en-us/download/dotnet/11.0" target="_blank">.NET 11</a> is recommended for current Modstoke Loader builds.</span>
     {/if}
 </div>
 
@@ -219,6 +220,8 @@
 
     .brand-panel {
         display: flex;
+        flex-direction: column;
+        gap: 0.45em;
         justify-content: center;
         margin: 0 auto clamp(0.35em, 1.2vh, 0.9em) auto;
         width: min(100%, 520px);
@@ -234,6 +237,12 @@
         justify-content: center;
         padding: 0.75em 1em;
         width: 100%;
+    }
+
+    .brand-note {
+        color: #b8b8b8;
+        font-size: 0.72em;
+        line-height: 1.4;
     }
 
     .brand-mark {

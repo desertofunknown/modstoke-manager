@@ -11,7 +11,7 @@
 
     let isTemplateInstalled = false;
     let isCheckingTemplate = false;
-    let templateStatus = "OpenACAI SDK templates are under construction.";
+    let templateStatus = "Modstoke SDK templates are under construction.";
     let modName = "MyMod";
     let appendComments = true;
     const templateTemporarilyDisabled = true;
@@ -129,7 +129,7 @@
     {#if templateTemporarilyDisabled}
         <div class="description sdk-disabled">
             <span>
-                OpenACAI SDK project templates are being rebuilt for the new OpenACAI Endnight Loader port.
+                Modstoke SDK project templates are being rebuilt for Modstoke Loader.
             </span>
             <button class="generic-button" disabled>Template under construction</button>
         </div>

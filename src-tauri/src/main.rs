@@ -1143,7 +1143,7 @@ fn inspect_openacai_loader_zip(source: String) -> Result<LoaderZipInspection, St
 
     if !inspection.has_bridge {
         inspection.errors.push(
-            "Missing OpenACAI Endnight Loader core assembly at BepInEx/plugins/OpenACAILoader/OpenACAI.Endnight.Loader.Core.dll".to_string(),
+            "Missing Modstoke Loader core assembly at BepInEx/plugins/OpenACAILoader/OpenACAI.Endnight.Loader.Core.dll".to_string(),
         );
     }
 
@@ -1160,7 +1160,7 @@ fn inspect_openacai_loader_zip(source: String) -> Result<LoaderZipInspection, St
     }
 
     if inspection.has_private_admin_tool {
-        inspection.errors.push("Package appears to contain private OpenACAI admin/anti-cheat files; public loader installs must not include them.".to_string());
+        inspection.errors.push("Package appears to contain private Modstoke Admin/anti-cheat files; public loader installs must not include them.".to_string());
     }
 
     inspection.is_valid = inspection.errors.is_empty();

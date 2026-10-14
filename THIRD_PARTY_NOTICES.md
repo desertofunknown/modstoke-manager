@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-OpenACAI Mod Manager is developed by Alex Cooper.
+Modstoke Manager, formerly OpenACAI Mod Manager, is developed by Alex Cooper and published by OpenACAI.
 
 This project is based on and/or manages packages that include:
 
@@ -8,6 +8,7 @@ This project is based on and/or manages packages that include:
 - **BepInEx** by the BepInEx team, licensed under LGPL-2.1. Source: `https://github.com/BepInEx/BepInEx`
 - **RedLoader/SonsSdk** by Toni Macaroni, licensed under LGPL-2.1 according to the upstream repository license file. Source: `https://github.com/ToniMacaroni/RedLoader`
 - **Sons of the Forest UI assets** by Endnight Games. Selected UI textures, splash logo textures, and font assets are bundled only for this open-source, noncommercial Sons of the Forest mod-management integration and are not available for commercial reuse.
+- **Tauri NSIS installer template**, by the Tauri contributors and Cargo-Bundle contributors, licensed under MIT. The complete notices and license are preserved in `src-tauri/windows/License_MIT.md`.
 
 OpenACAI-authored manager changes are licensed as `GPL-3.0-or-later`.
 

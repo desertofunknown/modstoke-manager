@@ -134,7 +134,7 @@ export function describeInstallSource(entry: InstalledInventoryEntry | null | un
     }
 
     if (entry.installSource === "native") {
-        return "OpenACAI native store";
+        return "Modstoke";
     }
 
     return "Manual / local";
@@ -455,7 +455,7 @@ async function classifySource(
 
     return {
         installSource: "native",
-        store: "OpenACAI native store"
+        store: "Modstoke"
     };
 }
 

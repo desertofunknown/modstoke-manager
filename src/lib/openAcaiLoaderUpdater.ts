@@ -67,7 +67,7 @@ export class OpenAcaiLoaderInstaller extends BaseZipInstaller {
     private manifest: LoaderUpdateManifest | null = null;
 
     constructor() {
-        super("OpenACAI Endnight Loader");
+        super("Modstoke Loader");
     }
 
     public async prepare(): Promise<boolean> {
@@ -85,7 +85,7 @@ export class OpenAcaiLoaderInstaller extends BaseZipInstaller {
         try {
             return (this.manifest ?? await fetchLatestLoaderManifest()).version;
         } catch (error) {
-            console.log("Failed to get latest OpenACAI Endnight Loader version", error);
+            console.log("Failed to get latest Modstoke Loader version", error);
             return null;
         }
     }
@@ -97,7 +97,7 @@ export async function fetchLatestLoaderManifest(): Promise<LoaderUpdateManifest>
             method: "GET"
         });
         if (response.status < 200 || response.status >= 300) {
-            throw new Error(`Failed to fetch OpenACAI Endnight Loader manifest: ${response.status}`);
+            throw new Error(`Failed to fetch Modstoke Loader manifest: ${response.status}`);
         }
 
         const manifest = validateLoaderManifest(await response.json() as LoaderUpdateManifest, "remote");
@@ -121,7 +121,7 @@ export async function verifyInstalledLoader(manifest?: LoaderUpdateManifest): Pr
     const totalFiles = manifest.files.length;
     let verifiedFiles = 0;
 
-    processName.set(`Verifying OpenACAI Endnight Loader files...`);
+    processName.set(`Verifying Modstoke Loader files...`);
     processProgress.set(0);
 
     for (const [index, file] of manifest.files.entries()) {
@@ -189,7 +189,7 @@ export async function downloadVerifyAndInstallLoader(
     const tempPath = await TempFileCache.createFile();
 
     try {
-        processName.set(`Downloading OpenACAI Endnight Loader ${manifest.version}...`);
+        processName.set(`Downloading Modstoke Loader ${manifest.version}...`);
         processProgress.set(0);
 
         let downloadProgress = 0;
@@ -204,7 +204,7 @@ export async function downloadVerifyAndInstallLoader(
             }
         );
 
-        processName.set("Verifying OpenACAI Endnight Loader package...");
+        processName.set("Verifying Modstoke Loader package...");
         const packageHash = await hashFile(tempPath);
         if (packageHash.toUpperCase() !== manifest.package.sha256.toUpperCase()) {
             throw new Error(`Downloaded loader package hash mismatch. Expected ${manifest.package.sha256}, got ${packageHash}.`);
@@ -220,7 +220,7 @@ export async function downloadVerifyAndInstallLoader(
         const existingBepInExConfig = await readExistingBepInExConfig(gameRoot);
         try {
             await beforeInstall?.();
-            processName.set(`Installing OpenACAI Endnight Loader ${manifest.version}...`);
+            processName.set(`Installing Modstoke Loader ${manifest.version}...`);
             await thisUnzip(tempPath, gameRoot);
         } catch (installError) {
             try {
@@ -244,7 +244,7 @@ export async function downloadVerifyAndInstallLoader(
                 details.unshift("Installed loader version metadata is missing or unreadable.");
             }
 
-            throw new Error(`OpenACAI Endnight Loader verification failed after installation:\n${details.join("\n")}`);
+            throw new Error(`Modstoke Loader verification failed after installation:\n${details.join("\n")}`);
         }
 
         return report;
@@ -273,7 +273,7 @@ async function hashFile(filePath: string): Promise<string> {
 
 function validateLoaderManifest(manifest: LoaderUpdateManifest, source: LoaderManifestSource): LoaderUpdateManifest {
     if (!manifest.version || !manifest.package?.downloadUrl || !manifest.package?.sha256 || !Array.isArray(manifest.files)) {
-        throw new Error("OpenACAI Endnight Loader manifest is missing required update metadata.");
+        throw new Error("Modstoke Loader manifest is missing required update metadata.");
     }
 
     return {
@@ -293,7 +293,7 @@ async function writeCachedLatestManifest(manifest: LoaderUpdateManifest): Promis
         await fs.mkdir(cacheDir, { recursive: true });
         await fs.writeTextFile(cachePath, JSON.stringify(cacheableManifest, null, 2));
     } catch (error) {
-        console.log("Failed to cache latest OpenACAI Endnight Loader manifest", error);
+        console.log("Failed to cache latest Modstoke Loader manifest", error);
     }
 }
 
@@ -306,7 +306,7 @@ async function readCachedLatestManifest(): Promise<LoaderUpdateManifest | null> 
 
         return validateLoaderManifest(JSON.parse(await fs.readTextFile(cachePath)) as LoaderUpdateManifest, "cache");
     } catch (error) {
-        console.log("Failed to read cached OpenACAI Endnight Loader manifest", error);
+        console.log("Failed to read cached Modstoke Loader manifest", error);
         return null;
     }
 }

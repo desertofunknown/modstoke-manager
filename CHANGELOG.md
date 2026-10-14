@@ -1,4 +1,5 @@
 - Unreleased
+  - Rename the app to Modstoke Manager by OpenACAI, with new artwork and consistent Loader, Admin and SDK labels. Preserve existing installations, settings and update addresses.
   - Stage native mod updates before replacing files, preserve disabled paths and files absent from the release, and restore overwritten files after installation failures. Keep recovery backups when restoration fails and refuse to overwrite Vortex-managed files.
   - Keep expanded Nexus descriptions and file notes inside the scrolling detail layout on short, narrow windows.
   - Match local package names to possessive Nexus titles, prefer explicit Nexus identities, and stop treating author names as installed mods.

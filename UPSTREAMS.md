@@ -1,6 +1,6 @@
 # Upstream Lineage
 
-OpenACAI Mod Manager is an OpenACAI-maintained fork of Toni Macaroni's RedManager with the main installation flow changed to install and maintain OpenACAI Endnight Loader packages.
+Modstoke Manager, by OpenACAI, is an OpenACAI-maintained fork of Toni Macaroni's RedManager with the main installation flow changed to install and maintain Modstoke Loader packages.
 
 ## Primary Upstream Project
 
@@ -20,6 +20,6 @@ The loader package installed by this manager is built around these open-source p
 
 ## OpenACAI Changes
 
-OpenACAI-authored work includes the OpenACAI Endnight Loader install flow, public package validation, OpenACAI branding, safer zip handling, broader mod package scanning, and mod catalog stability improvements.
+OpenACAI-authored work includes the Modstoke Loader install flow, public package validation, Modstoke branding, safer zip handling, broader mod package scanning, and mod catalog stability improvements.
 
-The private OpenACAI anti-cheat/admin mod is intentionally not part of this public repository.
+Modstoke Admin, the private anti-cheat/admin mod, is intentionally not part of this public repository.

@@ -1,8 +1,10 @@
-# OpenACAI Mod Manager
+# Modstoke Manager
 
-A Windows mod manager for **Sons of the Forest**, built with Tauri and Svelte. Browse SOTF Mods and Nexus Mods, manage your installed mods, and set up the OpenACAI Endnight Loader.
+A Windows mod manager for **Sons of the Forest**, by OpenACAI. Browse SOTF Mods and Nexus Mods, manage your installed mods, and set up Modstoke Loader.
 
-![OpenACAI Mod Manager](docs/screenshots/openacai-mod-manager-main.png)
+![Modstoke Manager](docs/screenshots/openacai-mod-manager-main.png)
+
+Modstoke is the website and catalog brand. Its intended domain is `modstoke.com`; registration and deployment are separate work. Existing addresses remain in use. See [rename compatibility](docs/BRAND_COMPATIBILITY.md).
 
 ## Download
 
@@ -10,7 +12,7 @@ A Windows mod manager for **Sons of the Forest**, built with Tauri and Svelte. B
 - [Installer — Windows x64](prebuilt/OpenACAI-Mod-Manager-0.2.0-x64-setup.exe?raw=true)
 - [SHA256 checksums](prebuilt/SHA256SUMS.txt)
 
-These downloads are **version 0.2.0**. They don't include the latest source changes; build from source below for those. See the [changelog](CHANGELOG.md) for what's changed.
+These signed **version 0.2.0** downloads retain the OpenACAI Mod Manager name and branding. Build from source for Modstoke Manager and newer changes. See the [changelog](CHANGELOG.md).
 
 ## Features
 
@@ -19,7 +21,7 @@ These downloads are **version 0.2.0**. They don't include the latest source chan
 - Enable or disable local mods and see which loader they use.
 - Read mod descriptions, view screenshots, and check versions and dependencies.
 - Spot duplicate installs and compare local versions with the Nexus catalog.
-- Install the OpenACAI Endnight Loader from a local ZIP and check its files.
+- Install Modstoke Loader from a local ZIP and check its files.
 
 Nexus files are sent to **Vortex** for installation. Packages managed by Vortex must also be enabled, disabled, or removed through Vortex.
 
@@ -55,5 +57,7 @@ npm run tauri dev
 ## Credits and license
 
 Maintained by Alex Cooper / OpenACAI. Based on [RedManager](https://github.com/ToniMacaroni/RedManager) by Toni Macaroni.
+
+An independent project, not affiliated with or endorsed by Endnight Games.
 
 OpenACAI's changes are licensed under [GPL-3.0-or-later](LICENSE). The original RedManager code is licensed under [Apache-2.0](LICENSES/Apache-2.0.txt). See [third-party notices](THIRD_PARTY_NOTICES.md) for dependency and game-asset credits.

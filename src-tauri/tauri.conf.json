@@ -16,18 +16,21 @@
         "silent": true
       },
       "nsis": {
-        "installerIcon": "icons/openacai.ico",
-        "installMode": "currentUser"
+        "installerIcon": "icons/icon.ico",
+        "installMode": "currentUser",
+        "template": "windows/installer.nsi"
       },
       "wix": null
     },
     "icon": [
-      "icons/openacai.ico",
       "icons/icon.png",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "OpenACAI",
+    "shortDescription": "Modstoke Manager by OpenACAI",
+    "longDescription": "Independent mod manager for Sons of the Forest, by OpenACAI."
   },
-  "productName": "OpenACAI Mod Manager",
+  "productName": "Modstoke Manager",
   "mainBinaryName": "OpenACAI Mod Manager",
   "version": "0.2.0",
   "identifier": "com.alexcooper.openacai.modmanager",
@@ -43,7 +46,7 @@
         "minWidth": 980,
         "resizable": true,
         "shadow": false,
-        "title": "OpenACAI Mod Manager",
+        "title": "Modstoke Manager by OpenACAI",
         "transparent": true,
         "width": 1280,
         "height": 820,

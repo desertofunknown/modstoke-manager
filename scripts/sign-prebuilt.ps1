@@ -12,7 +12,7 @@ param(
     [string]$SignToolPath = $env:SIGNTOOL_EXE,
     [string]$DlibPath = $env:AZURE_ARTIFACT_SIGNING_DLIB,
     [string]$TimestampUrl = "http://timestamp.acs.microsoft.com",
-    [string]$Description = "OpenACAI Mod Manager",
+    [string]$Description = "Modstoke Manager by OpenACAI",
     [string]$ToolsDir = "",
     [switch]$NoChecksumUpdate
 )
@@ -338,4 +338,4 @@ if (-not $NoChecksumUpdate) {
     Update-Checksums
 }
 
-Write-Host "Signed OpenACAI Mod Manager prebuilts."
+Write-Host "Signed Modstoke Manager prebuilts."

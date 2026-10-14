@@ -37,5 +37,6 @@
     "typescript": "6.0.3",
     "unplugin-icons": "23.0.1",
     "vite": "8.0.16"
-  }
+  },
+  "description": "Modstoke Manager by OpenACAI, an independent mod manager for Sons of the Forest."
 }

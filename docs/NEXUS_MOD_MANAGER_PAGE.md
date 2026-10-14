@@ -1,8 +1,8 @@
-# OpenACAI Mod Manager Nexus Page Draft
+# Modstoke Manager Nexus Page Draft
 
 ## Mod Name
 
-OpenACAI Mod Manager
+Modstoke Manager
 
 ## Suggested Category
 
@@ -14,19 +14,23 @@ Suggested companion category for the loader page: **Mod Loaders & Frameworks**
 
 ## Short Description
 
-A Sons Of The Forest mod manager for installing, repairing, verifying, and browsing OpenACAI Endnight Loader, RedLoader-style mods, BepInEx plugins, native SOTF mods, and Vortex/Nexus-managed installs.
+A Sons Of The Forest mod manager, by OpenACAI, for installing, repairing, verifying, and browsing Modstoke Loader, RedLoader-style mods, BepInEx plugins, native SOTF mods, and Vortex/Nexus-managed installs.
 
 ## Long Description
 
-OpenACAI Mod Manager is an open-source Sons Of The Forest mod manager built by OpenACAI Inc / Alex Cooper. It is designed to pair with OpenACAI Endnight Loader and make loader installation, repair, verification, and mod browsing easier for players who do not want to manually manage every file in their game directory.
+Modstoke Manager is an open-source Sons Of The Forest mod manager by OpenACAI. It is designed to pair with Modstoke Loader and make loader installation, repair, verification, and mod browsing easier for players who do not want to manually manage every file in their game directory.
 
-The manager is based on Toni Macaroni's RedManager lineage, but has been rebuilt around the OpenACAI Endnight Loader workflow, a modern Tauri 2 / Svelte 5 frontend, signed release builds, live loader file verification, and mod-type awareness for the different Sons Of The Forest mod ecosystems.
+The manager is based on Toni Macaroni's RedManager lineage, but has been rebuilt around the Modstoke Loader workflow, a modern Tauri 2 / Svelte 5 frontend, signed release builds, live loader file verification, and mod-type awareness for the different Sons Of The Forest mod ecosystems.
+
+Modstoke is the website and catalog brand, with `modstoke.com` as its intended domain. Registration and deployment are separate work. Existing repository and service links remain in use.
+
+The signed `0.2.0` downloads retain the OpenACAI Mod Manager name and branding. Build from source for the Modstoke branding and newer changes.
 
 The goal is simple: give Sons Of The Forest players one focused tool that understands this one game well.
 
 ## Current Features
 
-- Installs, repairs, and uninstalls OpenACAI Endnight Loader from public GitHub release assets.
+- Installs Modstoke Loader from a local `OpenACAILoader.zip` package and checks its files.
 - Verifies loader-owned files with SHA256 checks before launch.
 - Detects installed loader version and compares it against the latest known release manifest.
 - Detects RedLoader-style mods, RedLoader libraries, BepInEx plugins, native SOTF store installs, manual installs, and Vortex/Nexus-managed packages.
@@ -42,7 +46,7 @@ The goal is simple: give Sons Of The Forest players one focused tool that unders
 
 ## What This Is Not
 
-This is not a private anti-cheat/admin tool package. It does not include the private OpenACAI admin panel or private anti-cheat mod.
+This is not a private anti-cheat/admin tool package. It does not include Modstoke Admin, the private admin panel and anti-cheat mod.
 
 This is also not an official Endnight Games product. Some Sons Of The Forest visual assets are used for this open-source, noncommercial mod-management integration with permission, but those assets remain copyright property of Endnight Games and are not available for commercial reuse.
 
@@ -50,7 +54,7 @@ This is also not an official Endnight Games product. Some Sons Of The Forest vis
 
 - Windows 10 or Windows 11.
 - A legal Steam install of Sons Of The Forest.
-- Internet access for release manifest checks, loader downloads, SOTF Mods catalog browsing, and Nexus/Vortex features.
+- Internet access for SOTF Mods catalog browsing and Nexus/Vortex features.
 - Microsoft Edge WebView2 Runtime if it is not already present on the system.
 - Vortex is optional, but required for Vortex/Nexus deployment handoff.
 
@@ -63,10 +67,10 @@ https://github.com/desertofunknown/openacai-mod-manager/blob/openacai-tauri2-sve
 
 ## Installation
 
-1. Download the latest signed OpenACAI Mod Manager release.
+1. Download a signed release (currently the legacy OpenACAI-branded `0.2.0` build), or build Modstoke Manager from source.
 2. Run the portable executable or installer.
 3. Select your `SonsOfTheForest.exe` if the manager does not detect it automatically.
-4. Use the main tab to install or repair OpenACAI Endnight Loader.
+4. Use the main tab to install Modstoke Loader from a local `OpenACAILoader.zip` package.
 5. Use **Check** or **Verify / Repair** to confirm installed loader files match the expected release hashes.
 6. Launch the game normally or from the manager.
 
@@ -76,7 +80,7 @@ Use the manager's **Verify / Repair** flow whenever a loader update is available
 
 ## Nexus And Vortex Notes
 
-OpenACAI Mod Manager is being built as a focused one-game Nexus/Vortex companion for Sons Of The Forest. The top-level Mods page now switches between the SOTF Mods storefront and the Nexus/Vortex source so players can browse either storefront from one workspace. It is intended to support mod browsing, install-state detection, file selection, dependency awareness, tracking, endorsement, and Vortex handoff without excessive API calls.
+Modstoke Manager is being built as a focused one-game Nexus/Vortex companion for Sons Of The Forest. The top-level Mods page now switches between the SOTF Mods storefront and the Nexus/Vortex source so players can browse either storefront from one workspace. It is intended to support mod browsing, install-state detection, file selection, dependency awareness, tracking, endorsement, and Vortex handoff without excessive API calls.
 
 Dependency checks resolve game-scoped file IDs through the v3 `mod-file-versions` endpoint, then request materialized dependency ranges using the returned global version ID. Global version IDs are kept separate from parent file-group IDs and v1 catalog UIDs. Requirements retain their compatible file alternatives; one matching enabled install can satisfy a requirement. Unresolved choices and version ranges remain visible for review. Recursive checks continue in bounded batches and keep unfinished lookups available for retry.
 
@@ -84,6 +88,7 @@ Nexus features must follow the Nexus Mods API acceptable use policy. The manager
 
 ## Known Limitations
 
+- Automatic loader downloads are unavailable until the public loader repository is restored; use a local loader package.
 - Nexus/Vortex integration is still being expanded. Vortex remains the source of truth for Vortex-managed deployments.
 - The manager can detect and hand files to Vortex, but full Vortex-equivalent dependency resolution and conflict deployment are still in active development.
 - Nexus public API surfaces do not currently expose every community page feature, such as full comments/gallery browsing, so the manager links out to Nexus where the API does not provide supported endpoints.
@@ -107,4 +112,4 @@ Sons Of The Forest visual assets remain copyright property of Endnight Games and
 
 ## Suggested Tags
 
-mod manager, loader installer, OpenACAI, Endnight Loader, Sons Of The Forest, RedLoader, BepInEx, Vortex, Nexus Mods, SOTF Mods
+mod manager, loader installer, Modstoke, Modstoke Loader, OpenACAI, Sons Of The Forest, RedLoader, BepInEx, Vortex, Nexus Mods, SOTF Mods
