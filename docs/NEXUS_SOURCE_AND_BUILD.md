@@ -51,7 +51,7 @@ copyright property of Endnight Games and are not available for commercial use.
 
 ## Build Environment
 
-The current Windows build environment used by OpenACAI is:
+The Windows build tools are:
 
 - Windows 10 or Windows 11
 - Git
@@ -61,7 +61,7 @@ The current Windows build environment used by OpenACAI is:
 - Node.js `24.16.0`
 - npm `11.16.0`
 - Rust/Cargo `1.96.0`
-- .NET SDK `11.0.100-preview.4.26230.115`
+- .NET SDK `11.0.100-rc.2.26504.105` for new loader builds
 - .NET SDK `8.0.x` and `6.0.x` are useful for transitional upstream/forked
   projects that still contain older target frameworks
 - 7-Zip `26.01` or newer is recommended for maximum ZIP compression
@@ -70,6 +70,10 @@ The manager can be built without the game installed. A complete loader package
 requires a legal Sons Of The Forest installation because the build references
 generated IL2CPP interop assemblies and game assemblies produced from that
 installation.
+
+The manager itself uses Rust and Svelte; it does not require a .NET SDK to
+build. Its runtime detection already accepts .NET 11 RC2, and loader update
+metadata supplies the runtime version shown in the manager.
 
 ## Recommended Source Layout
 
@@ -196,8 +200,31 @@ xmake build
 
 ## Build The Loader Package
 
-The loader branch is currently a .NET 11 preview package. It intentionally
-rejects older runtime-major settings on this branch.
+The loader targets `net11.0` and rejects older runtime-major settings.
+
+For the RC2 upgrade, use SDK `11.0.100-rc.2.26504.105` and runtime
+`11.0.0-rc.2.26504.105`, released on October 13, 2026. See Microsoft's
+[RC2 announcement](https://devblogs.microsoft.com/dotnet/dotnet-11-rc-2/) and
+[downloads](https://dotnet.microsoft.com/en-us/download/dotnet/11.0).
+
+The existing loader package still bundles Preview 4. Installing an SDK on the
+development machine does not upgrade that package or an installed game's
+runtime. In the loader repository:
+
+1. Update the SDK version in `global.json` to `11.0.100-rc.2.26504.105`.
+2. Build using a .NET root containing the RC2 SDK, runtime and hostfxr. Pass
+   that directory through `-DotnetRoot` to avoid packaging an older runtime
+   from another installation. Put its `dotnet.exe` on `PATH` as well: the
+   script invokes `dotnet build` from `PATH`, while `-DotnetRoot` selects the
+   runtime and hostfxr to bundle.
+3. Regenerate the loader ZIP, manifest and checksum together. Confirm the
+   manifest's `runtime.dotnetRuntimeVersion` is `11.0.0-rc.2.26504.105` before
+   publishing the package through the existing release feed.
+
+Keep the existing loader paths, assembly names and release asset names. The
+manager reads the package version and runtime metadata from the release
+manifest; it does not need a new hardcoded runtime pin. Building the RC2
+package and checking it in-game are separate from updating this guide.
 
 From the loader repository:
 
