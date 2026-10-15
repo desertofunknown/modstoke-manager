@@ -1,0 +1,16 @@
+{
+  "build": {
+    "beforeBuildCommand": ""
+  },
+  "productName": "Modstoke Manager Preview",
+  "mainBinaryName": "Modstoke Manager Preview",
+  "version": "0.2.1-preview.1",
+  "identifier": "com.alexcooper.openacai.modmanager.preview",
+  "bundle": {
+    "windows": {
+      "nsis": {
+        "template": "windows/installer.preview.nsi"
+      }
+    }
+  }
+}
