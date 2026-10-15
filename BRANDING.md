@@ -12,7 +12,7 @@ Modstoke is a family of independent modding tools published by OpenACAI, a nonpr
 
 The intended website is **modstoke.com**. Registration, HTTPS and service deployment are separate work; this repository does not establish that the site is ready. Existing update and download addresses remain in use.
 
-The manager supports **Sons of the Forest**. It is not affiliated with or endorsed by Endnight Games. Keep the game name in compatibility descriptions, and retain the notices for bundled game assets and upstream software.
+The manager supports **Sons of the Forest**. It is not affiliated with or endorsed by Endnight Games. Keep the game name in compatibility descriptions and retain upstream software notices.
 
 ## Product artwork
 

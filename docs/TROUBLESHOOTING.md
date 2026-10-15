@@ -1,24 +1,41 @@
 # Manager troubleshooting
 
-This guide covers the [`openacai-tauri2-svelte5-shell` Manager branch](https://github.com/desertofunknown/openacai-mod-manager/tree/openacai-tauri2-svelte5-shell). The signed 0.2.0 downloads in that branch still carry the OpenACAI Mod Manager name.
+This guide covers the unsigned `0.2.1-preview.4` source candidate. Its exact
+source commit has not been published to the public review branch.
+There is no public download of this preview yet. Older signed `0.2.0` builds
+still carry the OpenACAI Mod Manager name and use a different Loader feed.
 
 ## The Manager rejects my game path
 
 Choose the game's `SonsOfTheForest.exe`, not the Steam shortcut or the install folder itself. The file picker accepts an `.exe`, and the Manager checks that its filename is `SonsOfTheForest.exe`.
 
-## Loader install says the manifest is unavailable
+## Guided Loader installation is unavailable
 
-The current install, Check, and Update / Repair flows use a [hard-coded GitHub release manifest](https://github.com/desertofunknown/openacai-loader/releases/latest/download/OpenACAILoader.manifest.json). That old loader repository is unavailable at present, so the Manager cannot fetch a new loader package from it. If a manifest was cached from an earlier successful check, the Manager may show cached status, but it still needs an available package URL to download a repair.
+This preview checks `https://modstoke.com/release-index.json` for a selected
+complete Loader, SDK, and client companion bundle. If none is selected, it
+shows that guided installation is unavailable and disables repair. A website
+error also stops new installation; cached status cannot authorize a new
+download. Use **Check website again** after the feed is restored.
 
-The source contains a local ZIP installer class, but the current UI does not connect it to an install button. Selecting a local `OpenACAILoader.zip` is therefore not a supported workaround in this build. Loader install and repair require a compatible public release feed or a Manager code change.
+Older signed `0.2.0` builds use an [old GitHub release manifest](https://github.com/desertofunknown/openacai-loader/releases/latest/download/OpenACAILoader.manifest.json)
+that is unavailable. Neither build offers a working local ZIP picker. A local
+`OpenACAILoader.zip` is not a supported workaround in the current UI.
 
 ## Start Game stops after a loader update error
 
-When a loader is installed, the Manager checks it before its **Start Game** action. If verification or updating fails, that action stops and shows an error. You can launch the game through Steam, but that bypasses the Manager's prelaunch check and does not repair the loader. Resolve the loader issue before treating its installation as verified.
+Older `0.2.0` builds check an installed loader before their **Start Game**
+action and stop if the old release feed cannot verify it. The website-connected
+preview does not auto-update the Loader before starting the game. It keeps
+guided install and repair unavailable until a complete bundle is published.
+Launching through Steam does not repair Loader files.
 
 ## Check reports missing or mismatched loader files
 
-The Manager compares loader-owned files with SHA256 hashes in the release manifest. **Update / Repair** downloads a package and checks its hash before installing it. While the release feed is unavailable, that button cannot fetch the files it needs. Keep the issue details shown by the Manager; they identify the first affected path. Avoid deleting unrelated game or mod files to clear the warning.
+The Manager compares loader-owned files with SHA256 hashes in the selected
+release manifest. **Update / Repair** needs a published package whose ZIP and
+files match those hashes. Keep the issue details shown by the Manager; they
+identify the first affected path. Avoid deleting unrelated game or mod files
+to clear the warning.
 
 ## A Nexus mod does not change when I disable or remove it
 
@@ -32,12 +49,14 @@ Run `npm ci` from the Manager repository before `npm run check` or `npm run taur
 
 ## Check a downloaded executable
 
-Compare its SHA256 hash with the [checksums committed alongside the downloads](https://github.com/desertofunknown/openacai-mod-manager/blob/openacai-tauri2-svelte5-shell/prebuilt/SHA256SUMS.txt). In PowerShell, replace the path with the file you downloaded:
+Check the hash against the checksum published for that exact download. In
+PowerShell, replace the path with the file you downloaded:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath ".\OpenACAI-Mod-Manager-0.2.0-x64-setup.exe"
-Get-AuthenticodeSignature -LiteralPath ".\OpenACAI-Mod-Manager-0.2.0-x64-setup.exe"
+Get-FileHash -Algorithm SHA256 -LiteralPath ".\Manager-setup.exe"
+Get-AuthenticodeSignature -LiteralPath ".\Manager-setup.exe"
 ```
 
-The signature should report `Valid` with **OpenACAI Inc** as the signer. A local source build will not carry that signature unless it is signed separately.
+The `0.2.1-preview.4` build is unsigned, so it will not report a valid
+publisher signature. Do not confuse it with the earlier signed `0.2.0` build.
 

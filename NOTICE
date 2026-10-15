@@ -15,12 +15,6 @@ Upstream projects credited by this manager:
 
 The private OpenACAI anti-cheat/admin mod is not part of this public repository.
 
-Sons of the Forest UI assets:
-
-Selected UI textures, splash logo textures, and font assets extracted from Sons
-of the Forest are copyright property of Endnight Games. Per project-provided
-permission, these assets are bundled only into this open-source, noncommercial
-OpenACAI mod manager for Sons of the Forest compatibility and visual
-integration. They are not available for commercial reuse or for reuse outside
-the permitted
-OpenACAI/Sons of the Forest mod-management context.
+The manager uses original CSS and system fonts for its interface. It does not
+bundle Sons of the Forest textures, splash logos, or fonts. Sons of the Forest
+is referenced only to identify the game with which this independent tool works.

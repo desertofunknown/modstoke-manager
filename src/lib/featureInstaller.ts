@@ -1,4 +1,3 @@
-import { DebugInstaller } from "./debugInstaller";
 import type { BaseInstaller } from "./baseInstaller";
 import { getDirectoryPath, processName } from "./store";
 import { BaseUninstaller } from "./baseUninstaller";
@@ -252,7 +251,6 @@ let loaderUninstaller = new BaseUninstaller([
     "version.dll",
 ], "RedLoader");
 
-let loaderDebugInstaller = new DebugInstaller("I:\\repos\\MelonLoader\\RedLoader.zip", "RedLoader");
 let loaderInstaller = new GithubInstaller(redLoaderInfo, "RedLoader");
 let openAcaiLoaderInstaller = new OpenAcaiLoaderInstaller();
 
@@ -263,8 +261,6 @@ let ueUninstaller = new BaseUninstaller([
     "Mods\\UnityExplorer.dll",
 ], "UnityExplorer");
 let ueInstaller = new GithubInstaller(unityExplorerInfo, "UnityExplorer");
-
-export let debugInstaller = new FeatureInstaller(loaderDebugInstaller, loaderUninstaller);
 
 export let loaderFeature = new FeatureInstaller(loaderInstaller, loaderUninstaller, "_RedLoader\\net6\\RedLoader.dll");
 loaderFeature.additionalFoldersToCreate = ["Mods"];
