@@ -7,6 +7,9 @@ import { BaseZipInstaller } from "./baseZipInstaller";
 import { getDirectoryPath, processName, processProgress } from "./store";
 import { TempFileCache } from "./tempFileCache";
 import * as fs from "@tauri-apps/plugin-fs"
+import { fetchSiteLoaderManifest, fetchSiteReleaseIndex, siteIndexUrl } from "./siteReleaseClient";
+import { selectedGuidedBundle, SITE_LOADER_MANIFEST_PATH, SITE_ORIGIN } from "./siteReleaseIndex";
+import { getVersion } from "@tauri-apps/api/app";
 
 export type LoaderManifestFile = {
     path: string;
@@ -91,7 +94,37 @@ export class OpenAcaiLoaderInstaller extends BaseZipInstaller {
     }
 }
 
-export async function fetchLatestLoaderManifest(): Promise<LoaderUpdateManifest> {
+export async function fetchLatestLoaderManifest(options: { allowCachedSiteStatus?: boolean } = {}): Promise<LoaderUpdateManifest> {
+    if (siteIndexUrl()) {
+        let index;
+        let manifest;
+        try {
+            index = await fetchSiteReleaseIndex();
+            const guided = index && selectedGuidedBundle(index);
+            if (!guided) {
+                throw new Error("No verified complete Modstoke Loader, SDK, and client companion bundle is published yet.");
+            }
+            const managerVersion = await getVersion();
+            if (!semver.valid(managerVersion) || semver.lt(managerVersion, guided.loader.compatibility.minManagerVersion)) {
+                throw new Error(`This Loader requires Modstoke Manager ${guided.loader.compatibility.minManagerVersion} or newer.`);
+            }
+            manifest = await fetchSiteLoaderManifest(guided.loader);
+        } catch (error) {
+            // Only a read-only status check may use a previous website manifest.
+            // A new install, update, or repair always requires the live selection.
+            if (options.allowCachedSiteStatus && !index) {
+                const cached = await readCachedLatestManifest();
+                if (cached?.package.downloadUrl.startsWith(`${SITE_ORIGIN}/downloads/loader/`) &&
+                    cached.update.manifestUrl === `${SITE_ORIGIN}${SITE_LOADER_MANIFEST_PATH}`) {
+                    return cached;
+                }
+            }
+            throw error;
+        }
+        await writeCachedLatestManifest(manifest);
+        return manifest;
+    }
+
     try {
         const response = await tauriFetch(`${LOADER_MANIFEST_URL}?t=${Date.now()}`, {
             method: "GET"
@@ -114,7 +147,7 @@ export async function fetchLatestLoaderManifest(): Promise<LoaderUpdateManifest>
 }
 
 export async function verifyInstalledLoader(manifest?: LoaderUpdateManifest): Promise<LoaderIntegrityReport> {
-    manifest = manifest ?? await fetchLatestLoaderManifest();
+    manifest = manifest ?? await fetchLatestLoaderManifest({ allowCachedSiteStatus: true });
     const gameRoot = await getDirectoryPath();
     const installedVersion = await getInstalledLoaderVersion();
     const issues: LoaderIntegrityIssue[] = [];
