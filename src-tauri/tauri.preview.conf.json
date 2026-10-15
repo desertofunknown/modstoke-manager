@@ -4,9 +4,19 @@
   },
   "productName": "Modstoke Manager Preview",
   "mainBinaryName": "Modstoke Manager Preview",
-  "version": "0.2.1-preview.1",
+  "version": "0.2.1-preview.2",
   "identifier": "com.alexcooper.openacai.modmanager.preview",
   "bundle": {
+    "licenseFile": "../LICENSE",
+    "resources": {
+      "../LICENSE": "LICENSE",
+      "../NOTICE": "NOTICE",
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
+      "../LICENSES/Apache-2.0.txt": "LICENSES/Apache-2.0.txt",
+      "../LICENSES/LGPL-2.1.txt": "LICENSES/LGPL-2.1.txt",
+      "windows/License_MIT.md": "LICENSES/Tauri-NSIS-MIT.md",
+      "../src/assets/sons-ui/NOTICE.txt": "LICENSES/Sons-of-the-Forest-UI-NOTICE.txt"
+    },
     "windows": {
       "nsis": {
         "template": "windows/installer.preview.nsi"
