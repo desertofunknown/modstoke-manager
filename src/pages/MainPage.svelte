@@ -13,14 +13,88 @@
     import * as dialog from "@tauri-apps/plugin-dialog"
     import * as shell from "@tauri-apps/plugin-shell"
     import { Command } from "@tauri-apps/plugin-shell";
+    import { onMount } from "svelte";
+    import { fetchSiteReleaseIndex, siteIndexUrl } from "../lib/siteReleaseClient";
+    import { selectedGuidedBundle, selectedSiteRelease, siteArtifactUrl, type SiteReleaseIndex } from "../lib/siteReleaseIndex";
+    import { readSiteBundleInventory, type SiteBundleInventory } from "../lib/siteBundleInventory";
 
-    let features = [melonFeature, openAcaiLoaderFeature];
+    const websiteEnabled = !!siteIndexUrl();
+    const previewBuild = import.meta.env.VITE_MODSTOKE_PREVIEW_BUILD === "1";
+    let features = websiteEnabled ? [melonFeature] : [melonFeature, openAcaiLoaderFeature];
+    let websiteIndex: SiteReleaseIndex | null = null;
+    let websiteError: string | null = null;
+    let websiteChecking = websiteEnabled;
+    let websiteInventory: SiteBundleInventory | null = null;
+    let websiteInventoryPath = "";
+    $: guidedBundle = websiteIndex ? selectedGuidedBundle(websiteIndex) : null;
+    $: managerRelease = websiteIndex ? selectedSiteRelease(websiteIndex, "manager") : null;
+    $: previewBundle = guidedBundle?.loader.channel === "preview" &&
+        (guidedBundle.loader.artifacts[0].signatureStatus === "unsigned-preview" ||
+            guidedBundle.loader.validation.game === "pending" || guidedBundle.loader.validation.multiplayer === "pending");
     let loaderReport: LoaderIntegrityReport | null = null;
     let loaderStatus = "Not checked";
     let loaderStatusClass = "manual";
     let lastCheckedLoaderExePath = "";
     let loaderStatusRequestId = 0;
     let loaderProgressRequestId = 0;
+
+    onMount(() => {
+        if (websiteEnabled) void refreshWebsite();
+    });
+
+    $: if (websiteEnabled && $isPathValid && $gameExePath && $gameExePath !== websiteInventoryPath) {
+        void refreshWebsiteInventory();
+    }
+
+    async function refreshWebsite() {
+        websiteChecking = true;
+        websiteError = null;
+        websiteIndex = null;
+        try {
+            websiteIndex = await fetchSiteReleaseIndex();
+            await refreshWebsiteInventory();
+        } catch (error) {
+            websiteError = `${error}`;
+            websiteInventory = null;
+        } finally {
+            websiteChecking = false;
+        }
+    }
+
+    async function refreshWebsiteInventory() {
+        if (!$isPathValid || !$gameExePath) {
+            websiteInventory = null;
+            websiteInventoryPath = "";
+            return;
+        }
+        const selectedPath = $gameExePath;
+        websiteInventoryPath = selectedPath;
+        const gameRoot = await getDirectoryPath();
+        const loader = websiteIndex ? selectedGuidedBundle(websiteIndex)?.loader ?? null : null;
+        const inventory = await readSiteBundleInventory(gameRoot, loader);
+        if (selectedPath === $gameExePath) websiteInventory = inventory;
+    }
+
+    async function installWebsiteBundle() {
+        if (!guidedBundle || !$isPathValid || $processing) return;
+        processing.set(true);
+        processProgress.set(0);
+        try {
+            await openAcaiLoaderFeature.install();
+            loaderReport = await verifyInstalledLoader();
+            updateLoaderStatus(loaderReport);
+            await refreshWebsiteInventory();
+            await dialog.message(previewBundle
+                ? "Preview bundle files were installed and matched their published hashes. Game and multiplayer behavior still needs testing."
+                : "The Modstoke Loader, SDK, and client companion files were installed and verified.", {
+                title: "Bundle installed", kind: "info"
+            });
+        } catch (error) {
+            await dialog.message(`${error}`, { title: "Bundle installation failed", kind: "error" });
+        } finally {
+            processing.set(false);
+        }
+    }
 
     $: if ($isPathValid && $gameExePath && $gameExePath !== lastCheckedLoaderExePath) {
         loaderReport = null;
@@ -42,7 +116,7 @@
 
     async function startGame() {
         const installedVersion = await getInstalledLoaderVersion();
-        if (installedVersion) {
+        if (installedVersion && !websiteEnabled) {
             processing.set(true);
             processProgress.set(0);
 
@@ -165,7 +239,7 @@
             return `${report.issues[0].path} - ${report.issues[0].reason}`;
         }
 
-        const source = report.latestManifestSource === "cache" ? "cached release manifest" : "GitHub release manifest";
+        const source = report.latestManifestSource === "cache" ? "cached release manifest" : websiteEnabled ? "Modstoke website release manifest" : "GitHub release manifest";
         const checkedAt = new Date(report.checkedAtUtc).toLocaleTimeString();
         return `Checked ${checkedAt} using ${source}. ${report.versionOutdated ? "Installed metadata is older, but files match the current manifest." : "No loader file drift detected."}`;
     }
@@ -173,6 +247,9 @@
 
 <div class="column main-page">
     <section class="brand-panel">
+        {#if previewBuild}
+            <strong class="brand-note" role="status">Unsigned test build. Website installation requires a verified complete Loader, SDK, and client release.</strong>
+        {/if}
         <a class="brand-link" href="https://github.com/desertofunknown/openacai-loader" target="_blank" rel="noreferrer">
             <img class="brand-mark" src={modstokeMark} alt="" />
             <span class="brand-copy">
@@ -183,6 +260,45 @@
         <span class="brand-note">Independent tools for Sons of the Forest.<br />Not affiliated with Endnight Games. Intended website: modstoke.com</span>
     </section>
     <PathSelector />
+    {#if websiteEnabled}
+        <section class="loader-health site-feed">
+            <span class="description-content">Modstoke website releases</span>
+            {#if websiteChecking}
+                <span>Checking the website for verified releases...</span>
+            {:else if websiteError}
+                <span role="alert">The website release feed is unavailable: {websiteError}</span>
+            {:else if !guidedBundle}
+                <span>No verified complete Loader, SDK, and client companion bundle is published yet. Guided installation is unavailable.</span>
+                <span>Client companion: no published companion is available.</span>
+            {:else}
+                <span>{guidedBundle.loader.channel === "preview" ? "Preview" : "Stable"} bundle {guidedBundle.loader.version} includes the Loader, SDK assembly, and client companion.</span>
+                {#if previewBundle}
+                    <strong role="status">Preview for testing: {guidedBundle.loader.artifacts[0].signatureStatus === "unsigned-preview" ? "package is unsigned. " : ""}{guidedBundle.loader.validation.game === "pending" ? "Game validation is pending. " : ""}{guidedBundle.loader.validation.multiplayer === "pending" ? "Multiplayer validation is pending." : ""}</strong>
+                    {#if guidedBundle.loader.artifacts[0].unsignedReason}
+                        <span>Unsigned reason: {guidedBundle.loader.artifacts[0].unsignedReason}</span>
+                    {/if}
+                {/if}
+                <span>Tested game builds: {guidedBundle.loader.compatibility.testedGameBuilds.length ? guidedBundle.loader.compatibility.testedGameBuilds.join(", ") : "none yet"}</span>
+                <span>Client inventory sharing is off by default. If you opt in later, a compatible host may request and receive your current item IDs and counts. Installing the companion does not grant host rights.</span>
+                {#if $isPathValid}
+                    <span>Installed Loader: {websiteInventory?.installedVersion ?? "not detected"}</span>
+                    <span>SDK assembly: {websiteInventory?.sdkAssemblyPresent ? "detected" : "missing"}</span>
+                    <span>Client companion: {websiteInventory?.clientCompanionPresent ? "detected" : "missing"}</span>
+                    <button class="tool-button install" disabled={$processing} on:click={installWebsiteBundle}>{previewBundle ? "Install preview bundle for testing" : "Install / repair complete bundle"}</button>
+                {/if}
+            {/if}
+            {#if managerRelease}
+                <a href={siteArtifactUrl(managerRelease.artifacts[0])} target="_blank" rel="noreferrer">Download {managerRelease.artifacts[0].signatureStatus === "unsigned-preview" ? "unsigned preview" : "verified"} Manager {managerRelease.version} ({managerRelease.channel})</a>
+                {#if managerRelease.artifacts[0].signatureStatus === "unsigned-preview"}
+                    <strong role="status">Unsigned Manager preview: {managerRelease.artifacts[0].unsignedReason}</strong>
+                {/if}
+                <span>Manager SHA-256: {managerRelease.artifacts[0].sha256}</span>
+            {:else if !websiteChecking && !websiteError}
+                <span>No Manager download is published on the website yet.</span>
+            {/if}
+            <button class="tool-button" disabled={websiteChecking} on:click={refreshWebsite}>Check website again</button>
+        </section>
+    {/if}
     {#if $isPathValid}
         {#each features as feature}
             <InstallFeature feature={feature} />
@@ -195,7 +311,7 @@
             {/if}
             <div class="health-actions">
                 <button class="tool-button" on:click={() => refreshLoaderStatus(true)}>Check</button>
-                <button class="tool-button install" on:click={repairLoader}>{loaderReport?.needsUpdate ? "Update / Repair" : "Verify / Repair"}</button>
+                <button class="tool-button install" disabled={websiteEnabled && !guidedBundle} on:click={repairLoader}>{loaderReport?.needsUpdate ? "Update / Repair" : "Verify / Repair"}</button>
             </div>
         </section>
     {/if}
