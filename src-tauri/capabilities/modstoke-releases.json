@@ -1,0 +1,17 @@
+{
+  "identifier": "modstoke-releases",
+  "description": "Read Modstoke release metadata and release downloads from the website.",
+  "local": true,
+  "windows": ["main"],
+  "permissions": [
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://modstoke.com/release-index.json" },
+        { "url": "https://modstoke.com/releases/loader/latest/OpenACAILoader.manifest.json" },
+        { "url": "https://modstoke.com/downloads/loader/*" },
+        { "url": "https://modstoke.com/downloads/manager/*" }
+      ]
+    }
+  ]
+}
