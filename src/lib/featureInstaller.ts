@@ -11,6 +11,7 @@ import { gameExePath } from "./store";
 import semver from "semver";
 import { OpenAcaiLoaderInstaller } from "./openAcaiLoaderUpdater";
 import * as fs from "@tauri-apps/plugin-fs"
+import { siteIndexUrl } from "./siteReleaseClient";
 
 export enum InstallMode {
     Install,
@@ -287,7 +288,9 @@ openAcaiLoaderUninstaller.overrideCheckFiles = [
 export let openAcaiLoaderFeature = new FeatureInstaller(openAcaiLoaderInstaller, openAcaiLoaderUninstaller, "BepInEx\\plugins\\OpenACAILoader\\openacai-loader.manifest.json");
 openAcaiLoaderFeature.displayName = "Modstoke Loader";
 openAcaiLoaderFeature.additionalFoldersToCreate = ["Mods"];
-openAcaiLoaderFeature.description = "Installs or repairs the BepInEx-first Modstoke Loader package from the public GitHub release manifest, then verifies installed file hashes.";
+openAcaiLoaderFeature.description = siteIndexUrl()
+    ? "Installs the verified Modstoke Loader, SDK, and client companion bundle selected by the Modstoke website, then verifies installed file hashes."
+    : "Installs or repairs the BepInEx-first Modstoke Loader package from the legacy GitHub release manifest, then verifies installed file hashes.";
 
 export let ueFeature = new FeatureInstaller(ueInstaller, ueUninstaller);
 ueFeature.description = "UnityExplorer is a modding tool which lets you analyze and manipulate the game at runtime."
