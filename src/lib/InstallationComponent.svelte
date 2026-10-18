@@ -157,114 +157,245 @@
   }
 </script>
 
-{#if loading}
-  <div class="feature-container">
-    <span class="description-content">Checking {feature.getName()} installation...</span>
-  </div>
-{:else if statusError}
-  <div class="feature-container">
-    <span class="description-content" role="alert">{statusError}</span>
-    <button disabled={actionBusy || $processing || !$isPathValid} on:click={() => refreshStatus(feature, $gameExePath, $isPathValid)}>Retry {feature.getName()} check</button>
-  </div>
-{:else if shouldBeVisible && readyPath === $gameExePath && readyFeature === feature && $isPathValid}
-  <div class="feature-container" class:description={description}>
-    {#if description}
-        <span class="description-content">{description}</span>
-    {/if}
-    {#if releaseWarning}
-      <span class="description-content status-warning" role="status">{releaseWarning}</span>
-      <button class="retry-check" disabled={actionBusy || $processing} on:click={() => refreshStatus(feature, $gameExePath, $isPathValid)}>Retry {feature.getName()} check</button>
-    {/if}
-  {#if actionAvailable && currentMode==="Update"}
-    <div class="horizontal">
-      <button disabled={actionBusy || $processing} on:click={() => handleAction(InstallMode.Update)} class="update btn-left">Update {featureLabel}</button>
-      <button disabled={actionBusy || $processing} on:click={() => handleAction(InstallMode.Uninstall)} class="uninstall btn-right">Uninstall {feature.getName()}</button>
+{#if loading || statusError || (shouldBeVisible && readyPath === $gameExePath && readyFeature === feature && $isPathValid)}
+  <section class="feature-container installation-card" aria-label={feature.getName()}>
+    <div class="feature-copy">
+      <div class="feature-heading">
+        <h3>{feature.getName()}</h3>
+        {#if loading}
+          <span class="feature-state checking" role="status">Checking installation…</span>
+        {:else if statusError}
+          <span class="feature-state state-error">Check failed</span>
+        {:else}
+          <span class="feature-state" class:state-installed={currentMode === "Uninstall"} class:state-update={currentMode === "Update"}>
+            {currentMode === "Uninstall" ? "Installed" : currentMode === "Update" ? "Update available" : actionAvailable ? "Ready to install" : "Release unavailable"}
+          </span>
+        {/if}
+      </div>
+      {#if description}
+        <p class="description-content">{description}</p>
+      {/if}
+      {#if !loading && !statusError && featureLabel !== feature.getName()}
+        <p class="feature-version">Available release <span>{featureLabel}</span></p>
+      {/if}
     </div>
-  {:else if actionAvailable}
-    <button disabled={actionBusy || $processing} on:click={() => handleAction(readyMode)} class="{currentClass}">{currentMode} {featureLabel}</button>
-  {/if}
-  </div>
+
+    {#if !loading && !statusError && actionAvailable}
+      <div class="feature-actions">
+        {#if currentMode === "Update"}
+          <button type="button" disabled={actionBusy || $processing} aria-label={`Update ${featureLabel}`} on:click={() => handleAction(InstallMode.Update)} class="update">Update</button>
+          <button type="button" disabled={actionBusy || $processing} aria-label={`Uninstall ${feature.getName()}`} on:click={() => handleAction(InstallMode.Uninstall)} class="uninstall">Uninstall</button>
+        {:else}
+          <button type="button" disabled={actionBusy || $processing} aria-label={`${currentMode} ${featureLabel}`} on:click={() => handleAction(readyMode)} class={currentClass}>{currentMode}</button>
+        {/if}
+      </div>
+    {/if}
+
+    {#if statusError}
+      <div class="feature-feedback error-feedback">
+        <p role="alert">{statusError}</p>
+        <button type="button" class="retry-check" aria-label={`Retry ${feature.getName()} check`} disabled={actionBusy || $processing || !$isPathValid} on:click={() => refreshStatus(feature, $gameExePath, $isPathValid)}>Retry check</button>
+      </div>
+    {:else if !loading && releaseWarning}
+      <div class="feature-feedback warning-feedback">
+        <p role="status">{releaseWarning}</p>
+        <button type="button" class="retry-check" aria-label={`Retry ${feature.getName()} check`} disabled={actionBusy || $processing} on:click={() => refreshStatus(feature, $gameExePath, $isPathValid)}>Retry check</button>
+      </div>
+    {/if}
+  </section>
 {/if}
 
 {#if operationError}
-  <div class="feature-container">
-    <span class="description-content operation-error" role="alert">{operationError}</span>
+  <div class="feature-container operation-feedback">
+    <p class="operation-error" role="alert">{operationError}</p>
   </div>
 {/if}
 
 <style>
-  .horizontal {
-    display: flex;
-    flex-direction: row;
+  .installation-card {
     align-items: center;
+    background: var(--surface-panel, #171a21);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 18px;
+    min-width: 0;
+    padding: 16px 18px;
+    text-align: left;
   }
 
-  .horizontal > * {
-    /* margin-right: 1em; */
-    flex: 1;
+  .feature-copy {
+    flex: 1 1 220px;
+    min-width: 0;
   }
 
-  .feature-container > * {
-    width: 100%;
+  .feature-heading {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px 10px;
+    min-width: 0;
   }
 
-  .description {
-    padding: clamp(0.45em, 1.2vh, 0.65em);
-    border-radius: 2px;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    background: rgba(42, 42, 42, 0.58);
+  .feature-heading h3 {
+    color: var(--text-primary, #eef0f4);
+    font-size: 15px;
+    font-weight: 650;
+    line-height: 1.4;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .feature-state {
+    background: var(--surface-raised, #20242c);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 5px;
+    color: var(--text-secondary, #9da6b6);
+    display: inline-flex;
+    font-size: 11px;
+    font-weight: 550;
+    line-height: 1.35;
+    padding: 3px 7px;
+  }
+
+  .state-installed {
+    background: rgba(123, 184, 151, 0.1);
+    border-color: rgba(123, 184, 151, 0.13);
+    color: #a4d3b8;
+  }
+
+  .state-update {
+    background: var(--accent-soft, rgba(238, 182, 107, 0.12));
+    border-color: rgba(238, 182, 107, 0.16);
+    color: var(--accent, #eeb66b);
+  }
+
+  .state-error {
+    background: rgba(214, 133, 133, 0.1);
+    border-color: rgba(214, 133, 133, 0.16);
+    color: #e6a4a4;
   }
 
   .description-content {
-    margin-bottom: clamp(0.45em, 1.1vh, 0.8em);
-    display: block;
-    text-align: center;
-    font-size: 0.9em;
-    color: #a2a2a2;
-  }
-
-  .btn-left {
-    border-radius: 2px 0 0 2px;
-  }
-
-  .btn-right {
-    border-radius: 0 2px 2px 0;
-  }
-
-  .feature-container button {
-    margin-bottom: 0;
-  }
-
-  .feature-container .retry-check {
-    margin-bottom: 0.5em;
-  }
-
-  .status-warning {
-    color: #e0bf80;
+    color: var(--text-secondary, #9da6b6);
+    font-size: 13px;
+    line-height: 1.55;
+    margin: 7px 0 0;
     overflow-wrap: anywhere;
+    text-align: left;
+  }
+
+  .feature-version {
+    color: #818c9e;
+    font-size: 11px;
+    line-height: 1.5;
+    margin: 7px 0 0;
+    overflow-wrap: anywhere;
+  }
+
+  .feature-version span {
+    color: #b4bdcb;
+    margin-left: 5px;
+  }
+
+  .feature-actions {
+    align-items: center;
+    display: flex;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-left: auto;
+    min-width: 0;
+  }
+
+  .installation-card button {
+    background: var(--surface-raised, #20242c);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 7px;
+    color: var(--text-primary, #eef0f4);
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.3;
+    margin: 0;
+    min-height: 34px;
+    padding: 7px 12px;
+    width: auto;
+  }
+
+  .installation-card button.install,
+  .installation-card button.update {
+    background: var(--accent, #eeb66b);
+    border-color: var(--accent, #eeb66b);
+    color: #201b15;
+  }
+
+  .installation-card button.install:enabled:hover,
+  .installation-card button.update:enabled:hover {
+    background: #f3c58b;
+    border-color: #f3c58b;
+    color: #201b15;
+  }
+
+  .installation-card button.uninstall:enabled:hover {
+    background: rgba(214, 133, 133, 0.1);
+    border-color: rgba(214, 133, 133, 0.3);
+    color: #e6a4a4;
+  }
+
+  .feature-feedback {
+    align-items: center;
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    display: flex;
+    flex: 1 0 100%;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    min-width: 0;
+    padding-top: 13px;
+  }
+
+  .feature-feedback p {
+    flex: 1 1 200px;
+    font-size: 12px;
+    line-height: 1.5;
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .warning-feedback {
+    color: #d6b583;
+  }
+
+  .error-feedback {
+    color: #e6a4a4;
+  }
+
+  .installation-card .retry-check {
+    background: transparent;
+    color: #bec6d3;
+    margin-left: auto;
+  }
+
+  .installation-card .retry-check:enabled:hover {
+    background: var(--surface-raised, #20242c);
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+
+  .operation-feedback {
+    background: rgba(214, 133, 133, 0.08);
+    border: 1px solid rgba(214, 133, 133, 0.16);
+    border-radius: 8px;
+    padding: 12px 16px;
   }
 
   .operation-error {
-    color: #ffb4ab;
-    margin: 0.5em 0 0;
+    color: #e6a4a4;
+    font-size: 12px;
+    line-height: 1.5;
+    margin: 0;
     overflow-wrap: anywhere;
-  }
-
-  @media (max-height: 780px) {
-    .description-content {
-      font-size: 0.82em;
-      line-height: 1.25;
-    }
-  }
-
-  @media (max-height: 720px) {
-    .description {
-      padding: 0.42em 0.55em;
-    }
-
-    .description-content {
-      font-size: 0.76em;
-      margin-bottom: 0.34em;
-    }
+    text-align: left;
   }
 </style>

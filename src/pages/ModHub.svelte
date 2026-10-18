@@ -234,7 +234,7 @@
         const nexusBaseMinimum = isNarrow ? 290 : 330;
         const sotfMinimum = Math.min(sotfBaseMinimum, Math.max(isNarrow ? 138 : 156, Math.round(bodyBudget * 0.34)));
         const nexusMinimum = Math.min(nexusBaseMinimum, Math.max(isNarrow ? 160 : 180, Math.round(bodyBudget * 0.4)));
-        const sotfShare = isShort ? 0.42 : width > 1320 ? 0.47 : 0.45;
+        const sotfShare = isShort ? 0.52 : 0.5;
         const maxSotfHeight = Math.max(sotfMinimum, bodyBudget - nexusMinimum);
         const sotfHeight = clampNumber(bodyBudget * sotfShare, sotfMinimum, maxSotfHeight);
         const nexusHeight = Math.max(0, bodyBudget - sotfHeight);
@@ -256,8 +256,35 @@
 <svelte:window on:keydown={handleSearchShortcut} />
 
 <div class="mod-hub" bind:this={modHubElement}>
+    <header class="hub-header">
+        <div class="hub-heading">
+            <span class="hub-eyebrow">Your next playthrough</span>
+            <h1>Mod library</h1>
+            <p>Discover and manage mods for Sons of the Forest.</p>
+        </div>
+        <label class="hub-search">
+            <LucideSearch aria-hidden="true" />
+            <input
+                bind:this={searchInput}
+                aria-label="Search mods"
+                title="Search mods (Ctrl+F)"
+                on:keydown={(event) => { if (event.key === "Escape" && sharedSearchTerm) { event.stopPropagation(); clearSharedSearch(); } }}
+                placeholder="Search the library"
+                type="text"
+                value={sharedSearchTerm}
+                on:input={handleSharedSearchInput}
+            />
+            {#if sharedSearchTerm}
+                <button type="button" aria-label="Clear search" on:click={clearSharedSearch} title="Clear search">
+                    <LucideX aria-hidden="true" />
+                </button>
+            {:else}
+                <kbd>Ctrl F</kbd>
+            {/if}
+        </label>
+    </header>
     <div class="hub-toolbar">
-        <div class="source-switch" aria-label="Mod source">
+        <div class="source-switch" role="group" aria-label="Mod source">
             <button
                 type="button"
                 class:source-selected={activeSource === "all"}
@@ -267,8 +294,7 @@
             >
                 <LucideLayoutGrid aria-hidden="true" />
                 <span class="source-switch-copy">
-                    <span>All Stores</span>
-                    <small>{allStoresSummaryLine(sotfSummary, nexusSummary, sharedSearchTerm)}</small>
+                    <span>All stores</span>
                 </span>
             </button>
             <button
@@ -281,7 +307,6 @@
                 <LucideStore aria-hidden="true" />
                 <span class="source-switch-copy">
                     <span>SOTF Mods</span>
-                    <small>{sourceSummaryLine(sotfSummary, "Native store")}</small>
                 </span>
             </button>
             <button
@@ -293,34 +318,14 @@
             >
                 <LucideCloudDownload aria-hidden="true" />
                 <span class="source-switch-copy">
-                    <span>Nexus / Vortex</span>
-                    <small>{sourceSummaryLine(nexusSummary, "Nexus catalog")}</small>
+                    <span>Nexus &amp; Vortex</span>
                 </span>
             </button>
         </div>
 
-        <label class="hub-search">
-            <LucideSearch aria-hidden="true" />
-            <input
-                bind:this={searchInput}
-                aria-label="Search mods"
-                title="Search mods (Ctrl+F)"
-                on:keydown={(event) => { if (event.key === "Escape" && sharedSearchTerm) { event.stopPropagation(); clearSharedSearch(); } }}
-                placeholder="Search mods"
-                type="text"
-                value={sharedSearchTerm}
-                on:input={handleSharedSearchInput}
-            />
-            <button
-                type="button"
-                aria-label="Clear search"
-                disabled={!sharedSearchTerm}
-                on:click={clearSharedSearch}
-                title="Clear search"
-            >
-                <LucideX aria-hidden="true" />
-            </button>
-        </label>
+        {#if activeSource === "all"}
+            <span class="hub-summary">{allStoresSummaryLine(sotfSummary, nexusSummary, sharedSearchTerm)}</span>
+        {/if}
     </div>
 
     <div class="source-panel" class:all-source-panel={activeSource === "all"} bind:this={sourcePanelElement}>
@@ -364,7 +369,7 @@
             <section class="source-section" class:focused-source={activeSource !== "all"} hidden={activeSource === "sotf"}>
                 <div class="source-section-head" hidden={activeSource !== "all"}>
                     <span class="source-section-title">
-                        <span class="source-section-name"><LucideCloudDownload aria-hidden="true" /> Nexus / Vortex</span>
+                        <span class="source-section-name"><LucideCloudDownload aria-hidden="true" /> Nexus &amp; Vortex</span>
                         <small>{sourceSummaryLine(nexusSummary, "Nexus catalog")}</small>
                     </span>
                     <span class="source-section-actions">
@@ -406,155 +411,176 @@
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
-        gap: clamp(0.45em, 0.8vh, 0.7em);
+        gap: 18px;
         height: 100%;
         min-height: 0;
-        overflow: hidden;
-        width: 100%;
-    }
-
-    .hub-toolbar {
-        align-items: stretch;
-        display: grid;
-        flex: 0 0 auto;
-        gap: 0.5em;
-        grid-template-columns: minmax(28rem, 1.15fr) minmax(12rem, 0.85fr);
-        width: 100%;
-    }
-
-    .source-switch {
-        align-items: stretch;
-        display: grid;
-        flex: 0 0 auto;
-        gap: 0.45em;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        width: 100%;
-    }
-
-    .source-switch button {
-        align-items: center;
-        color: #aeb6bb;
-        display: grid;
-        gap: 0.48em;
-        grid-template-columns: auto minmax(0, auto);
-        height: clamp(2.45em, 5.2vh, 3em);
-        justify-content: center;
-        margin: 0;
-        min-width: 0;
-        padding: 0 0.8em;
-        white-space: nowrap;
-        width: 100%;
-    }
-
-    .source-switch button :global(svg) {
-        display: block;
-        flex: 0 0 auto;
-        font-size: 1.08em;
-        stroke-width: 2.3;
-    }
-
-    .source-switch-copy {
-        display: grid;
-        gap: 0.08em;
         min-width: 0;
         overflow: hidden;
         text-align: left;
+        width: 100%;
     }
 
-    .source-switch-copy span,
-    .source-switch-copy small {
+    .hub-header {
+        align-items: center;
+        display: flex;
+        flex: 0 0 auto;
+        gap: 24px;
+        justify-content: space-between;
         min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
     }
 
-    .source-switch-copy small {
-        color: #7f8992;
-        font-size: 0.64em;
-        font-weight: 800;
-        line-height: 1.05;
-        text-shadow: none;
-        text-transform: none;
+    .hub-heading { min-width: 0; }
+    .hub-eyebrow {
+        color: var(--accent, #eeb66b);
+        display: block;
+        font-size: 10px;
+        font-weight: 650;
+        letter-spacing: 0.12em;
+        margin-bottom: 7px;
+        text-transform: uppercase;
     }
-
-    .source-switch button.source-selected {
-        background:
-            linear-gradient(180deg, rgba(50, 64, 58, 0.95), rgba(17, 28, 23, 0.96)),
-            rgba(12, 22, 17, 0.94);
-        border-color: rgba(98, 240, 155, 0.46);
-        color: #62f09b;
-        text-shadow: -0.55px 0 rgba(255, 64, 64, 0.58), 0.55px 0 rgba(66, 232, 255, 0.58);
+    .hub-heading h1 {
+        color: var(--text-primary, #eef0f4);
+        font-size: clamp(23px, 2.4vw, 30px);
+        font-weight: 650;
+        letter-spacing: -0.035em;
+        line-height: 1.15;
+        margin: 0;
+    }
+    .hub-heading p {
+        color: var(--text-secondary, #9da6b6);
+        font-size: 12px;
+        line-height: 1.5;
+        margin: 8px 0 0;
     }
 
     .hub-search {
         align-items: center;
-        background: rgba(12, 12, 12, 0.82);
-        border: 1px solid rgba(255, 255, 255, 0.13);
+        background: var(--surface-panel, #171a21);
+        border: 1px solid var(--border-subtle, #2b303a);
+        border-radius: 10px;
         box-sizing: border-box;
-        display: grid;
-        gap: 0.45em;
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        min-width: 0;
-        padding: 0 0.42em 0 0.7em;
+        display: flex;
+        flex: 0 1 360px;
+        gap: 10px;
+        min-width: 240px;
+        padding: 0 12px;
+        transition: border-color 150ms, box-shadow 150ms;
     }
-
-    .hub-search :global(svg) {
-        color: #8d99a5;
-        display: block;
-        font-size: 1.05em;
-        stroke-width: 2.35;
+    .hub-search > :global(svg) {
+        color: var(--text-secondary, #9da6b6);
+        flex: 0 0 auto;
+        height: 17px;
+        width: 17px;
     }
-
     .hub-search:focus-within {
-        border-color: rgba(98, 240, 155, 0.7);
+        border-color: var(--accent, #eeb66b);
+        box-shadow: 0 0 0 3px var(--accent-soft, rgba(238, 182, 107, 0.1));
     }
-
     .hub-search input {
         background: transparent;
         border: 0;
-        color: #e8eef3;
+        border-radius: 0;
+        box-shadow: none;
+        color: var(--text-primary, #eef0f4);
         font: inherit;
-        font-size: 0.92em;
-        font-weight: 800;
-        height: 100%;
-        min-height: clamp(2.25em, 4.8vh, 2.75em);
+        font-size: 13px;
+        height: 44px;
+        margin: 0;
+        min-height: 0;
         min-width: 0;
         outline: none;
         padding: 0;
         width: 100%;
     }
-
-    .hub-search input::placeholder {
-        color: #77818b;
-        opacity: 1;
-        text-transform: uppercase;
+    .hub-search input::placeholder { color: var(--text-secondary, #9da6b6); opacity: 0.8; }
+    .hub-search kbd {
+        border: 1px solid var(--border-subtle, #2b303a);
+        border-radius: 4px;
+        color: var(--text-secondary, #9da6b6);
+        flex: 0 0 auto;
+        font-family: inherit;
+        font-size: 10px;
+        padding: 3px 5px;
     }
-
     .hub-search button {
         align-items: center;
         background: transparent;
         border: 0;
+        border-radius: 6px;
         box-shadow: none;
-        color: #aeb6bb;
-        display: grid;
-        height: 2em;
+        color: var(--text-secondary, #9da6b6);
+        display: flex;
+        flex: 0 0 auto;
+        height: 28px;
         justify-content: center;
         margin: 0;
         min-height: 0;
-        min-width: 2em;
+        min-width: 28px;
         padding: 0;
-        width: 2em;
-        -webkit-mask-image: none;
-        mask-image: none;
+        width: 28px;
     }
+    .hub-search button :global(svg) { height: 15px; width: 15px; }
+    .hub-search button:hover { background: var(--surface-raised, #20242c); color: var(--text-primary, #eef0f4); }
 
-    .hub-search button:not(:disabled):hover {
-        color: #62f09b;
+    .hub-toolbar {
+        align-items: center;
+        border-bottom: 1px solid var(--border-subtle, #2b303a);
+        display: flex;
+        flex: 0 0 auto;
+        gap: 16px;
+        justify-content: space-between;
+        min-width: 0;
+        width: 100%;
     }
-
-    .hub-search button:disabled {
-        opacity: 0.28;
+    .source-switch {
+        align-items: stretch;
+        display: flex;
+        gap: 6px;
+        min-width: 0;
+    }
+    .source-switch button {
+        align-items: center;
+        background: transparent;
+        border: 0;
+        border-radius: 7px 7px 0 0;
+        box-shadow: none;
+        color: var(--text-secondary, #9da6b6);
+        display: flex;
+        font-size: 12px;
+        font-weight: 550;
+        gap: 8px;
+        height: 43px;
+        justify-content: flex-start;
+        margin: 0;
+        min-width: 0;
+        padding: 0 12px 11px;
+        position: relative;
+        text-shadow: none;
+        white-space: nowrap;
+    }
+    .source-switch button::after {
+        background: transparent;
+        border-radius: 2px 2px 0 0;
+        bottom: -1px;
+        content: "";
+        height: 2px;
+        left: 12px;
+        position: absolute;
+        right: 12px;
+    }
+    .source-switch button :global(svg) { flex: 0 0 auto; height: 16px; width: 16px; }
+    .source-switch button:hover { color: var(--text-primary, #eef0f4); }
+    .source-switch button.source-selected { color: var(--accent, #eeb66b); }
+    .source-switch button.source-selected::after { background: var(--accent, #eeb66b); }
+    .source-switch-copy { min-width: 0; }
+    .hub-summary {
+        color: var(--text-secondary, #9da6b6);
+        font-size: 11px;
+        overflow: hidden;
+        padding-bottom: 10px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .source-panel {
@@ -562,242 +588,118 @@
         flex: 1 1 auto;
         flex-direction: column;
         min-height: 0;
+        min-width: 0;
         overflow: hidden;
         width: 100%;
     }
-
     .all-source-panel {
-        gap: 0.55em;
+        gap: 14px;
         overflow-y: auto;
-        padding-bottom: var(--app-bottom-safe-area, 42px);
-        padding-right: 0.28em;
-        scroll-padding-bottom: var(--app-bottom-safe-area, 42px);
+        padding-bottom: var(--app-bottom-safe-area, 12px);
+        padding-right: 4px;
+        scroll-padding-bottom: var(--app-bottom-safe-area, 12px);
         scrollbar-gutter: stable;
     }
-
-    .all-source-panel .source-section {
-        padding: 0.52em;
-        scroll-margin-top: 0.5em;
-    }
-
-    .all-source-panel .source-section-head {
-        background:
-            linear-gradient(180deg, rgba(16, 16, 16, 0.98), rgba(9, 9, 9, 0.92)),
-            rgba(10, 10, 10, 0.96);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        margin: -0.52em -0.52em 0;
-        padding: 0.52em;
-        position: sticky;
-        top: -0.52em;
-        z-index: 4;
-    }
-
-    .all-source-panel .source-section-body {
-        height: var(--all-sotf-preview-height, clamp(23em, 43vh, 33em));
-    }
-
-    .all-source-panel .nexus-source-section-body {
-        height: var(--all-nexus-preview-height, clamp(34em, 58vh, 45em));
-    }
-
     .source-section {
-        background: rgba(10, 10, 10, 0.34);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: var(--surface-panel, #171a21);
+        border: 1px solid var(--border-subtle, #2b303a);
+        border-radius: 12px;
         box-sizing: border-box;
         display: flex;
         flex: 0 0 auto;
         flex-direction: column;
-        gap: 0.5em;
+        gap: 10px;
         min-height: 0;
-        padding: 0.65em;
+        min-width: 0;
+        padding: 12px;
         width: 100%;
     }
-
+    .all-source-panel .source-section { scroll-margin-top: 8px; }
     .source-section-head {
         align-items: center;
         display: flex;
         flex: 0 0 auto;
-        gap: 0.65em;
+        gap: 14px;
         justify-content: space-between;
         min-width: 0;
     }
-
-    .source-section-title {
-        align-items: center;
-        color: #d8e3ea;
-        display: grid;
-        gap: 0.1em;
-        font-size: 0.82em;
-        font-weight: 900;
-        min-width: 0;
-        overflow: hidden;
-    }
-
+    .source-section-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; min-width: 0; }
     .source-section-name {
         align-items: center;
+        color: var(--text-primary, #eef0f4);
         display: inline-flex;
-        gap: 0.45em;
-        letter-spacing: 0.08em;
+        font-size: 13px;
+        font-weight: 600;
+        gap: 8px;
         min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        text-transform: uppercase;
-        white-space: nowrap;
     }
-
+    .source-section-name :global(svg) { color: var(--accent, #eeb66b); height: 16px; width: 16px; }
     .source-section-title small {
-        color: #81909a;
-        font-size: 0.78em;
-        font-weight: 800;
-        letter-spacing: 0;
-        line-height: 1.1;
+        color: var(--text-secondary, #9da6b6);
+        font-size: 11px;
+        font-weight: 400;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
-        text-transform: none;
         white-space: nowrap;
     }
-
-    .source-section-head :global(svg) {
-        color: #62f09b;
-        flex: 0 0 auto;
-        font-size: 1.02em;
-        stroke-width: 2.35;
-    }
-
-    .source-section-actions {
-        display: inline-grid;
-        flex: 0 0 auto;
-        gap: 0.35em;
-        grid-auto-flow: column;
-    }
-
+    .source-section-actions { display: inline-flex; flex: 0 0 auto; gap: 6px; }
     .source-section-head button {
         align-items: center;
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: transparent;
+        border: 1px solid var(--border-subtle, #2b303a);
+        border-radius: 7px;
         box-shadow: none;
-        color: #aeb6bb;
-        display: grid;
-        height: 2.15em;
+        color: var(--text-secondary, #9da6b6);
+        display: flex;
+        height: 29px;
         justify-content: center;
         margin: 0;
         min-height: 0;
-        min-width: 2.35em;
+        min-width: 29px;
         padding: 0;
-        width: 2.35em;
-        -webkit-mask-image: none;
-        mask-image: none;
+        width: 29px;
     }
-
-    .source-section-head button:hover {
-        border-color: rgba(98, 240, 155, 0.44);
-        color: #62f09b;
-    }
-
+    .source-section-head button :global(svg) { height: 14px; width: 14px; }
+    .source-section-head button:hover { background: var(--surface-raised, #20242c); color: var(--text-primary, #eef0f4); }
     .source-section-head button.source-section-toggle-active {
-        background: rgba(98, 240, 155, 0.08);
-        border-color: rgba(98, 240, 155, 0.5);
-        color: #62f09b;
+        background: var(--accent-soft, rgba(238, 182, 107, 0.1));
+        border-color: rgba(238, 182, 107, 0.3);
+        color: var(--accent, #eeb66b);
     }
-
-    .source-section-body {
-        height: clamp(31em, 62vh, 46em);
-        min-height: 0;
-        overflow: hidden;
-    }
-
-    .nexus-source-section-body {
-        height: clamp(44em, 80vh, 58em);
-    }
-
-    .source-section[hidden],
-    .source-section-head[hidden] {
-        display: none;
-    }
-
+    .source-section-body { min-height: 0; min-width: 0; overflow: hidden; }
+    .all-source-panel .source-section-body { height: var(--all-sotf-preview-height, 270px); }
+    .all-source-panel .nexus-source-section-body { height: var(--all-nexus-preview-height, 330px); }
+    .source-section[hidden], .source-section-head[hidden] { display: none; }
     .source-section.focused-source {
+        background: transparent;
+        border: 0;
+        border-radius: 0;
         flex: 1 1 0;
         padding: 0;
-        border: 0;
-        background: none;
     }
-
-    .focused-source .source-section-body {
-        flex: 1 1 0;
-        height: auto;
-    }
-
+    .focused-source .source-section-body { flex: 1 1 0; height: auto; }
     @media (max-width: 1100px) {
-        .source-switch button {
-            font-size: 0.86em;
-            padding: 0 0.45em;
-            gap: 0.35em;
-        }
+        .hub-header { gap: 18px; }
+        .hub-search { flex-basis: 290px; min-width: 220px; }
+        .source-switch { gap: 1px; }
+        .source-switch button { gap: 6px; padding-left: 9px; padding-right: 9px; }
+        .hub-summary { display: none; }
     }
-
     @media (max-width: 780px) {
-        .hub-toolbar {
-            grid-template-columns: 1fr;
-        }
-
-        .source-switch {
-            gap: 0.35em;
-        }
-
-        .source-switch button {
-            font-size: 0.82em;
-            padding: 0 0.55em;
-        }
-
-        .source-switch-copy small {
-            display: none;
-        }
-
-        .source-section {
-            padding: 0.5em;
-        }
-
-        .source-section-body,
-        .nexus-source-section-body {
-            height: clamp(34em, 86vh, 54em);
-        }
-
-        .all-source-panel .source-section-body,
-        .all-source-panel .nexus-source-section-body {
-            height: var(--all-sotf-preview-height, clamp(32em, 82vh, 52em));
-        }
-
-        .all-source-panel .nexus-source-section-body {
-            height: var(--all-nexus-preview-height, clamp(32em, 82vh, 52em));
-        }
+        .hub-header { align-items: stretch; flex-direction: column; gap: 14px; }
+        .hub-search { flex: 0 0 auto; min-width: 0; }
+        .source-switch { justify-content: space-between; width: 100%; }
+        .source-switch button { font-size: 11px; padding-left: 6px; padding-right: 6px; }
     }
-
     @media (max-height: 720px) {
-        .mod-hub {
-            gap: 0.35em;
-        }
-
-        .source-switch button,
-        .hub-search input {
-            height: 2.05em;
-            min-height: 2.05em;
-        }
-
-        .all-source-panel {
-            gap: 0.42em;
-        }
-
-        .all-source-panel .source-section {
-            padding: 0.44em;
-        }
-
-        .all-source-panel .source-section-body {
-            height: var(--all-sotf-preview-height, clamp(14em, 34vh, 21em));
-        }
-
-        .all-source-panel .nexus-source-section-body {
-            height: var(--all-nexus-preview-height, clamp(18em, 43vh, 27em));
-        }
+        .mod-hub { gap: 12px; }
+        .hub-eyebrow { display: none; }
+        .hub-heading p { margin-top: 5px; }
+        .hub-heading h1 { font-size: 25px; }
+        .hub-search input { height: 40px; }
+        .source-switch button { height: 38px; padding-bottom: 8px; }
+        .all-source-panel { gap: 10px; }
+        .source-section { gap: 8px; padding: 10px; }
     }
 </style>

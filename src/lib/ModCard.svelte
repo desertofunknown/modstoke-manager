@@ -247,7 +247,7 @@
     {#if operationError}<p class="operation-error" role="alert">{operationError}</p>{/if}
   </div>
 {:else}
-<div class="feature-container description">
+<article class="feature-container description mod-card">
   <div class="mod-card-row">
     <div class="image-container">
       <img
@@ -291,7 +291,10 @@
 
     <div class="mod-info">
       <div class="title-line">
-        <span class="mod-title">{mod.name}</span>
+        <h3 class="mod-title">{mod.name}</h3>
+        {#if mod.isInstalled}
+          <span class="installation-state" class:update-available={mod.hasUpdate}>{mod.hasUpdate ? "Update available" : "Installed"}</span>
+        {/if}
         {#if sortMetricLabel && sortMetricValue}
           <span class="sort-metric-pill" title={`${sortMetricLabel}: ${sortMetricValue}`}>
             <span>{sortMetricLabel}</span>
@@ -299,6 +302,8 @@
           </span>
         {/if}
       </div>
+      <div class="author-line">by <strong>{mod.user.name}</strong></div>
+      <p class="description-content header-desc">{cardSummary}</p>
       <div class="meta-row">
         <span class="source-pill source-{mod.installedMod?.installSource ?? 'online'}">{sourceDisplayLabel}</span>
         <span class="source-pill">{loaderDisplayLabel}</span>
@@ -307,13 +312,11 @@
           <span class="source-pill source-detail">{mod.installedMod.vortexPackage}</span>
         {/if}
       </div>
-      <span class="description-content header-desc">{cardSummary}</span>
       <div class="fact-row">
-        <span>Author <b class="update">{mod.user.name}</b></span>
-        <span>Version <b class="update">{mod.latestVersion}</b></span>
-        <span>Updated <b class="update">{mod.lastReleasedAt?formatDate(mod.lastReleasedAt):"-"}</b></span>
-        <span>Downloads <b class="update">{downloadCountLabel}</b></span>
-        <span>Category <b class="update">{mod.category?mod.category.name:"-"}</b></span>
+        <span>Version <b>{mod.latestVersion}</b></span>
+        <span>Updated <b>{mod.lastReleasedAt?formatDate(mod.lastReleasedAt):"-"}</b></span>
+        <span>Downloads <b>{downloadCountLabel}</b></span>
+        <span>Category <b>{mod.category?mod.category.name:"-"}</b></span>
       </div>
     </div>
 
@@ -332,138 +335,110 @@
       {/if}
 
       <StatusButton subject={mod.name} disabled={actionsDisabled || actionBusy || $processing || !$isPathValid} isUpdateAvailable={mod.hasUpdate} isModInstalled={mod.isInstalled} update={update} uninstall={uninstall} install={install} />
+      <div class="secondary-actions">
+        {#if showDetailsButton}
+          <button class="details-button" type="button" aria-label={`Details for ${mod.name}`} on:click={showDetails}>Details</button>
+        {/if}
+        <button class="open-page-button" type="button" aria-label={`Open Page for ${mod.name}`} on:click={openModPage}>Open page</button>
+      </div>
       {#if operationError}<p class="operation-error" role="alert">{operationError}</p>{/if}
-      {#if showDetailsButton}
-        <button class="details-button" type="button" aria-label={`Details for ${mod.name}`} on:click={showDetails}>Details</button>
-      {/if}
-      <button class="open-page-button" type="button" aria-label={`Open Page for ${mod.name}`} on:click={openModPage}>Open Page</button>
     </div>
   </div>
-</div>
+</article>
 {/if}
 
 <style>
-  .operation-error {
-    color: #fd9b9d;
-    font-size: 0.85em;
-    margin: 0;
-    overflow-wrap: anywhere;
+  .mod-card {
+    background: var(--surface-panel, #171a21);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 10px;
+    margin: 0 0 10px;
+    padding: 14px;
+    text-align: left;
+    transition: border-color 160ms ease, background-color 160ms ease;
+  }
+
+  .mod-card:hover {
+    background: #1a1e26;
+    border-color: rgba(255, 255, 255, 0.14);
   }
 
   .mod-card-row {
-    align-items: stretch;
+    align-items: start;
     display: grid;
-    gap: clamp(0.5em, 0.75vw, 0.72em);
-    grid-template-columns: var(--sotf-thumb-width, clamp(136px, 15vw, 210px)) minmax(0, 1fr) minmax(7.8em, 10.4em);
+    gap: 12px 16px;
+    grid-template-columns: var(--sotf-thumb-width, 160px) minmax(0, 1fr);
     min-width: 0;
     width: 100%;
-  }
-
-  .mod-info,
-  .mod-actions {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
   }
 
   .mod-info {
-    gap: 0.2em;
-    justify-content: center;
-  }
-
-  .mod-actions {
-    align-self: stretch;
-    gap: 0.28em;
-    justify-content: center;
-  }
-
-  .detail-action-surface {
-    align-items: stretch;
-    display: grid;
-    gap: 0.45em;
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     min-width: 0;
-    width: 100%;
-  }
-
-  .detail-action-surface :global(button) {
-    margin: 0;
-    min-height: 2.7em;
-    width: 100%;
-  }
-
-  .mod-actions :global(button) {
-    font-size: 0.78em;
-    line-height: 1.1;
-    margin: 0;
-    min-height: 2.08em;
-    padding: 0.32em 0.55em;
-  }
-
-  .mod-actions :global(.horizontal) {
-    gap: 0.28em;
-    width: 100%;
-  }
-
-  .description {
-    padding: 0.5em;
-    /* border-radius: 10px; */
-    /* border: 2px solid #414141; */
-    /* border-bottom: 2px solid #414141; */
-
-    border-radius: 6px;
-    border-bottom: 2px solid #333;
-    background-color: #121212;
-
-    margin: 0 0 0.36em;
-  }
-
-  .description-content {
-    color: #767676;
-    display: block;
-    font-size: 0.9em;
-    line-height: 1.26;
-    margin: 0;
-    min-width: 0;
-    overflow-wrap: anywhere;
-    text-align: left;
   }
 
   .title-line {
-    align-items: baseline;
+    align-items: center;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.45em;
+    gap: 7px 10px;
     min-width: 0;
   }
 
   .mod-title {
-    color: #a2a2a2;
-    display: block;
-    font-size: 1.02em;
-    font-weight: bold;
-    line-height: 1.12;
-    margin-top: 0;
+    color: var(--text-primary, #eef0f4);
+    font-size: 15px;
+    font-weight: 650;
+    line-height: 1.35;
+    margin: 0;
     min-width: 0;
     overflow-wrap: anywhere;
-    text-align: left;
+  }
+
+  .author-line {
+    color: var(--text-secondary, #9da6b6);
+    font-size: 12px;
+    line-height: 1.4;
+    margin-top: -4px;
+    overflow-wrap: anywhere;
+  }
+
+  .author-line strong {
+    color: #b9c1cf;
+    font-weight: 500;
+  }
+
+  .installation-state,
+  .sort-metric-pill {
+    align-items: center;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    display: inline-flex;
+    flex: 0 1 auto;
+    font-size: 11px;
+    font-weight: 550;
+    gap: 5px;
+    line-height: 1.3;
+    max-width: 100%;
+    min-width: 0;
+    padding: 3px 6px;
+  }
+
+  .installation-state {
+    background: rgba(123, 184, 151, 0.1);
+    color: #a4d3b8;
+  }
+
+  .installation-state.update-available,
+  .sort-metric-pill {
+    background: var(--accent-soft, rgba(238, 182, 107, 0.12));
+    color: var(--accent, #eeb66b);
   }
 
   .sort-metric-pill {
-    align-items: baseline;
-    background: rgba(56, 214, 141, 0.12);
-    border: 1px solid rgba(56, 214, 141, 0.28);
-    color: #9eeec2;
-    display: inline-flex;
-    flex: 0 1 auto;
-    font-size: 0.72em;
-    font-weight: 900;
-    gap: 0.34em;
-    line-height: 1.2;
-    min-width: 0;
-    overflow: hidden;
-    padding: 0.22em 0.42em;
-    text-transform: uppercase;
+    margin-left: auto;
   }
 
   .sort-metric-pill span,
@@ -475,155 +450,246 @@
   }
 
   .sort-metric-pill b {
-    color: #eefcff;
+    color: var(--text-primary, #eef0f4);
+    font-weight: 600;
+  }
+
+  .description-content {
+    color: var(--text-secondary, #9da6b6);
+    display: block;
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+
+  .header-desc {
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    display: -webkit-box;
+    line-clamp: 2;
+    max-height: 3em;
+    overflow: hidden;
   }
 
   .meta-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.32em;
-    margin: 0;
+    gap: 5px;
+    min-width: 0;
   }
 
   .source-pill {
-    background: #202832;
-    border: 1px solid rgba(252, 252, 252, 0.08);
-    border-radius: 6px;
-    color: #bfc8d2;
+    background: var(--surface-raised, #20242c);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 5px;
+    color: #aeb7c6;
     display: inline-block;
-    font-size: 0.74em;
-    font-weight: 700;
-    line-height: 1.2;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.4;
     max-width: 100%;
     overflow: hidden;
-    padding: 0.26em 0.48em;
+    padding: 2px 6px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .source-vortex {
-    color: #78d9f4;
+    color: #b0c9dc;
   }
 
   .source-native {
-    color: #38d68d;
+    color: #a4d3b8;
   }
 
   .source-manual {
-    color: #fdc66d;
+    color: #d4bd9d;
   }
 
   .source-detail {
-    flex: 1 1 12em;
-    text-align: left;
+    flex: 0 1 auto;
   }
 
   .fact-row {
-    display: grid;
-    gap: 0.18em 0.6em;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 14px;
     min-width: 0;
   }
 
   .fact-row span {
-    color: #7d7d7d;
-    font-size: 0.8em;
-    line-height: 1.25;
+    color: #818c9e;
+    font-size: 11px;
+    line-height: 1.45;
     min-width: 0;
-    overflow: hidden;
-    text-align: left;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+  }
+
+  .fact-row b {
+    color: #b4bdcb;
+    font-weight: 500;
+    margin-left: 3px;
+  }
+
+  .mod-actions,
+  .detail-action-surface,
+  .secondary-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .mod-actions {
+    grid-column: 2;
+    padding-top: 2px;
+  }
+
+  .detail-action-surface {
+    width: 100%;
+  }
+
+  .secondary-actions {
+    margin-left: auto;
   }
 
   .details-button,
   .open-page-button {
-    color: #d6dde5;
+    background: transparent;
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 7px;
+    color: #bec6d3;
+    font-size: 12px;
+    font-weight: 550;
+    line-height: 1.25;
+    margin: 0;
+    min-height: 32px;
+    padding: 7px 10px;
+    width: auto;
+  }
+
+  .details-button:hover,
+  .open-page-button:hover {
+    background: var(--surface-raised, #20242c);
+    border-color: rgba(255, 255, 255, 0.18);
+    color: var(--text-primary, #eef0f4);
   }
 
   .enable-control {
     align-items: center;
-    background: rgba(18, 18, 18, 0.88);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    color: #62f09b;
+    color: #b4d1c0;
     display: inline-flex;
-    font-size: 0.85em;
-    font-weight: 800;
-    gap: 0.55em;
-    justify-content: center;
-    margin: 0;
-    padding: 0.34em 0.54em;
-    text-transform: uppercase;
+    font-size: 12px;
+    font-weight: 500;
+    gap: 7px;
+    line-height: 1.4;
+    margin: 0 3px 0 0;
+    min-height: 32px;
   }
 
   .enable-control input[type="checkbox"] {
     appearance: none;
-    background: rgba(8, 8, 8, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    display: grid;
+    background: #303642;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    box-sizing: border-box;
+    cursor: pointer;
+    display: block;
+    flex: 0 0 30px;
     float: none;
-    height: 1.2em;
+    height: 18px;
     margin: 0;
-    padding: 0;
-    place-content: center;
+    padding: 2px;
+    position: relative;
     transform: none;
-    width: 1.2em;
+    transition: background-color 140ms ease;
+    width: 30px;
   }
 
   .enable-control input[type="checkbox"]::before {
-    box-shadow: inset 1em 1em #62f09b;
+    background: #bcc4d1;
+    border-radius: 50%;
     content: "";
-    height: 0.68em;
-    transform: scale(0);
-    transition: transform 120ms ease-in-out;
-    width: 0.68em;
+    display: block;
+    height: 12px;
+    transform: translateX(0);
+    transition: transform 140ms ease;
+    width: 12px;
+  }
+
+  .enable-control input[type="checkbox"]:checked {
+    background: rgba(123, 184, 151, 0.35);
+    border-color: rgba(123, 184, 151, 0.4);
   }
 
   .enable-control input[type="checkbox"]:checked::before {
-    transform: scale(1);
+    background: #b1d9c1;
+    transform: translateX(12px);
+  }
+
+  .enable-control input[type="checkbox"]:disabled {
+    cursor: not-allowed;
   }
 
   .enable-control:not(:has(input:checked)) {
-    color: #fd9b9d;
+    color: var(--text-secondary, #9da6b6);
   }
 
   .vortex-disabled {
-    color: #78d9f4;
-    opacity: 0.72;
+    opacity: 0.65;
+  }
+
+  .operation-error {
+    background: rgba(214, 133, 133, 0.08);
+    border: 1px solid rgba(214, 133, 133, 0.16);
+    border-radius: 7px;
+    box-sizing: border-box;
+    color: #e6a4a4;
+    flex: 1 0 100%;
+    font-size: 12px;
+    line-height: 1.5;
+    margin: 0;
+    overflow-wrap: anywhere;
+    padding: 9px 11px;
   }
 
   .image-container {
-    align-self: center;
-    background: rgba(8, 8, 8, 0.85);
-    border-radius: 6px;
-    height: var(--sotf-thumb-height, clamp(74px, 9vh, 112px));
+    background: var(--surface-base, #101217);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 8px;
+    grid-row: 1 / 3;
+    height: var(--sotf-thumb-height, 108px);
+    min-height: 88px;
     min-width: 0;
     overflow: hidden;
     position: relative;
     width: 100%;
   }
-  
+
   .cover-img {
+    height: 100%;
+    left: 0;
+    object-fit: cover;
     position: absolute;
     top: 0;
-    left: 0;
+    transition: opacity 180ms ease;
     width: 100%;
-    height: 100%;
-    border-radius: 6px;
-    object-fit: cover;
-    transition: opacity 0.3s ease-in-out;
   }
-  
+
   .main-image {
     opacity: 0;
   }
 
   .fallback-image {
-    object-fit: contain;
-    padding: 0.6em;
     box-sizing: border-box;
+    object-fit: contain;
+    padding: 10px;
   }
-  
+
   .main-image.isImageLoaded {
     opacity: 1;
   }
@@ -632,87 +698,86 @@
   .preview-controls {
     align-items: center;
     display: flex;
-    gap: 0.2em;
+    gap: 4px;
     position: absolute;
     z-index: 2;
   }
 
   .preview-count {
-    background: rgba(6, 10, 12, 0.82);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    color: #d6f3ff;
-    font-size: 0.68em;
-    font-weight: 900;
-    left: 0.35em;
-    padding: 0.18em 0.34em;
-    text-transform: uppercase;
-    top: 0.35em;
+    background: rgba(16, 18, 23, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+    color: #d0d6e0;
+    font-size: 10px;
+    font-weight: 550;
+    left: 6px;
+    line-height: 1.3;
+    padding: 3px 5px;
+    top: 6px;
   }
 
   .preview-count :global(svg) {
-    height: 1em;
-    width: 1em;
+    height: 11px;
+    width: 11px;
   }
 
   .preview-count-fallback {
-    color: #9aa5af;
+    color: var(--text-secondary, #9da6b6);
   }
 
   .preview-controls {
-    bottom: 0.35em;
-    right: 0.35em;
+    bottom: 6px;
+    right: 6px;
   }
 
   .preview-controls button {
     align-items: center;
-    background: rgba(10, 14, 18, 0.82);
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(16, 18, 23, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 5px;
     box-shadow: none;
-    color: #62f09b;
+    color: var(--text-primary, #eef0f4);
     display: inline-flex;
-    height: 1.8em;
+    height: 25px;
     justify-content: center;
     margin: 0;
-    min-width: 1.8em;
+    min-height: 25px;
+    min-width: 25px;
     padding: 0;
-    -webkit-mask-image: none;
-    mask-image: none;
+    width: 25px;
   }
 
   .preview-controls button:hover {
-    border-color: rgba(98, 240, 155, 0.4);
+    background: var(--surface-raised, #20242c);
+    border-color: rgba(255, 255, 255, 0.3);
   }
 
   .preview-controls :global(svg) {
-    height: 1.05em;
-    width: 1.05em;
+    height: 14px;
+    width: 14px;
   }
 
-  .header-desc {
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    display: -webkit-box;
-    line-clamp: 2;
-    max-height: 2.7em;
-    overflow: hidden;
-  }
-
-  @media (max-width: 920px) {
+  @media (max-width: 760px) {
     .mod-card-row {
-      grid-template-columns: minmax(118px, var(--sotf-thumb-width, 168px)) minmax(0, 1fr);
+      gap: 12px;
+      grid-template-columns: 112px minmax(0, 1fr);
     }
 
     .mod-actions {
-      align-items: stretch;
       grid-column: 1 / -1;
-      justify-content: flex-start;
+    }
+
+    .image-container {
+      grid-row: auto;
     }
   }
 
-  @media (max-width: 680px) {
-    .mod-card-row,
-    .fact-row {
-      grid-template-columns: 1fr;
+  @media (prefers-reduced-motion: reduce) {
+    .mod-card,
+    .cover-img,
+    .enable-control input[type="checkbox"],
+    .enable-control input[type="checkbox"]::before {
+      transition: none;
     }
   }
 </style>

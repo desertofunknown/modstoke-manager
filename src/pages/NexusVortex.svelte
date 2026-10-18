@@ -6,6 +6,11 @@
     import LucideChevronRight from "~icons/lucide/chevron-right";
     import LucideExternalLink from "~icons/lucide/external-link";
     import LucideImages from "~icons/lucide/images";
+    import LucideChevronDown from "~icons/lucide/chevron-down";
+    import LucideUserRound from "~icons/lucide/user-round";
+    import LucideCompass from "~icons/lucide/compass";
+    import LucideRefreshCw from "~icons/lucide/refresh-cw";
+    import LucideX from "~icons/lucide/x";
     import { fallbackPreviewUrl } from "../lib/modPreview";
     import { modalFocus } from "../lib/modalFocus";
     import {
@@ -2569,7 +2574,7 @@
             "Author loader hint",
             /\b(?:openacai(?:\s+endnight)?\s+loader|openacailoader|modstoke\s+loader|modstokeloader)\b/i,
             entry => /openacai\s*(?:endnight)?\s*loader|openacailoader|modstoke\s*loader/i.test(authorRequirementEntryText(entry)),
-            "Author text mentions Modstoke Loader support. Confirm the public loader is installed and healthy on the Main tab."
+            "Author text mentions Modstoke Loader support. Confirm the public loader is installed and healthy in Overview."
         );
 
         return hints;
@@ -8031,45 +8036,112 @@
 >
     <section class="account-panel">
         <div class="account-copy">
-            <span class="panel-title">Vortex / Nexus Mods</span>
+            <span class="panel-title nexus-heading"><LucideCompass aria-hidden="true" /> Nexus Mods</span>
             {#if session.is_connected}
                 <span class="panel-subtitle">Connected as {session.user?.name ?? "Nexus user"} · {nexusMembershipLabel()}</span>
             {:else}
-                <span class="panel-subtitle">Login through Nexus to inspect Nexus-hosted Sons Of The Forest mods and Vortex deployments. Browser SSO requires Nexus app approval; manual tokens are for development testing only.</span>
+                <span class="panel-subtitle">Discover Sons Of The Forest mods and manage your Vortex deployments.</span>
             {/if}
         </div>
 
         {#if session.is_connected}
-            <div class="account-actions">
-                <label class="auto-endorse-control" title={autoEndorseQueueLabel}>
-                    <input type="checkbox" checked={autoEndorseDownloadedMods} on:change={toggleAutoEndorse} />
-                    <span class="auto-endorse-label">
-                        <span>Auto-endorse Vortex downloads</span>
-                        <small>{autoEndorseQueueLabel}</small>
-                    </span>
-                </label>
-                <button on:click={openNexusGame}>Open Nexus</button>
-                {#if vortexStagingPath}
-                    <button on:click={openVortexStaging}>Open Vortex Staging</button>
-                {/if}
-                <button class="inventory-refresh-btn" disabled={isRefreshingInventory} title="Rescan local and Vortex-managed mod inventory" on:click={refreshLocalInventoryFromUi}>
-                    {isRefreshingInventory ? "Scanning..." : "Refresh Inventory"}
-                </button>
-                <button class="uninstall" disabled={isDisconnecting} on:click={disconnect}>{isDisconnecting ? "Disconnecting..." : "Disconnect"}</button>
-            </div>
+            <details class="account-menu">
+                <summary><LucideUserRound aria-hidden="true" /> Account & deployment <LucideChevronDown aria-hidden="true" /></summary>
+                <div class="account-menu-content">
+                    <div class="account-actions">
+                        <label class="auto-endorse-control" title={autoEndorseQueueLabel}>
+                            <input type="checkbox" checked={autoEndorseDownloadedMods} on:change={toggleAutoEndorse} />
+                            <span class="auto-endorse-label">
+                                <span>Auto-endorse Vortex downloads</span>
+                                <small>{autoEndorseQueueLabel}</small>
+                            </span>
+                        </label>
+                        <button on:click={openNexusGame}>Open Nexus</button>
+                        {#if vortexStagingPath}
+                            <button on:click={openVortexStaging}>Open Vortex Staging</button>
+                        {/if}
+                        <button class="inventory-refresh-btn" disabled={isRefreshingInventory} title="Rescan local and Vortex-managed mod inventory" on:click={refreshLocalInventoryFromUi}>
+                            {isRefreshingInventory ? "Scanning..." : "Refresh Inventory"}
+                        </button>
+                        <button class="uninstall" disabled={isDisconnecting} on:click={disconnect}>{isDisconnecting ? "Disconnecting..." : "Disconnect"}</button>
+                    </div>
+                    {#if session.rate_limit}
+                        <div class="rate-row">
+                            <div
+                                class="rate-meter"
+                                class:rate-meter-warning={isRateLimitWarning(session.rate_limit.hourly_remaining, session.rate_limit.hourly_limit)}
+                                class:rate-meter-low={isRateLimitLow(session.rate_limit.hourly_remaining, session.rate_limit.hourly_limit)}
+                                style={rateLimitStyle(session.rate_limit.hourly_remaining, session.rate_limit.hourly_limit)}
+                            >
+                                <span><b>Hourly</b> {rateLimitLabel(session.rate_limit.hourly_remaining, session.rate_limit.hourly_limit)}</span>
+                                <div class="rate-track"><span></span></div>
+                            </div>
+                            <div
+                                class="rate-meter"
+                                class:rate-meter-warning={isRateLimitWarning(session.rate_limit.daily_remaining, session.rate_limit.daily_limit)}
+                                class:rate-meter-low={isRateLimitLow(session.rate_limit.daily_remaining, session.rate_limit.daily_limit)}
+                                style={rateLimitStyle(session.rate_limit.daily_remaining, session.rate_limit.daily_limit)}
+                            >
+                                <span><b>Daily</b> {rateLimitLabel(session.rate_limit.daily_remaining, session.rate_limit.daily_limit)}</span>
+                                <div class="rate-track"><span></span></div>
+                            </div>
+                        </div>
+                    {/if}
+
+                    <div class="vortex-summary">
+                        <div
+                            class="summary-card account-summary-card"
+                            class:premium-summary={!!session.user?.is_premium}
+                            class:supporter-summary={!session.user?.is_premium && !!session.user?.is_supporter}
+                            title={nexusMembershipBenefitTitle()}
+                        >
+                            <span class="summary-label">Nexus Account</span>
+                            <span class="summary-value">{nexusMembershipLabel()}</span>
+                            <span class="summary-note">{nexusMembershipBenefitNote()}</span>
+                        </div>
+                        <div class="summary-card" class:active-summary={!!vortexStagingPath}>
+                            <span class="summary-label">Vortex Deployment</span>
+                            <span class="summary-value">{vortexStagingPath ? "Detected" : "Not detected"}</span>
+                        </div>
+                        <button type="button" class="summary-card summary-action" class:summary-card-selected={catalogMode === "installed" && selectedInstallFilter === "all"} on:click={showInstalledInventory}>
+                            <span class="summary-label">Installed</span>
+                            <span class="summary-value">{installedCount}</span>
+                        </button>
+                        <button type="button" class="summary-card summary-action" class:summary-card-selected={selectedInstallFilter === "attention"} class:attention-summary={(catalogMode === "online" ? onlineAttentionCount : installedAttentionCount) > 0} on:click={showCurrentAttention}>
+                            <span class="summary-label">Attention</span>
+                            <span class="summary-value">{catalogMode === "online" ? onlineAttentionCount : installedAttentionCount}</span>
+                            <span class="summary-note">{catalogMode === "online" ? "Tracked missing, updates, conflicts" : "Updates, disabled, conflicts"}</span>
+                        </button>
+                        <div class="summary-card">
+                            <span class="summary-label">Vortex / Native / Manual</span>
+                            <span class="summary-value">{vortexCount} / {nativeCount} / {manualCount}</span>
+                        </div>
+                        <button type="button" class="summary-card summary-action" class:summary-card-selected={selectedInstallFilter === "updates" || selectedInstallFilter === "disabled"} class:update-summary={updateCount > 0 || disabledCount > 0} on:click={showUpdatesOrDisabled}>
+                            <span class="summary-label">Updates / Disabled</span>
+                            <span class="summary-value">{updateCount} / {disabledCount}</span>
+                            <span class="summary-note">Local deployment state</span>
+                        </button>
+                        <button type="button" class="summary-card summary-action" class:summary-card-selected={selectedInstallFilter === "conflicts"} class:conflict-summary={conflictCount > 0} on:click={showLocalConflicts}>
+                            <span class="summary-label">Local Conflicts</span>
+                            <span class="summary-value">{conflictCount}</span>
+                            <span class="summary-note">{conflictCount > 0 ? "Review duplicate deployments" : "No duplicate installs"}</span>
+                        </button>
+                    </div>
+                </div>
+            </details>
         {:else}
             <div class="connect-column">
                 <div class="connect-row">
-                    <button class="install login-button" disabled={isLoading} on:click={connectWithNexus}>Login with Nexus</button>
-                    <button on:click={openApiKeys}>API Access</button>
+                    <button class="install login-button" disabled={isLoading} on:click={connectWithNexus}>Connect Nexus account</button>
+                    <button on:click={openApiKeys}>API access <LucideExternalLink aria-hidden="true" /></button>
                 </div>
                 <details class="manual-key">
-                    <summary>Advanced manual token for testing</summary>
+                    <summary>Advanced connection options</summary>
                     <div class="connect-row manual-row">
                         <input class="generic-input key-input" bind:value={apiKey} type="password" placeholder="Nexus API key" />
                         <button on:click={connectWithManualKey}>Save Token</button>
                     </div>
-                    <span class="manual-warning">Public releases should use the Nexus-approved application slug and SSO flow.</span>
+                    <span class="manual-warning">Browser sign-in requires Nexus app approval. Manual tokens are for development testing.</span>
                 </details>
             </div>
         {/if}
@@ -8083,74 +8155,11 @@
         <div class="notice warning">{session.error}</div>
     {/if}
 
-    {#if session.rate_limit}
-        <div class="rate-row">
-            <div
-                class="rate-meter"
-                class:rate-meter-warning={isRateLimitWarning(session.rate_limit.hourly_remaining, session.rate_limit.hourly_limit)}
-                class:rate-meter-low={isRateLimitLow(session.rate_limit.hourly_remaining, session.rate_limit.hourly_limit)}
-                style={rateLimitStyle(session.rate_limit.hourly_remaining, session.rate_limit.hourly_limit)}
-            >
-                <span><b>Hourly</b> {rateLimitLabel(session.rate_limit.hourly_remaining, session.rate_limit.hourly_limit)}</span>
-                <div class="rate-track"><span></span></div>
-            </div>
-            <div
-                class="rate-meter"
-                class:rate-meter-warning={isRateLimitWarning(session.rate_limit.daily_remaining, session.rate_limit.daily_limit)}
-                class:rate-meter-low={isRateLimitLow(session.rate_limit.daily_remaining, session.rate_limit.daily_limit)}
-                style={rateLimitStyle(session.rate_limit.daily_remaining, session.rate_limit.daily_limit)}
-            >
-                <span><b>Daily</b> {rateLimitLabel(session.rate_limit.daily_remaining, session.rate_limit.daily_limit)}</span>
-                <div class="rate-track"><span></span></div>
-            </div>
-        </div>
-    {/if}
-
     {#if session.is_connected}
-        <div class="vortex-summary">
-            <div
-                class="summary-card account-summary-card"
-                class:premium-summary={!!session.user?.is_premium}
-                class:supporter-summary={!session.user?.is_premium && !!session.user?.is_supporter}
-                title={nexusMembershipBenefitTitle()}
-            >
-                <span class="summary-label">Nexus Account</span>
-                <span class="summary-value">{nexusMembershipLabel()}</span>
-                <span class="summary-note">{nexusMembershipBenefitNote()}</span>
-            </div>
-            <div class="summary-card" class:active-summary={!!vortexStagingPath}>
-                <span class="summary-label">Vortex Deployment</span>
-                <span class="summary-value">{vortexStagingPath ? "Detected" : "Not detected"}</span>
-            </div>
-            <button type="button" class="summary-card summary-action" class:summary-card-selected={catalogMode === "installed" && selectedInstallFilter === "all"} on:click={showInstalledInventory}>
-                <span class="summary-label">Installed</span>
-                <span class="summary-value">{installedCount}</span>
-            </button>
-            <button type="button" class="summary-card summary-action" class:summary-card-selected={selectedInstallFilter === "attention"} class:attention-summary={(catalogMode === "online" ? onlineAttentionCount : installedAttentionCount) > 0} on:click={showCurrentAttention}>
-                <span class="summary-label">Attention</span>
-                <span class="summary-value">{catalogMode === "online" ? onlineAttentionCount : installedAttentionCount}</span>
-                <span class="summary-note">{catalogMode === "online" ? "Tracked missing, updates, conflicts" : "Updates, disabled, conflicts"}</span>
-            </button>
-            <div class="summary-card">
-                <span class="summary-label">Vortex / Native / Manual</span>
-                <span class="summary-value">{vortexCount} / {nativeCount} / {manualCount}</span>
-            </div>
-            <button type="button" class="summary-card summary-action" class:summary-card-selected={selectedInstallFilter === "updates" || selectedInstallFilter === "disabled"} class:update-summary={updateCount > 0 || disabledCount > 0} on:click={showUpdatesOrDisabled}>
-                <span class="summary-label">Updates / Disabled</span>
-                <span class="summary-value">{updateCount} / {disabledCount}</span>
-                <span class="summary-note">Local deployment state</span>
-            </button>
-            <button type="button" class="summary-card summary-action" class:summary-card-selected={selectedInstallFilter === "conflicts"} class:conflict-summary={conflictCount > 0} on:click={showLocalConflicts}>
-                <span class="summary-label">Local Conflicts</span>
-                <span class="summary-value">{conflictCount}</span>
-                <span class="summary-note">{conflictCount > 0 ? "Review duplicate deployments" : "No duplicate installs"}</span>
-            </button>
-        </div>
-
         <section class="catalog-panel" class:catalog-has-error={catalogMode === "online" && !!catalogError}>
             <div class="catalog-toolbar">
                 <div class="catalog-mode-buttons">
-                    <button class:cat-btn-selected={catalogMode === "online"} on:click={() => catalogMode = "online"}>Online Nexus</button>
+                    <button class:cat-btn-selected={catalogMode === "online"} on:click={() => catalogMode = "online"}>Discover</button>
                     <button class:cat-btn-selected={catalogMode === "installed"} on:click={() => catalogMode = "installed"}>Installed ({installedCount})</button>
                 </div>
                 <div class="view-buttons" class:feed-hidden={catalogMode === "installed"}>
@@ -8159,16 +8168,7 @@
                     <button class="cat-btn middle-btn" class:cat-btn-selected={selectedView === "latest_added"} on:click={() => loadMods("latest_added")}>{viewLabel("latest_added")}</button>
                     <button class="btn-right cat-btn" class:cat-btn-selected={selectedView === "latest_updated"} on:click={() => loadMods("latest_updated")}>{viewLabel("latest_updated")}</button>
                 </div>
-                <button class="cat-btn refresh-btn" disabled={isLoading || isCatalogLoading || isDisconnecting || refreshCooldownSeconds > 0} title={manualRefreshButtonTitle} on:click={() => loadMods(selectedView, true)}>{manualRefreshButtonLabel}</button>
-            </div>
-
-            <div class="notice api-note">
-                <span>{nexusCatalogCacheSummary()}</span>
-                {#if catalogMode === "online"}
-                    <span>{visibleNexusMods.length} shown from {mods.length} known. {onlineAttentionCount > 0 ? `${onlineAttentionCount} need attention.` : ""} {trackedModsLoaded ? `${trackedCount} tracked.` : ""} {conflictCount > 0 ? `${conflictCount} in conflicts.` : ""}</span>
-                {:else}
-                    <span>{visibleInstalledEntries.length} shown from {installedCount} installed. {installedAttentionCount > 0 ? `${installedAttentionCount} need attention.` : ""} {trackedModsLoaded ? `${trackedCount} tracked.` : ""} {conflictCount > 0 ? `${conflictCount} in conflicts.` : ""}</span>
-                {/if}
+                <button class="cat-btn refresh-btn" disabled={isLoading || isCatalogLoading || isDisconnecting || refreshCooldownSeconds > 0} title={manualRefreshButtonTitle} on:click={() => loadMods(selectedView, true)}><LucideRefreshCw aria-hidden="true" /> {manualRefreshButtonLabel}</button>
             </div>
 
             {#if catalogMode === "online" && catalogError}
@@ -8238,7 +8238,7 @@
 
             <div class="nexus-filter-row" class:compact-filter-row={!showEmbeddedSearch}>
                 {#if showEmbeddedSearch}
-                    <input class="generic-input key-input" value={nexusSearchTerm} on:input={(event) => handleNexusSearchInput((event.currentTarget as HTMLInputElement).value)} placeholder="Search Nexus" />
+                    <input class="generic-input key-input" value={nexusSearchTerm} on:input={(event) => handleNexusSearchInput((event.currentTarget as HTMLInputElement).value)} placeholder="Search Nexus mods…" aria-label="Search Nexus mods" />
                 {/if}
                 <select
                     bind:value={selectedNexusCategory}
@@ -8250,7 +8250,7 @@
                         <option value={option.value}>{option.label}</option>
                     {/each}
                 </select>
-                <select bind:value={selectedInstallFilter}>
+                <select bind:value={selectedInstallFilter} aria-label="Filter by installation state">
                     {#each installFilterOptions as option (option.value)}
                         <option value={option.value}>{option.label}</option>
                     {/each}
@@ -8280,6 +8280,15 @@
                     </select>
                 {/if}
                 <button class="cat-btn filter-reset-btn" disabled={!hasActiveNexusFilters} on:click={clearNexusFilters}>Clear</button>
+            </div>
+
+            <div class="notice api-note">
+                <span>{nexusCatalogCacheSummary()}</span>
+                {#if catalogMode === "online"}
+                    <span>{visibleNexusMods.length} shown from {mods.length} known. {onlineAttentionCount > 0 ? `${onlineAttentionCount} need attention.` : ""} {trackedModsLoaded ? `${trackedCount} tracked.` : ""} {conflictCount > 0 ? `${conflictCount} in conflicts.` : ""}</span>
+                {:else}
+                    <span>{visibleInstalledEntries.length} shown from {installedCount} installed. {installedAttentionCount > 0 ? `${installedAttentionCount} need attention.` : ""} {trackedModsLoaded ? `${trackedCount} tracked.` : ""} {conflictCount > 0 ? `${conflictCount} in conflicts.` : ""}</span>
+                {/if}
             </div>
 
             {#if selectedInstallFilter === "conflicts" && localConflicts.length > 0}
@@ -8487,7 +8496,7 @@
                                         {#if conflict}
                                             <button class="conflict-review-btn" on:click={() => reviewLocalConflict(conflict)}>Review Conflict</button>
                                         {/if}
-                                        <button on:click={() => openModDetails(mod)}>Details</button>
+                                        <button class="row-detail-btn" on:click={() => openModDetails(mod)}>Details</button>
                                         <button on:click={() => openModPage(mod)}>Open Page</button>
                                     </div>
                                 </div>
@@ -8561,7 +8570,7 @@
                                                     {activeNexusEndorseId === entryNexusModId ? "Endorsing..." : "Endorse"}
                                                 </button>
                                             {/if}
-                                            <button on:click={() => openInstalledEntryDetails(entry)}>Details</button>
+                                            <button class="row-detail-btn" on:click={() => openInstalledEntryDetails(entry)}>Details</button>
                                             <button on:click={() => shell.open(`https://www.nexusmods.com/sonsoftheforest/mods/${entryNexusModId}`)}>Nexus Page</button>
                                         {/if}
                                         {#if conflict}
@@ -8621,7 +8630,22 @@
                     {#if detailBackStack.length > 0}
                         <button class="back-detail" on:click={openPreviousDetail}>Back</button>
                     {/if}
-                    <button class="close-detail" on:click={closeModDetails}>Close</button>
+                    <details class="detail-page-menu">
+                        <summary>On Nexus <LucideChevronDown aria-hidden="true" /></summary>
+                        <div class="detail-link-actions" aria-label="Nexus page sections">
+                            <span class="detail-link-heading">On Nexus Mods</span>
+                            {#each nexusSurfaceLinks as surface (surface.key)}
+                                <button
+                                    title={surface.title}
+                                    on:click={() => surface.key === "files" ? openSelectedDownloadPage() : openSelectedModTab(surface.key)}
+                                >
+                                    <span>{surface.label}</span>
+                                    <small>{surface.status}</small>
+                                </button>
+                            {/each}
+                        </div>
+                    </details>
+                    <button class="close-detail" on:click={closeModDetails} aria-label="Close Nexus mod details"><LucideX aria-hidden="true" /> Close</button>
                 </div>
             </div>
 
@@ -9264,22 +9288,25 @@
                     <small title={selectedInstallFileLabel}>{selectedInstallFileLabel}</small>
                 </div>
 
-                <div class="deployment-checklist" aria-label="Deployment readiness checklist">
-                    {#each deploymentChecklistItems as item (item.key)}
-                        <button
-                            type="button"
-                            class="deployment-check-item"
-                            class:deployment-check-ready={item.tone === "ready"}
-                            class:deployment-check-review={item.tone === "review"}
-                            class:deployment-check-blocked={item.tone === "blocked"}
-                            title={item.detail}
-                            on:click={() => scrollDetailSection(item.target)}
-                        >
-                            <small>{item.label}</small>
-                            <b>{item.value}</b>
-                        </button>
-                    {/each}
-                </div>
+                <details class="deployment-readiness">
+                    <summary>Deployment checks <LucideChevronDown aria-hidden="true" /></summary>
+                    <div class="deployment-checklist" aria-label="Deployment readiness checklist">
+                        {#each deploymentChecklistItems as item (item.key)}
+                            <button
+                                type="button"
+                                class="deployment-check-item"
+                                class:deployment-check-ready={item.tone === "ready"}
+                                class:deployment-check-review={item.tone === "review"}
+                                class:deployment-check-blocked={item.tone === "blocked"}
+                                title={item.detail}
+                                on:click={() => scrollDetailSection(item.target)}
+                            >
+                                <small>{item.label}</small>
+                                <b>{item.value}</b>
+                            </button>
+                        {/each}
+                    </div>
+                </details>
 
                 <div class="detail-actions">
                     {#if selectedFileFooterReviewVisible}
@@ -9321,19 +9348,6 @@
                     </button>
                     <button on:click={openSelectedModPage}>Open Page</button>
                 </div>
-
-                <div class="detail-link-actions" aria-label="Nexus page sections">
-                    <span class="detail-link-heading">Nexus surfaces</span>
-                    {#each nexusSurfaceLinks as surface (surface.key)}
-                        <button
-                            title={surface.title}
-                            on:click={() => surface.key === "files" ? openSelectedDownloadPage() : openSelectedModTab(surface.key)}
-                        >
-                            <span>{surface.label}</span>
-                            <small>{surface.status}</small>
-                        </button>
-                    {/each}
-                </div>
             </div>
         </div>
     </div>
@@ -9341,802 +9355,581 @@
 
 <style>
     .nexus-page {
-        --nexus-card-min-height: clamp(138px, 17vh, 178px);
+        --nexus-scroll-bottom-guard: 16px;
         --nexus-catalog-target-height: 360px;
-        --nexus-scroll-bottom-guard: max(var(--app-bottom-safe-area, 42px), clamp(56px, 6.2vh, 84px));
         --nexus-scroller-target-height: 280px;
-        --nexus-thumb-width: clamp(145px, 18vw, 230px);
+        --nexus-card-min-height: 148px;
+        --nexus-thumb-width: 144px;
         box-sizing: border-box;
-        gap: clamp(0.55em, 1vh, 0.9em);
+        color: #eef0f4;
+        font-size: 14px;
+        gap: 12px;
         height: 100%;
         justify-content: flex-start;
         min-height: 0;
+        min-width: 0;
         overflow: hidden;
+        text-align: left;
     }
 
-    .nexus-page.nexus-catalog-tight {
-        gap: clamp(0.35em, 0.7vh, 0.55em);
+    .nexus-page button,
+    .detail-panel button {
+        -webkit-mask-image: none;
+        background: #20242c;
+        border: 1px solid #343a45;
+        border-radius: 7px;
+        box-shadow: none;
+        color: #d8dde6;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 550;
+        letter-spacing: 0;
+        line-height: 1.35;
+        margin: 0;
+        mask-image: none;
+        min-height: 32px;
+        min-width: 0;
+        padding: 6px 10px;
+        text-transform: none;
+        transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
     }
 
-    .nexus-page.nexus-embedded-store-preview {
-        --nexus-card-min-height: clamp(96px, 10vh, 118px);
-        --nexus-scroll-bottom-guard: clamp(18px, 2.5vh, 30px);
-        --nexus-thumb-width: clamp(112px, 13vw, 150px);
-        gap: clamp(0.3em, 0.55vh, 0.42em);
+    .nexus-page button:not(:disabled):hover,
+    .detail-panel button:not(:disabled):hover {
+        background: #2a303a;
+        border-color: #4b5360;
+        color: #f5f6f8;
     }
 
-    .nexus-embedded-store-preview .account-panel {
-        padding: 0.38em 0.65em;
+    .nexus-page button:disabled,
+    .detail-panel button:disabled {
+        cursor: not-allowed;
+        opacity: 0.48;
     }
 
-    .nexus-embedded-store-preview.nexus-session-connected .account-panel {
-        display: none;
+    .nexus-page button:focus-visible,
+    .detail-panel button:focus-visible,
+    .account-menu > summary:focus-visible,
+    .detail-page-menu > summary:focus-visible,
+    .deployment-readiness > summary:focus-visible {
+        outline: 2px solid #eeb66b;
+        outline-offset: 3px;
     }
 
-    .nexus-embedded-store-preview .account-actions,
-    .nexus-embedded-store-preview .rate-row,
-    .nexus-embedded-store-preview .vortex-summary,
-    .nexus-embedded-store-preview .catalog-toolbar,
-    .nexus-embedded-store-preview .nexus-filter-row,
-    .nexus-embedded-store-preview .action-queue-empty {
-        display: none;
+    .nexus-page .install,
+    .nexus-page .button-row .vortex-install-btn,
+    .detail-panel .detail-actions .install {
+        background: #eeb66b;
+        border-color: #eeb66b;
+        color: #211b13;
+        font-weight: 650;
     }
 
-    .nexus-embedded-store-preview.nexus-embedded-controls-expanded .catalog-toolbar {
-        display: flex;
-    }
-
-    .nexus-embedded-store-preview.nexus-embedded-controls-expanded .nexus-filter-row {
-        display: grid;
-    }
-
-    .nexus-embedded-store-preview .panel-title {
-        font-size: 0.98em;
-    }
-
-    .nexus-embedded-store-preview .panel-subtitle {
-        font-size: 0.76em;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .nexus-embedded-store-preview .catalog-panel,
-    .nexus-embedded-store-preview .nexus-scroller {
-        gap: 0.34em;
-    }
-
-    .nexus-embedded-store-preview .nexus-scroller {
-        scroll-snap-type: y mandatory;
-    }
-
-    .nexus-embedded-store-preview .api-note {
-        padding: 0.28em 0.55em;
-    }
-
-    .nexus-embedded-store-preview .cat-btn,
-    .nexus-embedded-store-preview .refresh-btn,
-    .nexus-embedded-store-preview .catalog-mode-buttons button {
-        height: 2.2em;
-    }
-
-    .nexus-embedded-store-preview .nexus-filter-row select,
-    .nexus-embedded-store-preview .nexus-filter-row .key-input {
-        min-height: 2.2em;
-        padding-bottom: 0.28em;
-        padding-top: 0.28em;
-    }
-
-    .nexus-embedded-store-preview .nexus-body {
-        align-items: center;
-        display: grid;
-        gap: 0.26em;
-        grid-template-areas:
-            "head actions"
-            "description actions";
-        grid-template-columns: minmax(0, 1fr) auto;
-        padding: 0.42em 0.52em;
-    }
-
-    .nexus-embedded-store-preview .card-head {
-        grid-area: head;
-    }
-
-    .nexus-embedded-store-preview .description-content {
-        -webkit-line-clamp: 1;
-        grid-area: description;
-        line-clamp: 1;
-        min-height: auto;
-    }
-
-    .nexus-embedded-store-preview .facts {
-        display: none;
-    }
-
-    .nexus-embedded-store-preview .nexus-card-footer {
-        align-items: center;
-        align-self: start;
-        gap: 0.35em;
-        grid-area: actions;
-        justify-self: end;
-        margin-top: 0;
-    }
-
-    .nexus-embedded-store-preview .match-detail,
-    .nexus-embedded-store-preview .nexus-enable {
-        display: none;
-    }
-
-    .nexus-embedded-store-preview .button-row {
-        gap: 0.28em;
-        justify-content: flex-end;
-        margin-left: 0;
-        max-width: min(36vw, 25em);
-    }
-
-    .nexus-embedded-store-preview .button-row .track-btn,
-    .nexus-embedded-store-preview .button-row .endorse-btn,
-    .nexus-embedded-store-preview .button-row .endorsed-btn {
-        display: none;
-    }
-
-    .nexus-embedded-store-preview .button-row button {
-        font-size: 0.68em;
-        min-width: 5.6em;
-        padding: 0.34em 0.5em;
-    }
-
-    .nexus-embedded-store-preview .button-row .vortex-install-btn {
-        min-width: 8.7em;
-    }
-
-    .nexus-page.nexus-catalog-tight .account-panel {
-        padding: 0.45em 0.75em;
-    }
-
-    .nexus-page.nexus-catalog-tight .account-actions {
-        gap: 0.38em;
-    }
-
-    .nexus-page.nexus-catalog-tight .account-actions button,
-    .nexus-page.nexus-catalog-tight .auto-endorse-control {
-        font-size: 0.72em;
-        min-height: 2.2em;
-        padding: 0.26em 0.58em;
-    }
-
-    .nexus-page.nexus-catalog-tight .auto-endorse-label small {
-        display: none;
-    }
-
-    .nexus-page.nexus-catalog-tight .panel-title {
-        font-size: 0.98em;
-    }
-
-    .nexus-page.nexus-catalog-tight .panel-subtitle {
-        font-size: 0.78em;
-    }
-
-    .nexus-page.nexus-catalog-tight .rate-row,
-    .nexus-page.nexus-catalog-tight .vortex-summary,
-    .nexus-page.nexus-catalog-tight .catalog-panel,
-    .nexus-page.nexus-catalog-tight .action-queue,
-    .nexus-page.nexus-catalog-tight .nexus-filter-row,
-    .nexus-page.nexus-catalog-tight .nexus-scroller {
-        gap: 0.38em;
-    }
-
-    .nexus-page.nexus-catalog-tight .rate-meter {
-        gap: 0.2em;
-        padding: 0.32em 0.5em;
-    }
-
-    .nexus-page.nexus-catalog-tight .summary-card {
-        gap: 0;
-        padding: 0.38em 0.5em;
-    }
-
-    .nexus-page.nexus-catalog-tight .summary-note,
-    .nexus-page.nexus-catalog-tight .queue-chip small {
-        display: none;
-    }
-
-    .nexus-page.nexus-catalog-tight .api-note {
-        padding: 0.34em 0.6em;
-    }
-
-    .nexus-page.nexus-catalog-tight .queue-chip {
-        min-height: 2.35em;
-        padding: 0.3em 0.5em;
-    }
-
-    .nexus-page.nexus-catalog-tight .queue-chip b {
-        font-size: 1em;
-    }
-
-    .nexus-page.nexus-catalog-tight .action-queue-empty {
-        min-height: 1.9em;
-        padding: 0.26em 0.55em;
-    }
-
-    .nexus-page.nexus-catalog-tight .nexus-filter-row select,
-    .nexus-page.nexus-catalog-tight .nexus-filter-row .key-input {
-        min-height: 2.28em;
-        padding-bottom: 0.32em;
-        padding-top: 0.32em;
-    }
-
-    .nexus-page.nexus-catalog-tight .cat-btn,
-    .nexus-page.nexus-catalog-tight .refresh-btn,
-    .nexus-page.nexus-catalog-tight .catalog-mode-buttons button {
-        height: 2.3em;
-    }
-
-    .nexus-page.nexus-catalog-tight .nexus-card {
-        grid-template-columns: var(--nexus-thumb-width) minmax(0, 1fr);
-        min-height: var(--nexus-card-min-height);
-    }
-
-    .nexus-page.nexus-catalog-tight .thumbnail-frame,
-    .nexus-page.nexus-catalog-tight .thumbnail-button,
-    .nexus-page.nexus-catalog-tight .nexus-img {
-        min-height: var(--nexus-card-min-height);
-    }
-
-    .nexus-page.nexus-catalog-tight .nexus-body {
-        gap: 0.32em;
-        padding: 0.5em 0.65em;
-    }
-
-    .nexus-page.nexus-catalog-tight .mod-title {
-        font-size: 0.98em;
-    }
-
-    .nexus-page.nexus-catalog-tight .description-content {
-        -webkit-line-clamp: 1;
-        line-clamp: 1;
-        min-height: auto;
-    }
-
-    .nexus-page.nexus-catalog-tight .facts,
-    .nexus-page.nexus-catalog-tight .inventory-facts {
-        font-size: 0.72em;
-    }
-
-    .nexus-page.nexus-catalog-tight .nexus-card-footer {
-        align-items: center;
-        gap: 0.45em;
-    }
-
-    .nexus-page.nexus-catalog-tight .button-row {
-        gap: 0.35em;
-    }
-
-    .nexus-page.nexus-catalog-tight .button-row button {
-        font-size: 0.72em;
-        min-width: 5.8em;
-        padding: 0.45em 0.62em;
-    }
-
-    .nexus-page.nexus-catalog-tight .button-row .vortex-install-btn {
-        min-width: 9.2em;
-    }
-
-    .nexus-page.nexus-catalog-very-tight .description-content {
-        -webkit-line-clamp: 1;
-        line-clamp: 1;
-    }
-
-    .nexus-page.nexus-catalog-very-tight .facts,
-    .nexus-page.nexus-catalog-very-tight .inventory-facts {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+    .nexus-page .install:not(:disabled):hover,
+    .nexus-page .button-row .vortex-install-btn:not(:disabled):hover,
+    .detail-panel .detail-actions .install:not(:disabled):hover {
+        background: #f6c583;
+        border-color: #f6c583;
+        color: #211b13;
     }
 
     .account-panel {
         align-items: center;
-        background: linear-gradient(90deg, rgba(42, 42, 42, 0.92), rgba(24, 24, 24, 0.82));
-        border: 1px solid rgba(255, 255, 255, 0.16);
         box-sizing: border-box;
         display: flex;
         flex: 0 0 auto;
-        gap: 1em;
+        gap: 16px;
         justify-content: space-between;
-        padding: clamp(0.65em, 1.25vh, 0.9em) 1em;
+        min-width: 0;
+        padding: 2px 0 10px;
+        position: relative;
         text-align: left;
         width: 100%;
+        z-index: 5;
     }
 
-    .account-copy {
+    .account-copy,
+    .auto-endorse-label {
         display: flex;
         flex-direction: column;
+        gap: 3px;
         min-width: 0;
     }
 
     .panel-title {
-        color: #eefcff;
-        font-size: clamp(1em, 1.8vh, 1.2em);
-        font-weight: 800;
-        letter-spacing: 0.02em;
+        color: #eef0f4;
+        font-size: 18px;
+        font-weight: 650;
+        letter-spacing: -0.02em;
+        line-height: 1.4;
+    }
+
+    .nexus-heading {
+        align-items: center;
+        display: flex;
+        gap: 8px;
+    }
+
+    .nexus-heading :global(svg) {
+        color: #eeb66b;
+        height: 19px;
+        width: 19px;
     }
 
     .panel-subtitle {
-        color: #9eb0bf;
+        align-items: center;
+        color: #9da6b6;
         display: flex;
         flex-wrap: wrap;
-        font-size: 0.85em;
-        gap: 0.35em;
+        font-size: 12px;
+        gap: 4px;
+        line-height: 1.5;
+    }
+
+    .account-menu {
+        flex: 0 0 auto;
+    }
+
+    .account-menu > summary,
+    .detail-page-menu > summary,
+    .deployment-readiness > summary {
         align-items: center;
-        line-height: 1.25;
+        background: #20242c;
+        border: 1px solid #343a45;
+        border-radius: 7px;
+        color: #c9d0db;
+        cursor: pointer;
+        display: flex;
+        font-size: 12px;
+        font-weight: 550;
+        gap: 7px;
+        line-height: 1.4;
+        list-style: none;
+        min-height: 32px;
+        padding: 0 10px;
+    }
+
+    .account-menu > summary::-webkit-details-marker,
+    .detail-page-menu > summary::-webkit-details-marker,
+    .deployment-readiness > summary::-webkit-details-marker {
+        display: none;
+    }
+
+    .account-menu[open] > summary,
+    .detail-page-menu[open] > summary,
+    .deployment-readiness[open] > summary {
+        border-color: #806441;
+        color: #eeb66b;
+    }
+
+    .account-menu summary :global(svg),
+    .connect-row :global(svg),
+    .refresh-btn :global(svg),
+    .detail-page-menu summary :global(svg),
+    .deployment-readiness summary :global(svg),
+    .close-detail :global(svg) {
+        flex: 0 0 auto;
+        height: 14px;
+        width: 14px;
+    }
+
+    .account-menu-content {
+        background: #1b1f27;
+        border: 1px solid #3a414d;
+        border-radius: 10px;
+        box-shadow: 0 16px 40px #0006;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        max-height: min(400px, calc(100vh - 330px));
+        overflow-y: auto;
+        padding: 18px;
+        position: absolute;
+        right: 0;
+        top: calc(100% - 2px);
+        width: min(720px, 100%);
     }
 
     .account-actions,
     .connect-row,
     .button-row,
-    .rate-row,
     .catalog-toolbar,
     .catalog-mode-buttons,
-    .view-buttons,
-    .nexus-card-footer {
+    .view-buttons {
         align-items: center;
         display: flex;
-        gap: 0.5em;
+        gap: 6px;
+        min-width: 0;
     }
 
     .account-actions {
         flex-wrap: wrap;
-        justify-content: flex-end;
+        justify-content: flex-start;
     }
 
-    .account-actions button {
-        font-size: 0.82em;
-        margin: 0;
-        min-height: 2.55em;
-        min-width: 8.2em;
-        padding: 0.42em 0.8em;
-        white-space: nowrap;
+    .account-actions .uninstall {
+        color: #efa6a2;
+        margin-left: auto;
     }
 
     .auto-endorse-control {
         align-items: center;
-        background: rgba(12, 12, 12, 0.74);
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        color: #b8c8d8;
-        display: inline-flex;
-        font-size: 0.75em;
-        font-weight: 900;
-        gap: 0.5em;
-        min-height: 2.5em;
-        padding: 0.35em 0.7em;
-        text-transform: uppercase;
+        color: #d8dde6;
+        display: flex;
+        flex: 1 1 100%;
+        font-size: 12px;
+        gap: 10px;
+        padding-bottom: 10px;
         text-align: left;
     }
 
-    .inventory-refresh-btn {
-        background: rgba(120, 217, 244, 0.075);
-        border-color: rgba(120, 217, 244, 0.24);
-        box-shadow: none;
-        color: #bdeefa;
-    }
-
-    .account-actions .inventory-refresh-btn {
-        font-size: 0.8em;
-        min-height: 2.6em;
-        min-width: 9.8em;
-        padding: 0.3em 0.7em;
-    }
-
-    .auto-endorse-label {
-        display: flex;
-        flex-direction: column;
-        gap: 0.1em;
-        line-height: 1.12;
-        min-width: 0;
-    }
-
     .auto-endorse-label small {
-        color: #8d99a5;
-        font-size: 0.82em;
-        font-weight: 800;
-        text-transform: none;
+        color: #9da6b6;
+        font-size: 11px;
+        line-height: 1.4;
     }
 
-    .auto-endorse-control input[type="checkbox"] {
-        appearance: none;
-        background: rgba(8, 8, 8, 0.96);
-        border: 1px solid rgba(255, 255, 255, 0.35);
-        display: grid;
+    .auto-endorse-control input[type="checkbox"],
+    .nexus-enable input[type="checkbox"] {
+        accent-color: #eeb66b;
+        appearance: auto;
+        flex: 0 0 auto;
         float: none;
-        height: 1.05em;
+        height: 14px;
         margin: 0;
         padding: 0;
-        place-content: center;
         transform: none;
-        width: 1.05em;
+        width: 14px;
     }
 
-    .auto-endorse-control input[type="checkbox"]::before {
-        box-shadow: inset 1em 1em #78d9f4;
-        content: "";
-        height: 0.58em;
-        transform: scale(0);
-        transition: transform 120ms ease-in-out;
-        width: 0.58em;
-    }
-
-    .auto-endorse-control input[type="checkbox"]:checked::before {
-        transform: scale(1);
-    }
-
-    .connect-row {
-        flex: 1;
-        justify-content: flex-end;
+    .auto-endorse-control input[type="checkbox"]::before,
+    .nexus-enable input[type="checkbox"]::before {
+        display: none;
     }
 
     .connect-column {
         align-items: flex-end;
         display: flex;
+        flex: 0 1 360px;
         flex-direction: column;
-        gap: 0.4em;
-        min-width: min(100%, 34em);
+        gap: 10px;
+        min-width: 260px;
     }
 
-    .login-button {
-        min-width: 13em;
+    .connect-row {
+        justify-content: flex-end;
+        width: 100%;
+    }
+
+    .connect-row button {
+        align-items: center;
+        display: inline-flex;
+        gap: 6px;
+        justify-content: center;
+        white-space: nowrap;
     }
 
     .manual-key {
-        color: #8d8d8d;
-        font-size: 0.82em;
-        font-weight: 700;
+        color: #9da6b6;
+        font-size: 11px;
         text-align: right;
         width: 100%;
     }
 
     .manual-key summary {
         cursor: pointer;
-        text-transform: uppercase;
+        line-height: 1.6;
     }
 
     .manual-row {
-        margin-top: 0.5em;
+        margin-top: 10px;
     }
 
     .manual-warning {
-        color: #fdc66d;
+        color: #c6a77e;
         display: block;
-        font-size: 0.9em;
-        line-height: 1.25;
-        margin-top: 0.35em;
+        font-size: 11px;
+        line-height: 1.5;
+        margin-top: 7px;
     }
 
     .key-input {
         margin: 0;
-        max-width: 24em;
-        min-width: 12em;
+        min-width: 0;
         text-align: left;
         width: 100%;
     }
 
     .rate-row {
-        color: #9eb0bf;
+        color: #9da6b6;
         display: grid;
-        flex: 0 0 auto;
-        font-size: 0.78em;
-        gap: 0.55em;
+        font-size: 11px;
+        gap: 20px;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        line-height: 1.1;
-        margin-top: -0.15em;
+        line-height: 1.5;
     }
 
     .rate-meter {
-        background: rgba(18, 18, 18, 0.72);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        box-sizing: border-box;
-        display: flex;
-        flex-direction: column;
-        gap: 0.3em;
+        display: grid;
+        gap: 6px;
         min-width: 0;
-        padding: 0.42em 0.55em;
     }
 
     .rate-meter > span {
         display: flex;
-        gap: 0.6em;
+        gap: 10px;
         justify-content: space-between;
-        min-width: 0;
-        white-space: nowrap;
     }
 
     .rate-meter b {
-        color: #e4edf4;
+        color: #c9d0db;
+        font-weight: 550;
     }
 
     .rate-track {
-        background: rgba(255, 255, 255, 0.09);
-        height: 4px;
+        background: #303641;
+        border-radius: 4px;
+        height: 3px;
         overflow: hidden;
-        width: 100%;
     }
 
     .rate-track span {
-        background: #62f09b;
+        background: #8db9a0;
         display: block;
         height: 100%;
         width: var(--rate-percent, 0%);
     }
 
-    .rate-meter-warning .rate-track span {
-        background: #fdc66d;
+    .rate-meter-warning .rate-track span { background: #eeb66b; }
+    .rate-meter-low .rate-track span { background: #df8987; }
+
+    .vortex-summary {
+        border-top: 1px solid #303641;
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        padding-top: 12px;
     }
 
-    .rate-meter-low .rate-track span {
-        background: #fd7e7e;
-    }
-
-    .notice {
-        background: rgba(34, 34, 34, 0.9);
-        border: 1px solid rgba(252, 252, 252, 0.08);
-        color: #aab8c5;
-        padding: 0.8em 1em;
+    .summary-card,
+    .nexus-page button.summary-card {
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 7px;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+        padding: 8px;
         text-align: left;
     }
 
-    .live-status {
-        color: #38d68d;
-        font-weight: 800;
-        text-transform: uppercase;
+    .nexus-page button.summary-card:hover,
+    .nexus-page button.summary-card-selected {
+        background: #282c34;
+        border-color: #6e583d;
     }
 
-    .warning {
-        color: #fdc66d;
+    .summary-label,
+    .summary-note {
+        color: #9da6b6;
+        font-size: 11px;
+        font-weight: 400;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
     }
+
+    .summary-value {
+        color: #eef0f4;
+        font-size: 15px;
+        font-weight: 600;
+        line-height: 1.4;
+    }
+
+    .premium-summary .summary-value,
+    .supporter-summary .summary-value,
+    .attention-summary .summary-value,
+    .update-summary .summary-value,
+    .conflict-summary .summary-value { color: #eeb66b; }
+    .active-summary .summary-value { color: #9ccbb2; }
+
+    .notice {
+        background: #1b1f27;
+        border: 1px solid #323844;
+        border-radius: 8px;
+        box-sizing: border-box;
+        color: #aeb7c5;
+        font-size: 12px;
+        line-height: 1.5;
+        padding: 10px 12px;
+        text-align: left;
+    }
+
+    .live-status { color: #a6cbb6; }
+    .warning { color: #eeb66b; }
 
     .request-error {
-        align-items: flex-start;
-        border-color: rgba(253, 198, 109, 0.3);
-        color: #d5b989;
+        align-items: center;
+        border-color: #745d3f;
         display: flex;
         flex: 0 0 auto;
         flex-wrap: wrap;
-        gap: 0.65em;
-        margin: 0.55em 0;
+        gap: 12px;
+        margin: 8px 0;
         min-width: 0;
     }
 
-    .catalog-request-error {
-        margin: 0;
-    }
+    .catalog-request-error { margin: 0; }
 
     .request-error-copy {
         display: grid;
-        flex: 1 1 14em;
-        gap: 0.25em;
+        flex: 1 1 220px;
+        gap: 3px;
         min-width: 0;
         overflow-wrap: anywhere;
     }
 
     .request-error-copy strong {
-        color: #fdc66d;
-        font-size: 0.88em;
+        color: #eeb66b;
+        font-size: 13px;
+        font-weight: 600;
     }
 
     .request-error-copy span,
     .request-error-copy small {
-        font-size: 0.78em;
-        line-height: 1.4;
+        font-size: 12px;
+        line-height: 1.5;
     }
 
     .request-error-copy small {
-        color: #aab8c5;
-        max-height: 4.2em;
+        color: #9da6b6;
+        max-height: 54px;
         overflow-y: auto;
     }
 
     .request-error button {
         flex: 0 0 auto;
-        font-size: 0.78em;
         max-width: 100%;
         white-space: normal;
     }
 
-    .loading-line.catalog-loading {
-        flex: 0 0 auto;
-        font-size: 0.85em;
-        min-height: 2.4em;
-        min-width: 0;
-    }
-
-    .catalog-has-error .nexus-scroller {
-        min-height: 0;
-    }
-
-    .vortex-summary {
-        display: grid;
-        flex: 0 0 auto;
-        gap: 0.6em;
-        grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
-    }
-
-    .summary-card {
-        background: rgba(18, 18, 18, 0.76);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        box-sizing: border-box;
-        display: flex;
-        flex-direction: column;
-        gap: 0.15em;
-        min-width: 0;
-        padding: 0.55em 0.75em;
-    }
-
-    button.summary-card {
-        -webkit-mask-image: none;
-        color: inherit;
-        cursor: pointer;
-        margin: 0;
-        mask-image: none;
-        text-align: left;
-        text-transform: none;
-    }
-
-    .summary-action:hover,
-    .summary-action:focus-visible {
-        border-color: rgba(120, 217, 244, 0.55);
-        box-shadow: inset 0 0 0 1px rgba(120, 217, 244, 0.14);
-        outline: none;
-    }
-
-    .summary-card-selected {
-        border-color: rgba(98, 240, 155, 0.62);
-        box-shadow: inset 0 0 0 1px rgba(98, 240, 155, 0.16);
-    }
-
-    .account-summary-card {
-        border-color: rgba(120, 217, 244, 0.2);
-    }
-
-    .premium-summary {
-        border-color: rgba(244, 210, 109, 0.32);
-        box-shadow: inset 0 0 0 1px rgba(244, 210, 109, 0.08);
-    }
-
-    .premium-summary .summary-value {
-        color: #f4d26d;
-    }
-
-    .supporter-summary {
-        border-color: rgba(120, 217, 244, 0.32);
-        box-shadow: inset 0 0 0 1px rgba(120, 217, 244, 0.08);
-    }
-
-    .supporter-summary .summary-value {
-        color: #78d9f4;
-    }
-
-    .summary-label {
-        color: #8d99a5;
-        font-size: 0.68em;
-        font-weight: 900;
-        letter-spacing: 0.1em;
-        overflow-wrap: anywhere;
-        text-transform: uppercase;
-    }
-
-    .summary-value {
-        color: #e5e5e5;
-        font-size: 0.9em;
-        font-weight: 800;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .summary-note {
-        color: #8fa3b5;
-        font-size: 0.68em;
-        font-weight: 700;
-        overflow-wrap: anywhere;
-    }
-
-    .active-summary .summary-value {
-        color: #62f09b;
-    }
-
-    .conflict-summary .summary-value {
-        color: #fdc66d;
-    }
-
-    .attention-summary .summary-value,
-    .update-summary .summary-value {
-        color: #fdc66d;
-    }
-
     .catalog-panel {
         display: flex;
-        flex: 1 1 var(--nexus-catalog-target-height);
+        flex: 1 1 0;
         flex-direction: column;
-        gap: 0.65em;
+        gap: 10px;
         min-height: 0;
+        min-width: 0;
     }
 
     .catalog-toolbar {
         flex: 0 0 auto;
+        flex-wrap: wrap;
+        gap: 10px;
         justify-content: space-between;
     }
 
+    .catalog-mode-buttons {
+        background: #101217;
+        border: 1px solid #303641;
+        border-radius: 8px;
+        gap: 3px;
+        padding: 3px;
+    }
+
     .catalog-mode-buttons button {
-        color: #c8c8c8;
-        height: 2.55em;
-        margin: 0;
-        min-width: 10em;
-        padding: 0 0.8em;
+        background: transparent;
+        border-color: transparent;
+        min-height: 30px;
+        padding: 5px 12px;
+        white-space: nowrap;
+    }
+
+    .nexus-page .catalog-mode-buttons .cat-btn-selected {
+        background: #2e2a24;
+        border-color: #6d583c;
+        color: #f0be7a;
+    }
+
+    .view-buttons {
+        flex: 1 1 auto;
+        gap: 2px;
+        justify-content: flex-end;
+    }
+
+    .nexus-page .view-buttons .cat-btn {
+        background: transparent;
+        border-color: transparent;
+        border-radius: 6px;
+        color: #9da6b6;
+        padding: 6px 8px;
+    }
+
+    .nexus-page .view-buttons .cat-btn-selected {
+        background: #272a30;
+        color: #eeb66b;
     }
 
     .feed-hidden {
-        opacity: 0.28;
+        visibility: hidden;
         pointer-events: none;
+    }
+
+    .refresh-btn {
+        align-items: center;
+        display: flex;
+        gap: 6px;
+        white-space: nowrap;
     }
 
     .api-note {
         align-items: center;
-        color: #8d99a5;
+        background: transparent;
+        border: 0;
+        border-radius: 0;
+        color: #8791a1;
         display: flex;
         flex: 0 0 auto;
-        font-size: 0.78em;
+        flex-wrap: wrap;
+        font-size: 11px;
+        gap: 3px 14px;
         justify-content: space-between;
-        line-height: 1.2;
-        padding: 0.5em 0.75em;
+        line-height: 1.45;
+        padding: 0 2px;
     }
 
     .action-queue {
         display: grid;
         flex: 0 0 auto;
-        gap: 0.5em;
+        gap: 6px;
         grid-template-columns: repeat(5, minmax(0, 1fr));
         min-width: 0;
     }
 
-    .queue-chip {
-        -webkit-mask-image: none;
+    .nexus-page .queue-chip {
         align-items: center;
-        background: rgba(15, 15, 15, 0.82);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        box-sizing: border-box;
-        color: #c9d4dd;
-        cursor: pointer;
-        display: grid;
-        gap: 0.55em;
-        grid-template-columns: auto minmax(0, 1fr);
-        margin: 0;
-        mask-image: none;
-        min-height: 3em;
-        min-width: 0;
-        padding: 0.45em 0.65em;
+        background: #171a21;
+        border-color: #2c323d;
+        display: flex;
+        gap: 8px;
+        min-height: 40px;
+        padding: 7px 10px;
         text-align: left;
-        text-transform: none;
-        width: 100%;
-    }
-
-    .queue-chip:hover,
-    .queue-chip:focus-visible {
-        border-color: rgba(120, 217, 244, 0.52);
-        box-shadow: inset 0 0 0 1px rgba(120, 217, 244, 0.12);
-        outline: none;
     }
 
     .queue-chip b {
-        color: #e6f4fb;
-        font-size: 1.1em;
-        font-weight: 900;
-        min-width: 1.6em;
-        text-align: center;
+        color: #aeb7c5;
+        font-size: 15px;
+        font-weight: 600;
+        min-width: 14px;
     }
 
     .queue-chip > span {
         display: flex;
         flex-direction: column;
-        gap: 0.05em;
-        line-height: 1.05;
+        gap: 2px;
         min-width: 0;
     }
 
@@ -10148,230 +9941,168 @@
     }
 
     .queue-chip > span > span {
-        color: #d9e5ed;
-        font-size: 0.78em;
-        font-weight: 900;
+        color: #b8c0cd;
+        font-size: 11px;
+        font-weight: 500;
+        line-height: 1.4;
     }
 
     .queue-chip small {
-        color: #8295a5;
-        font-size: 0.68em;
-        font-weight: 800;
+        color: #7f8999;
+        font-size: 10px;
+        font-weight: 400;
+        line-height: 1.3;
     }
 
-    .queue-chip-hot b {
-        color: #fdc66d;
-    }
-
-    .queue-chip-selected {
-        border-color: rgba(98, 240, 155, 0.62);
-        box-shadow: inset 0 0 0 1px rgba(98, 240, 155, 0.16);
-    }
-
-    .queue-chip-selected b {
-        color: #62f09b;
-    }
+    .queue-chip-hot b,
+    .queue-chip-selected b { color: #eeb66b; }
+    .nexus-page .queue-chip-selected { border-color: #806441; }
 
     .action-queue-empty {
         align-items: center;
-        background: rgba(15, 15, 15, 0.62);
-        border: 1px solid rgba(98, 240, 155, 0.18);
-        box-sizing: border-box;
-        color: #8fa2b2;
+        color: #8791a1;
         display: flex;
         flex: 0 0 auto;
-        gap: 0.7em;
-        justify-content: space-between;
-        min-height: 2.25em;
+        font-size: 11px;
+        gap: 10px;
+        line-height: 1.5;
         min-width: 0;
-        padding: 0.35em 0.7em;
-        text-transform: uppercase;
+        padding: 2px;
     }
 
     .action-queue-empty b {
-        color: #62f09b;
+        color: #a6cbb6;
         flex: 0 0 auto;
-        font-size: 0.78em;
-        font-weight: 900;
-        letter-spacing: 0.04em;
-        white-space: nowrap;
+        font-weight: 550;
     }
 
     .action-queue-empty span {
-        font-size: 0.72em;
-        font-weight: 800;
-        min-width: 0;
         overflow: hidden;
-        text-align: right;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
 
-    .nexus-filter-row {
+    .nexus-filter-row,
+    .nexus-filter-row.compact-filter-row {
         display: grid;
         flex: 0 0 auto;
-        gap: 0.6em;
-        grid-template-columns: minmax(14em, 1fr) repeat(4, minmax(8.5em, 0.55fr)) minmax(6.5em, 0.28fr);
+        gap: 7px;
+        grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+        min-width: 0;
         width: 100%;
     }
 
-    .nexus-filter-row.compact-filter-row {
-        grid-template-columns: repeat(4, minmax(8.5em, 1fr)) minmax(6.5em, 0.38fr);
-    }
+    .nexus-filter-row .key-input { grid-column: 1 / -1; }
 
-    .nexus-filter-row .key-input {
-        max-width: none;
-    }
-
-    .nexus-filter-row select {
-        background: rgba(18, 18, 18, 0.92);
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        color: #e8e8e8;
+    .nexus-filter-row select,
+    .nexus-filter-row .key-input,
+    .connect-row .key-input {
+        background: #15181e;
+        border: 1px solid #343a45;
+        border-radius: 7px;
+        box-sizing: border-box;
+        color: #cad1dc;
         font-family: inherit;
-        font-weight: 700;
-        min-height: 2.6em;
-        padding: 0.45em 0.7em;
-        text-transform: uppercase;
+        font-size: 12px;
+        font-weight: 400;
+        height: 34px;
+        line-height: 1.4;
+        max-width: none;
+        min-width: 0;
+        padding: 6px 9px;
+        text-transform: none;
         width: 100%;
     }
 
     .nexus-filter-row select:disabled {
-        color: rgba(232, 232, 232, 0.46);
         cursor: not-allowed;
-        opacity: 0.74;
+        opacity: 0.45;
     }
 
-    .cat-btn {
-        height: 2.55em;
-        margin: 0;
-        padding: 0;
-        width: 7em;
-    }
-
-    .refresh-btn {
-        color: #c8c8c8;
-        width: 8em;
-    }
-
-    .filter-reset-btn {
-        color: #c8c8c8;
-        width: 100%;
-    }
-
-    .middle-btn {
-        border-radius: 0;
-    }
-
-    .cat-btn-selected {
-        background-color: #111;
-        color: #38d68d;
+    .nexus-filter-row select:focus-visible,
+    .nexus-filter-row .key-input:focus-visible {
+        border-color: #eeb66b;
+        outline: 1px solid #eeb66b;
     }
 
     .conflict-review {
-        background: rgba(18, 18, 18, 0.86);
-        border: 1px solid rgba(253, 198, 109, 0.28);
+        background: #211e1a;
+        border: 1px solid #685438;
+        border-radius: 8px;
         box-sizing: border-box;
         display: flex;
-        flex: 0 0 auto;
+        flex: 0 1 auto;
         flex-direction: column;
-        gap: 0.6em;
-        max-height: clamp(170px, 25vh, 260px);
+        gap: 10px;
+        max-height: 200px;
         min-height: 0;
-        overflow: hidden;
-        padding: 0.75em;
-        text-align: left;
+        padding: 12px;
     }
 
-    .conflict-review-head {
+    .conflict-review-head,
+    .conflict-group-title,
+    .conflict-entry {
         align-items: center;
         display: flex;
-        gap: 1em;
+        gap: 12px;
         justify-content: space-between;
         min-width: 0;
     }
 
     .conflict-review-head p {
-        color: #9aa5af;
-        font-size: 0.78em;
-        font-weight: 700;
-        margin: 0.25em 0 0;
+        color: #9da6b6;
+        font-size: 12px;
+        line-height: 1.5;
+        margin: 4px 0 0;
     }
 
-    .conflict-review-head .cat-btn {
-        width: 10.5em;
-    }
+    .conflict-review-head .cat-btn { flex: 0 0 auto; }
 
     .conflict-group-list {
         display: flex;
         flex-direction: column;
-        gap: 0.55em;
+        gap: 10px;
         min-height: 0;
         overflow-y: auto;
-        padding-right: 0.25em;
     }
 
     .conflict-group {
-        background: rgba(10, 10, 10, 0.55);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        display: flex;
-        flex-direction: column;
-        gap: 0.45em;
-        padding: 0.55em;
-        text-align: left;
+        border-top: 1px solid #39362f;
+        display: grid;
+        gap: 8px;
+        padding: 8px 0 0;
     }
 
-    .conflict-group-title {
-        align-items: baseline;
-        display: flex;
-        gap: 0.7em;
-        justify-content: space-between;
-        min-width: 0;
-    }
-
-    .conflict-group-title span {
-        color: #eefcff;
-        font-size: 0.88em;
-        font-weight: 900;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+    .conflict-group-title span,
+    .conflict-entry-main span {
+        color: #d8dde6;
+        font-size: 12px;
+        font-weight: 550;
     }
 
     .conflict-group-title small,
     .conflict-entry small {
-        color: #9aa5af;
-        font-size: 0.72em;
-        font-weight: 700;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        color: #9da6b6;
+        font-size: 11px;
     }
 
     .conflict-entry {
-        align-items: center;
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
-        display: flex;
-        gap: 0.75em;
-        justify-content: space-between;
-        min-width: 0;
-        padding-top: 0.45em;
+        border-top: 1px solid #ffffff0a;
+        padding-top: 8px;
     }
 
     .conflict-entry-main {
         display: flex;
         flex: 1 1 auto;
         flex-direction: column;
-        gap: 0.12em;
+        gap: 3px;
         min-width: 0;
-        text-align: left;
     }
 
-    .conflict-entry-main span {
-        color: #d6dde5;
-        font-size: 0.82em;
-        font-weight: 900;
+    .conflict-group-title span,
+    .conflict-group-title small,
+    .conflict-entry-main span,
+    .conflict-entry-main small {
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -10382,161 +10113,141 @@
         align-items: center;
         display: flex;
         flex: 0 0 auto;
-        gap: 0.5em;
+        gap: 8px;
     }
 
     .conflict-entry-actions span {
-        color: #fdc66d;
-        font-size: 0.75em;
-        font-weight: 900;
-        max-width: 7em;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        color: #eeb66b;
+        font-size: 11px;
     }
 
-    .conflict-entry-actions button {
-        font-size: 0.72em;
-        margin: 0;
-        min-width: 7.4em;
-        padding: 0.48em 0.65em;
-    }
-
-    .conflict-entry-actions .disable-action {
-        color: #fd9b9d;
-    }
+    .conflict-entry-actions .disable-action { color: #efa6a2; }
 
     .nexus-scroller {
         display: flex;
-        flex: 1 1 var(--nexus-scroller-target-height);
+        flex: 1 1 0;
         flex-direction: column;
-        gap: 0.65em;
-        height: var(--nexus-scroller-target-height);
-        max-height: var(--nexus-scroller-target-height);
-        min-height: min(var(--nexus-scroller-target-height), 100%);
-        overscroll-behavior-y: auto;
+        gap: 10px;
+        height: auto;
+        min-height: 0;
+        min-width: 0;
+        overflow-x: hidden;
         overflow-y: auto;
-        padding: 0 0.45em var(--nexus-scroll-bottom-guard) 0;
-        scroll-padding-bottom: var(--nexus-scroll-bottom-guard);
-        scroll-padding-top: 0.3em;
-        scroll-snap-type: y proximity;
+        overscroll-behavior-y: contain;
+        padding: 0 5px 16px 0;
+        scroll-padding: 8px 0 16px;
         scrollbar-gutter: stable;
+        scrollbar-width: thin;
     }
 
     .nexus-card {
-        background: linear-gradient(90deg, rgba(24, 24, 24, 0.96), rgba(12, 12, 12, 0.88));
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-bottom-color: rgba(255, 255, 255, 0.22);
+        background: #171a21;
+        border: 1px solid #303641;
+        border-radius: 10px;
         box-sizing: border-box;
         display: grid;
         flex: 0 0 auto;
-        gap: 0;
-        grid-template-columns: var(--nexus-thumb-width) minmax(0, 1fr);
-        min-height: var(--nexus-card-min-height);
+        gap: 16px;
+        grid-template-columns: clamp(116px, 13vw, 164px) minmax(0, 1fr);
+        min-height: 148px;
         overflow: hidden;
-        scroll-margin-top: 0.3em;
-        scroll-snap-align: start;
-        scroll-snap-stop: always;
+        padding: 14px;
+        scroll-margin-top: 8px;
+        transition: border-color 140ms ease, background 140ms ease;
     }
 
-    .nexus-installed {
-        border-left: 3px solid #62f09b;
+    .nexus-card:hover {
+        background: #1a1e26;
+        border-color: #454d5b;
     }
 
-    .nexus-conflict {
-        border-left: 3px solid #fdc66d;
-    }
+    .nexus-installed { border-left-color: #668f7a; }
+    .nexus-conflict { border-left-color: #d2a161; }
 
     .thumbnail-frame {
-        background: rgba(8, 8, 8, 0.85);
-        min-height: var(--nexus-card-min-height);
+        align-self: start;
+        background: #101217;
+        border-radius: 7px;
+        height: 118px;
         min-width: 0;
         overflow: hidden;
         position: relative;
     }
 
-    .thumbnail-button {
-        background: rgba(8, 8, 8, 0.85);
+    .nexus-page .thumbnail-button {
+        background: transparent;
         border: 0;
-        box-shadow: none;
-        cursor: pointer;
+        border-radius: 0;
         display: block;
         height: 100%;
-        margin: 0;
-        min-height: 100%;
-        min-width: 0;
-        overflow: hidden;
+        min-height: 0;
         padding: 0;
-        -webkit-mask-image: none;
-        mask-image: none;
         width: 100%;
     }
 
     .nexus-img {
-        background: #252525;
+        background: #20242c;
         display: block;
         height: 100%;
-        min-height: var(--nexus-card-min-height);
         object-fit: cover;
-        opacity: 0.9;
         width: 100%;
     }
 
     .nexus-body {
-        box-sizing: border-box;
         display: flex;
-        flex: 1;
         flex-direction: column;
-        gap: 0.55em;
+        gap: 7px;
         min-width: 0;
-        padding: 0.75em 0.85em;
         text-align: left;
     }
 
     .card-head {
         align-items: flex-start;
         display: flex;
-        gap: 0.7em;
+        gap: 10px;
         justify-content: space-between;
         min-width: 0;
     }
 
     .card-pills {
         display: flex;
-        flex: 0 0 auto;
+        flex: 0 1 auto;
         flex-wrap: wrap;
-        gap: 0.35em;
+        gap: 4px;
         justify-content: flex-end;
-        max-width: min(32vw, 24em);
+        max-width: 180px;
         min-width: 0;
     }
 
     .title-stack {
         display: flex;
+        flex: 1 1 auto;
         flex-direction: column;
+        gap: 4px;
         min-width: 0;
     }
 
-    .title-button,
-    .description-button {
+    .nexus-page .title-button,
+    .nexus-page .description-button {
         background: transparent;
         border: 0;
-        box-shadow: none;
-        cursor: pointer;
-        font: inherit;
-        margin: 0;
-        min-width: 0;
+        border-radius: 3px;
+        min-height: 0;
         padding: 0;
         text-align: left;
-        -webkit-mask-image: none;
-        mask-image: none;
+    }
+
+    .nexus-page .title-button:hover,
+    .nexus-page .description-button:hover {
+        background: transparent;
     }
 
     .mod-title {
-        color: #eefcff;
-        font-size: clamp(0.98em, 1.6vh, 1.1em);
-        font-weight: 900;
-        line-height: 1.15;
+        color: #eef0f4;
+        font-size: 15px;
+        font-weight: 650;
+        letter-spacing: -0.012em;
+        line-height: 1.4;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -10545,45 +10256,45 @@
 
     .mod-byline {
         align-items: center;
-        color: #8d99a5;
+        color: #9da6b6;
         display: flex;
-        gap: 0.35em;
-        font-size: 0.76em;
-        font-weight: 800;
-        letter-spacing: 0.03em;
+        flex-wrap: wrap;
+        font-size: 11px;
+        font-weight: 400;
+        gap: 4px;
+        line-height: 1.4;
         overflow: hidden;
-        text-overflow: ellipsis;
-        text-transform: uppercase;
-        white-space: nowrap;
     }
 
-    .description-content {
-        color: #b2bdc8;
-        display: -webkit-box;
-        font-size: 0.84em;
-        line-height: 1.3;
-        margin: 0;
-        min-height: 2.55em;
-        overflow: hidden;
+    .description-content,
+    .nexus-page .description-button {
         -webkit-box-orient: vertical;
         -webkit-line-clamp: 2;
+        color: #acb5c3;
+        display: -webkit-box;
+        font-size: 12px;
+        font-weight: 400;
         line-clamp: 2;
+        line-height: 1.55;
+        margin: 0;
+        overflow: hidden;
+        overflow-wrap: anywhere;
     }
 
-    .description-button {
-        width: 100%;
-    }
+    .description-button { width: 100%; }
 
     .facts {
-        color: #87929d;
-        display: grid;
-        font-size: 0.76em;
-        gap: 0.25em 1em;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        color: #7f8999;
+        display: flex;
+        flex-wrap: wrap;
+        font-size: 11px;
+        gap: 3px 14px;
+        line-height: 1.5;
         min-width: 0;
     }
 
     .facts span {
+        max-width: 100%;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -10591,286 +10302,238 @@
     }
 
     .facts b {
-        color: #d6dde5;
-        font-weight: 800;
+        color: #c5cdd9;
+        font-weight: 500;
+        margin-left: 3px;
     }
 
     .nexus-card-footer {
-        align-items: flex-end;
-        gap: 0.65em;
-        justify-content: space-between;
-        margin-top: auto;
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 3px;
         min-width: 0;
     }
 
     .match-detail {
-        color: #78d9f4;
-        flex: 1 1 auto;
-        font-size: 0.76em;
-        font-weight: 800;
+        color: #8f9aaa;
+        flex: 1 1 160px;
+        font-size: 11px;
+        line-height: 1.4;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
-        text-transform: uppercase;
         white-space: nowrap;
-    }
-
-    .missing-match {
-        color: #87929d;
     }
 
     .nexus-enable {
         align-items: center;
-        background: rgba(18, 18, 18, 0.88);
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        color: #62f09b;
+        color: #a3c6b3;
         display: inline-flex;
         flex: 0 0 auto;
-        font-size: 0.72em;
-        font-weight: 900;
-        gap: 0.5em;
-        padding: 0.32em 0.5em;
-        text-transform: uppercase;
-        width: max-content;
+        font-size: 11px;
+        gap: 6px;
+        line-height: 1.5;
     }
 
-    .nexus-enable input[type="checkbox"] {
-        appearance: none;
-        background: rgba(8, 8, 8, 0.96);
-        border: 1px solid rgba(255, 255, 255, 0.35);
-        display: grid;
-        float: none;
-        height: 1.05em;
-        margin: 0;
-        padding: 0;
-        place-content: center;
-        transform: none;
-        width: 1.05em;
-    }
-
-    .nexus-enable input[type="checkbox"]::before {
-        box-shadow: inset 1em 1em #62f09b;
-        content: "";
-        height: 0.58em;
-        transform: scale(0);
-        transition: transform 120ms ease-in-out;
-        width: 0.58em;
-    }
-
-    .nexus-enable input[type="checkbox"]:checked::before {
-        transform: scale(1);
-    }
-
-    .nexus-enable:not(:has(input:checked)) {
-        color: #fd9b9d;
-    }
-
-    .vortex-disabled {
-        color: #78d9f4;
-        opacity: 0.72;
-    }
+    .nexus-enable:not(:has(input:checked)) { color: #aeb7c5; }
+    .vortex-disabled { color: #9da6b6; }
 
     .source-pill {
-        background: #202832;
-        border: 1px solid rgba(252, 252, 252, 0.08);
-        border-radius: 0;
-        color: #bfc8d2;
-        flex: 0 0 auto;
-        font-size: 0.68em;
-        font-weight: 800;
-        line-height: 1.2;
-        max-width: min(28vw, 18em);
+        background: #252a33;
+        border: 1px solid #363d49;
+        border-radius: 5px;
+        color: #aeb7c5;
+        font-size: 10px;
+        font-weight: 500;
+        line-height: 1.4;
+        max-width: 150px;
         overflow: hidden;
-        padding: 0.35em 0.55em;
+        padding: 3px 6px;
         text-overflow: ellipsis;
-        text-transform: uppercase;
         white-space: nowrap;
     }
 
-    .source-vortex {
-        color: #78d9f4;
-    }
-
-    .source-native {
-        color: #38d68d;
-    }
-
-    .source-manual {
-        color: #fdc66d;
-    }
-
-    .conflict-pill {
-        border-color: rgba(253, 198, 109, 0.42);
-        color: #fdc66d;
-    }
-
-    .conflict-detail {
-        color: #fdc66d;
-    }
+    .source-native,
+    .source-vortex { color: #b8c8d8; }
+    .source-manual,
+    .conflict-pill,
+    .conflict-detail { color: #eeb66b; }
+    .conflict-pill { border-color: #806441; }
 
     .button-row {
-        flex: 0 0 auto;
-        margin-left: auto;
+        flex: 1 1 100%;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-left: 0;
     }
 
-    .button-row button {
-        font-size: 0.76em;
-        margin: 0;
-        min-width: 6.6em;
-        padding: 0.55em 0.8em;
-    }
-
-    .button-row .vortex-install-btn {
-        color: #62f09b;
-        min-width: 10.5em;
-    }
-
-    .button-row .preview-load-btn {
-        color: #78d9f4;
-        min-width: 7.4em;
-    }
-
+    .button-row button { white-space: nowrap; }
+    .button-row .vortex-install-btn { order: -2; }
+    .button-row .row-detail-btn { order: -1; }
     .button-row .track-btn,
-    .detail-actions .track-btn {
-        color: #fdc66d;
-        min-width: 6.6em;
+    .button-row .endorse-btn {
+        background: transparent;
+        border-color: transparent;
+        color: #9da6b6;
     }
 
+    .button-row .preview-load-btn { color: #c7d4e3; }
     .button-row .conflict-review-btn,
     .detail-actions .conflict-review-btn,
-    .detail-conflict-head .conflict-review-btn {
-        color: #fdc66d;
-        min-width: 9.6em;
-    }
-
     .detail-actions .dependency-review-btn,
-    .detail-actions .file-review-btn {
-        color: #fdc66d;
-        min-width: 10.4em;
-    }
-
-    .button-row .endorse-btn,
-    .detail-actions .endorse-btn {
-        color: #78d9f4;
-        min-width: 7.6em;
-    }
-
+    .detail-actions .file-review-btn { color: #eeb66b; }
     .button-row .endorsed-btn,
-    .detail-actions .endorsed-btn {
-        color: #62f09b;
-        min-width: 7.6em;
-        opacity: 0.76;
-    }
+    .detail-actions .endorsed-btn { color: #a3c6b3; }
 
     .inventory-card {
-        grid-template-columns: clamp(90px, 9vw, 128px) minmax(0, 1fr);
-        min-height: clamp(118px, 14vh, 152px);
+        grid-template-columns: 60px minmax(0, 1fr);
+        min-height: 134px;
     }
 
     .inventory-icon {
         align-items: center;
-        background: radial-gradient(circle at 50% 45%, rgba(98, 240, 155, 0.16), rgba(8, 8, 8, 0.92) 62%);
-        color: #cfeee0;
+        background: #242a34;
+        border: 1px solid #383f4c;
+        border-radius: 8px;
+        color: #a5afbd;
         display: flex;
-        font-size: clamp(1.2em, 2.2vh, 1.7em);
-        font-weight: 900;
+        font-size: 13px;
+        font-weight: 650;
+        height: 60px;
         justify-content: center;
-        letter-spacing: 0.1em;
-        min-height: 100%;
+        letter-spacing: 0.02em;
     }
 
-    .inventory-facts {
-        grid-template-columns: repeat(5, minmax(0, 1fr));
-    }
-
-    .update-state-update {
-        color: #fdc66d;
-    }
-
-    .update-state-current {
-        color: #62f09b;
-    }
-
-    .update-state-tracked {
-        color: #78d9f4;
-    }
-
-    .update-state-review {
-        color: #fdc66d;
-    }
+    .facts .update-state-update,
+    .facts .update-state-review { color: #eeb66b; }
+    .facts .update-state-current { color: #a3c6b3; }
+    .facts .update-state-tracked { color: #c7d4e3; }
 
     .loading-line {
         align-items: center;
-        color: #38d68d;
+        color: #c6a77e;
         display: flex;
-        font-weight: 700;
-        gap: 0.6em;
-        justify-content: center;
-        min-height: 4em;
+        font-size: 12px;
+        gap: 8px;
+        line-height: 1.5;
+        min-height: 34px;
     }
 
-    .empty-nexus {
-        flex: 0 0 auto;
-    }
+    .loading-line.catalog-loading { flex: 0 0 auto; }
+
+    .empty-nexus { flex: 0 0 auto; }
 
     .empty-nexus-panel {
         align-items: start;
         display: grid;
-        gap: 0.65em;
+        gap: 12px;
+        padding: 26px;
     }
 
     .empty-nexus-copy {
         display: grid;
-        gap: 0.25em;
+        gap: 6px;
         min-width: 0;
     }
 
     .empty-nexus-copy > span {
-        color: #eefcff;
-        font-size: 1.02em;
-        font-weight: 900;
+        color: #eef0f4;
+        font-size: 16px;
+        font-weight: 600;
     }
 
     .empty-nexus-copy small {
-        color: #aab8c5;
-        line-height: 1.45;
+        color: #9da6b6;
+        font-size: 12px;
+        line-height: 1.6;
     }
 
     .empty-nexus-chips {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.35em;
+        gap: 5px;
         min-width: 0;
     }
 
     .empty-nexus-chips span {
-        background: rgba(120, 217, 244, 0.1);
-        border: 1px solid rgba(120, 217, 244, 0.18);
-        color: #cdeef7;
-        font-size: 0.72em;
-        font-weight: 900;
-        line-height: 1.2;
+        background: #252a33;
+        border: 1px solid #363d49;
+        border-radius: 5px;
+        color: #aeb7c5;
+        font-size: 11px;
+        line-height: 1.4;
         max-width: 100%;
         overflow-wrap: anywhere;
-        padding: 0.28em 0.5em;
+        padding: 4px 7px;
     }
 
-    .empty-nexus-clear {
-        justify-self: start;
+    .empty-nexus-clear { justify-self: start; }
+
+    .nexus-page.nexus-embedded-store-preview {
+        gap: 8px;
     }
+
+    .nexus-embedded-store-preview.nexus-session-connected .account-panel,
+    .nexus-embedded-store-preview .catalog-toolbar,
+    .nexus-embedded-store-preview .nexus-filter-row,
+    .nexus-embedded-store-preview .action-queue-empty {
+        display: none;
+    }
+
+    .nexus-embedded-store-preview.nexus-embedded-controls-expanded .catalog-toolbar { display: flex; }
+    .nexus-embedded-store-preview.nexus-embedded-controls-expanded .nexus-filter-row { display: grid; }
+
+    .nexus-embedded-store-preview .account-panel {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .nexus-embedded-store-preview .connect-column {
+        align-items: flex-start;
+        flex: 0 0 auto;
+        min-width: 0;
+        width: 100%;
+    }
+
+    .nexus-embedded-store-preview .connect-row { justify-content: flex-start; }
+    .nexus-embedded-store-preview .manual-key { text-align: left; }
+    .nexus-embedded-store-preview .catalog-panel { gap: 8px; }
+    .nexus-embedded-store-preview .api-note { font-size: 10px; }
+
+    .nexus-embedded-store-preview .nexus-card {
+        gap: 12px;
+        grid-template-columns: 120px minmax(0, 1fr);
+        min-height: 126px;
+        padding: 12px;
+    }
+
+    .nexus-embedded-store-preview .thumbnail-frame { height: 94px; }
+    .nexus-embedded-store-preview .nexus-body { gap: 6px; }
+    .nexus-embedded-store-preview .mod-title { font-size: 14px; }
+    .nexus-embedded-store-preview .card-head { flex-wrap: wrap; gap: 5px; }
+    .nexus-embedded-store-preview .card-pills { justify-content: flex-start; max-width: 100%; }
+    .nexus-embedded-store-preview .facts,
+    .nexus-embedded-store-preview .match-detail,
+    .nexus-embedded-store-preview .nexus-enable,
+    .nexus-embedded-store-preview .button-row .track-btn,
+    .nexus-embedded-store-preview .button-row .endorse-btn,
+    .nexus-embedded-store-preview .button-row .endorsed-btn { display: none; }
+
+    .nexus-embedded-store-preview .button-row { gap: 5px; }
+    .nexus-embedded-store-preview .button-row button { font-size: 11px; min-height: 30px; padding: 5px 8px; }
 
     .detail-backdrop {
-        align-items: center;
-        background: rgba(0, 0, 0, 0.72);
-        bottom: 0;
+        align-items: stretch;
+        background: rgba(7, 9, 13, 0.72);
         display: flex;
-        justify-content: center;
-        left: 0;
-        padding: clamp(1em, 3vh, 2em);
+        inset: 38px 0 0;
+        justify-content: flex-end;
+        padding: 12px 12px 12px 0;
         position: fixed;
-        right: 0;
-        top: 0;
-        z-index: 20;
+        z-index: 40;
     }
 
     .detail-backdrop-dismiss {
@@ -10890,22 +10553,27 @@
     }
 
     .detail-panel {
-        --detail-panel-height: calc(100vh - clamp(1.2em, 3vh, 2.2em));
-        --detail-scroll-section-max: clamp(280px, calc((var(--detail-panel-height) - 15em) / 1.65), 560px);
-        background:
-            linear-gradient(180deg, rgba(18, 18, 18, 0.96), rgba(6, 6, 6, 0.94)),
-            rgba(0, 0, 0, 0.92);
-        border: 1px solid rgba(255, 255, 255, 0.18);
+        --detail-panel-height: calc(100vh - 62px);
+        --detail-scroll-section-max: none;
+        background: #101217;
+        border: 1px solid #383e49;
+        border-radius: 12px;
+        box-shadow: -16px 0 60px #0006;
         box-sizing: border-box;
+        color: #eef0f4;
         display: flex;
         flex-direction: column;
-        gap: 0.8em;
-        max-height: var(--detail-panel-height);
-        max-width: min(97vw, var(--app-content-max-width, 1680px));
-        min-height: min(82vh, 820px);
-        padding: clamp(1em, 2vh, 1.35em);
+        font-size: 14px;
+        gap: 0;
+        height: 100%;
+        max-height: 100%;
+        max-width: 1120px;
+        min-height: 0;
+        overflow: hidden;
+        padding: 0;
         position: relative;
-        width: 100%;
+        text-align: left;
+        width: calc(100vw - 32px);
     }
 
     .thumbnail-nav {
@@ -10929,11 +10597,11 @@
         background: rgba(255, 255, 255, 0.08);
         border: 1px solid rgba(255, 255, 255, 0.12);
         box-shadow: none;
-        color: #eefcff;
+        color: #eef0f4;
         display: flex;
         flex: 0 0 1.9em;
-        font-size: 0.7em;
-        font-weight: 900;
+        font-size: 11px;
+        font-weight: 600;
         height: 1.9em;
         justify-content: center;
         margin: 0;
@@ -10957,11 +10625,11 @@
 
     .thumbnail-nav span {
         align-items: center;
-        color: #d6dde5;
+        color: #c9d0db;
         display: flex;
         flex: 1 1 auto;
-        font-size: 0.68em;
-        font-weight: 900;
+        font-size: 11px;
+        font-weight: 600;
         gap: 0.25em;
         justify-content: center;
         min-width: 0;
@@ -10973,10 +10641,10 @@
         border: 1px solid rgba(128, 219, 180, 0.45);
         color: #9fdabf;
         flex: 0 0 auto;
-        font-size: 0.78em;
+        font-size: 12px;
         line-height: 1;
         padding: 0.14em 0.42em;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .category-source-inferred {
@@ -11002,10 +10670,10 @@
         background: rgba(0, 0, 0, 0.56);
         border: 1px solid rgba(255, 255, 255, 0.12);
         box-sizing: border-box;
-        color: #d6dde5;
+        color: #c9d0db;
         display: inline-flex;
-        font-size: 0.68em;
-        font-weight: 900;
+        font-size: 11px;
+        font-weight: 600;
         gap: 0.28em;
         left: 0.45em;
         max-width: calc(100% - 0.9em);
@@ -11066,38 +10734,41 @@
     .detail-header {
         align-items: center;
         display: flex;
-        gap: 0.75em;
+        flex: 0 0 auto;
+        gap: 18px;
         justify-content: space-between;
+        min-width: 0;
+        padding: 20px 22px 14px;
+        position: relative;
+        z-index: 4;
     }
 
     .detail-section-nav {
+        border-bottom: 1px solid #303641;
         display: grid;
         flex: 0 0 auto;
-        gap: 0.45em;
-        grid-template-columns: repeat(auto-fit, minmax(6.9em, 1fr));
+        gap: 5px;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
         min-width: 0;
-        padding-bottom: 0.05em;
+        padding: 0 18px 12px;
     }
 
     .detail-section-nav button {
-        align-items: start;
-        background: rgba(255, 255, 255, 0.045);
-        border: 1px solid rgba(255, 255, 255, 0.11);
-        box-shadow: none;
-        box-sizing: border-box;
-        display: grid;
-        gap: 0.12em;
-        margin: 0;
-        min-height: 2.75em;
+        align-items: flex-start;
+        background: transparent;
+        border-color: transparent;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-height: 44px;
         min-width: 0;
-        padding: 0.38em 0.55em;
+        padding: 6px 8px;
         text-align: left;
-        -webkit-mask-image: none;
-        mask-image: none;
     }
 
     .detail-section-nav button:hover {
-        border-color: rgba(120, 217, 244, 0.42);
+        background: #20242c;
+        border-color: #3e4652;
     }
 
     .detail-section-nav span,
@@ -11110,41 +10781,43 @@
 
     .detail-section-nav span {
         color: #88939e;
-        font-size: 0.66em;
-        font-weight: 900;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0;
+        text-transform: none;
     }
 
     .detail-section-nav b {
         color: #dce4ea;
-        font-size: 0.76em;
-        font-weight: 900;
+        font-size: 12px;
+        font-weight: 600;
     }
 
     .detail-footer {
         align-items: center;
-        background: rgba(18, 18, 18, 0.94);
-        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: #171a21;
+        border-top: 1px solid #343a45;
         box-sizing: border-box;
         display: grid;
         flex: 0 0 auto;
-        gap: 0.65em;
-        grid-template-columns: minmax(10em, 0.65fr) minmax(26em, 1.35fr) minmax(18em, auto);
-        padding: 0.65em 0.75em;
+        gap: 10px 16px;
+        grid-template-columns: minmax(0, 1fr) auto;
+        padding: 14px 20px;
+        position: relative;
+        z-index: 3;
     }
 
     .detail-footer-copy {
         display: flex;
         flex-direction: column;
-        gap: 0.2em;
+        gap: 3px;
         min-width: 0;
     }
 
     .detail-footer-copy small {
-        color: #aab8c5;
-        font-size: 0.78em;
-        font-weight: 800;
+        color: #aeb7c5;
+        font-size: 12px;
+        font-weight: 550;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -11152,27 +10825,35 @@
     }
 
     .deployment-checklist {
+        background: #20242c;
+        border: 1px solid #414956;
+        border-radius: 10px;
+        bottom: calc(100% + 8px);
+        box-shadow: 0 -12px 30px #0005;
+        box-sizing: border-box;
         display: grid;
-        gap: 0.38em;
+        gap: 8px;
         grid-template-columns: repeat(2, minmax(0, 1fr));
+        max-height: min(360px, 50vh);
         min-width: 0;
+        overflow-y: auto;
+        padding: 12px;
+        position: absolute;
+        right: 0;
+        width: min(420px, calc(100vw - 80px));
     }
 
     .deployment-check-item {
-        background: rgba(255, 255, 255, 0.035);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        box-shadow: none;
+        background: #171a21;
+        border: 1px solid #343a45;
         display: flex;
         flex-direction: column;
-        gap: 0.18em;
-        line-height: 1.12;
-        margin: 0;
-        min-height: 3.15em;
+        gap: 6px;
+        line-height: 1.4;
+        min-height: 62px;
         min-width: 0;
-        padding: 0.42em 0.5em;
+        padding: 10px;
         text-align: left;
-        -webkit-mask-image: none;
-        mask-image: none;
     }
 
     .deployment-check-item small,
@@ -11184,17 +10865,17 @@
     }
 
     .deployment-check-item small {
-        color: #8d99a5;
-        font-size: 0.62em;
-        font-weight: 900;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
+        color: #9da6b6;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0;
+        text-transform: none;
     }
 
     .deployment-check-item b {
         color: #dce4ea;
-        font-size: 0.74em;
-        font-weight: 900;
+        font-size: 11px;
+        font-weight: 600;
     }
 
     .deployment-check-ready {
@@ -11202,7 +10883,7 @@
     }
 
     .deployment-check-ready b {
-        color: #62f09b;
+        color: #9ccbb2;
     }
 
     .deployment-check-review {
@@ -11210,7 +10891,7 @@
     }
 
     .deployment-check-review b {
-        color: #fdc66d;
+        color: #eeb66b;
     }
 
     .deployment-check-blocked {
@@ -11218,67 +10899,67 @@
     }
 
     .deployment-check-blocked b {
-        color: #fd9b9d;
+        color: #efa6a2;
     }
 
     .detail-actions {
         align-items: center;
         display: flex;
-        flex: 0 0 auto;
         flex-wrap: wrap;
-        gap: 0.45em;
-        justify-content: flex-end;
+        gap: 6px;
+        grid-column: 1 / -1;
+        justify-content: flex-start;
         min-width: 0;
     }
 
     .detail-actions button {
-        flex: 0 1 auto;
-        margin: 0;
-        min-height: 2.55em;
-        min-width: 6.8em;
-        padding: 0.42em 0.7em;
+        flex: 0 0 auto;
+        min-height: 34px;
+        min-width: 0;
+        padding: 7px 10px;
     }
 
     .detail-actions .install {
-        min-width: 11em;
+        min-width: 148px;
     }
 
     .detail-actions .inventory-refresh-btn {
-        min-width: 9.2em;
+        min-width: 0;
     }
 
     .detail-link-actions {
-        align-items: stretch;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.45em;
-        grid-column: 1 / -1;
-        justify-content: flex-end;
-        min-width: 0;
+        background: #20242c;
+        border: 1px solid #414956;
+        border-radius: 10px;
+        box-shadow: 0 12px 30px #0005;
+        display: grid;
+        gap: 6px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding: 12px;
+        position: absolute;
+        right: 0;
+        top: calc(100% + 8px);
+        width: 300px;
     }
 
     .detail-link-heading {
-        align-items: center;
-        color: #8d99a5;
-        display: flex;
-        flex: 1 1 100%;
-        font-size: 0.68em;
-        font-weight: 900;
-        justify-content: flex-end;
-        line-height: 1;
-        text-transform: uppercase;
+        color: #9da6b6;
+        font-size: 11px;
+        grid-column: 1 / -1;
+        line-height: 1.5;
+        padding: 0 2px 3px;
     }
 
     .detail-link-actions button {
-        align-items: center;
-        display: grid;
-        flex: 1 1 6.25em;
-        gap: 0.08em;
-        line-height: 1.12;
-        margin: 0;
-        min-height: 2.6em;
+        align-items: start;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        line-height: 1.4;
+        min-height: 52px;
         min-width: 0;
-        padding: 0.32em 0.45em;
+        padding: 8px;
+        text-align: left;
     }
 
     .detail-link-actions button span,
@@ -11290,10 +10971,10 @@
     }
 
     .detail-link-actions button small {
-        color: #8d99a5;
-        font-size: 0.66em;
-        font-weight: 900;
-        text-transform: uppercase;
+        color: #9da6b6;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: none;
     }
 
     .detail-title {
@@ -11303,9 +10984,10 @@
     }
 
     .detail-header-actions {
+        align-items: center;
         display: flex;
         flex: 0 0 auto;
-        gap: 0.5em;
+        gap: 7px;
     }
 
     .detail-header-actions button {
@@ -11317,27 +10999,32 @@
     }
 
     .close-detail {
-        color: #fd9b9d;
-        min-width: 7em;
+        align-items: center;
+        color: #c9d0db;
+        display: flex;
+        gap: 6px;
+        min-width: 0;
     }
 
     .detail-grid {
         display: grid;
         flex: 1 1 auto;
-        gap: 1em;
-        grid-template-columns: minmax(0, 1.04fr) minmax(420px, 0.9fr);
+        gap: 22px;
+        grid-template-columns: minmax(0, 1.05fr) minmax(340px, 1fr);
         min-height: 0;
         overflow: hidden;
+        padding: 20px 22px;
     }
 
     .detail-main,
     .detail-side {
         display: flex;
         flex-direction: column;
-        gap: 0.75em;
+        gap: 14px;
         min-height: 0;
         min-width: 0;
         overflow-y: auto;
+        scrollbar-width: thin;
         padding-right: 0.2em;
     }
 
@@ -11378,21 +11065,22 @@
     }
 
     .detail-media-frame {
-        background: #151515;
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: #171a21;
+        border: 1px solid #303641;
+        border-radius: 9px;
         box-sizing: border-box;
         flex: 0 0 auto;
-        min-height: clamp(156px, 24vh, 288px);
+        min-height: 180px;
         overflow: hidden;
         position: relative;
         width: 100%;
     }
 
     .detail-img {
-        background: #151515;
+        background: #171a21;
         display: block;
-        height: clamp(156px, 24vh, 288px);
-        object-fit: cover;
+        height: clamp(180px, 24vh, 260px);
+        object-fit: contain;
         width: 100%;
     }
 
@@ -11415,11 +11103,11 @@
         background: rgba(255, 255, 255, 0.08);
         border: 1px solid rgba(255, 255, 255, 0.14);
         box-shadow: none;
-        color: #eefcff;
+        color: #eef0f4;
         display: flex;
         flex: 0 0 2.15em;
-        font-size: 0.76em;
-        font-weight: 900;
+        font-size: 12px;
+        font-weight: 600;
         height: 2.15em;
         justify-content: center;
         margin: 0;
@@ -11436,11 +11124,11 @@
 
     .detail-media-nav span {
         align-items: center;
-        color: #d6dde5;
+        color: #c9d0db;
         display: flex;
         flex: 1 1 auto;
-        font-size: 0.72em;
-        font-weight: 900;
+        font-size: 11px;
+        font-weight: 600;
         gap: 0.25em;
         justify-content: center;
         min-width: 4em;
@@ -11467,7 +11155,7 @@
     }
 
     .detail-media-strip button {
-        background: rgba(28, 28, 28, 0.88);
+        background: #20242c;
         border: 1px solid rgba(255, 255, 255, 0.13);
         box-shadow: none;
         box-sizing: border-box;
@@ -11504,9 +11192,9 @@
     .detail-media-strip span {
         background: rgba(0, 0, 0, 0.62);
         bottom: 0.25em;
-        color: #eefcff;
-        font-size: 0.68em;
-        font-weight: 900;
+        color: #eef0f4;
+        font-size: 11px;
+        font-weight: 600;
         line-height: 1;
         padding: 0.18em 0.35em;
         position: absolute;
@@ -11523,17 +11211,18 @@
     .install-plan,
     .nxm-link-box,
     .detail-facts {
-        background: rgba(18, 18, 18, 0.88);
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: #171a21;
+        border: 1px solid #303641;
+        border-radius: 9px;
         box-sizing: border-box;
-        padding: 0.75em;
+        padding: 14px;
     }
 
     .detail-text {
-        flex: 1 1 14em;
-        max-height: clamp(240px, 38vh, 520px);
+        flex: 0 0 auto;
+        max-height: none;
         min-height: 0;
-        overflow-y: auto;
+        overflow: visible;
     }
 
     .detail-text-head {
@@ -11546,9 +11235,9 @@
 
     .detail-text .nexus-rich-text,
     .changelog-row .nexus-rich-text {
-        color: #b8c0c8;
+        color: #b8c1ce;
         font-size: 0.9em;
-        line-height: 1.45;
+        line-height: 1.6;
         margin: 0.55em 0 0;
         overflow-wrap: anywhere;
     }
@@ -11630,8 +11319,8 @@
 
     .nexus-rich-text :global(ul.nexus-rich-list-dash li::before),
     .nexus-rich-text :global(ul.nexus-rich-list-check li::before) {
-        color: #78d9f4;
-        font-weight: 900;
+        color: #c7d4e3;
+        font-weight: 600;
         left: -0.95em;
         position: absolute;
     }
@@ -11661,8 +11350,8 @@
 
     .nexus-rich-text :global(strong),
     .nexus-rich-text :global(.nexus-rich-heading) {
-        color: #eefcff;
-        font-weight: 900;
+        color: #eef0f4;
+        font-weight: 600;
     }
 
     .nexus-rich-text :global(.nexus-rich-heading) {
@@ -11686,8 +11375,8 @@
     }
 
     .nexus-rich-text :global(a) {
-        color: #78d9f4;
-        font-weight: 800;
+        color: #c7d4e3;
+        font-weight: 550;
         text-decoration: underline;
         text-decoration-color: rgba(120, 217, 244, 0.45);
         text-underline-offset: 0.18em;
@@ -11695,7 +11384,7 @@
 
     .nexus-rich-text :global(blockquote) {
         border-left: 3px solid rgba(120, 217, 244, 0.35);
-        color: #d6dde5;
+        color: #c9d0db;
         margin: 0.75em 0 0;
         min-width: 0;
         overflow-wrap: anywhere;
@@ -11703,11 +11392,11 @@
     }
 
     .nexus-rich-text :global(blockquote cite) {
-        color: #eefcff;
+        color: #eef0f4;
         display: block;
-        font-size: 0.82em;
+        font-size: 12px;
         font-style: normal;
-        font-weight: 900;
+        font-weight: 600;
         margin-bottom: 0.35em;
     }
 
@@ -11721,7 +11410,7 @@
     .nexus-rich-text :global(pre) {
         background: rgba(0, 0, 0, 0.28);
         border: 1px solid rgba(255, 255, 255, 0.1);
-        color: #d6dde5;
+        color: #c9d0db;
         font-family: Consolas, "Courier New", monospace;
     }
 
@@ -11737,14 +11426,14 @@
     }
 
     .nexus-rich-text :global(pre[data-nexus-label])::before {
-        color: #78d9f4;
+        color: #c7d4e3;
         content: attr(data-nexus-label);
         display: block;
         font-family: "Segoe UI", Arial, sans-serif;
-        font-size: 0.78em;
-        font-weight: 900;
+        font-size: 12px;
+        font-weight: 600;
         margin-bottom: 0.45em;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .nexus-rich-text :global(.nexus-rich-image) {
@@ -11887,7 +11576,7 @@
 
     .nexus-rich-text :global(.nexus-rich-size-tiny) {
         color: #9aaab6;
-        font-size: 0.76em;
+        font-size: 12px;
     }
 
     .nexus-rich-text :global(.nexus-rich-size-medium) {
@@ -11895,16 +11584,16 @@
     }
 
     .nexus-rich-text :global(.nexus-rich-size-large) {
-        color: #eefcff;
+        color: #eef0f4;
         font-size: 1.12em;
-        font-weight: 900;
+        font-weight: 600;
     }
 
     .nexus-rich-text :global(.nexus-rich-size-xlarge) {
-        color: #eefcff;
+        color: #eef0f4;
         display: inline-block;
         font-size: 1.28em;
-        font-weight: 900;
+        font-weight: 600;
         line-height: 1.16;
         margin-top: 0.1em;
     }
@@ -11912,7 +11601,7 @@
     .nexus-rich-text :global(.nexus-rich-caption) {
         color: #8fa3b5;
         display: block;
-        font-size: 0.82em;
+        font-size: 12px;
         font-style: italic;
         margin-top: 0.35em;
         text-align: center;
@@ -11920,7 +11609,7 @@
 
     .nexus-rich-text :global(.nexus-rich-anchor-ref) {
         color: #9fb1bf;
-        font-weight: 800;
+        font-weight: 550;
     }
 
     .nexus-rich-text :global(.nexus-rich-anchor:empty) {
@@ -11932,19 +11621,19 @@
 
     .nexus-rich-text :global(.nexus-rich-anchor:not(:empty)) {
         color: #9fb1bf;
-        font-weight: 800;
+        font-weight: 550;
     }
 
     .nexus-rich-text :global(.nexus-rich-spoiler) {
         background: rgba(255, 255, 255, 0.08);
         border: 1px solid rgba(255, 255, 255, 0.12);
-        color: #d6dde5;
+        color: #c9d0db;
         padding: 0.05em 0.3em;
     }
 
     .nexus-rich-text :global(.nexus-rich-spoiler b) {
-        color: #eefcff;
-        font-weight: 900;
+        color: #eef0f4;
+        font-weight: 600;
     }
 
     .nexus-rich-text :global(.nexus-rich-spoiler-block) {
@@ -11968,16 +11657,16 @@
 
     .nexus-rich-text :global(.nexus-rich-disclosure > summary) {
         align-items: center;
-        color: #eefcff;
+        color: #eef0f4;
         cursor: pointer;
         display: flex;
-        font-size: 0.82em;
-        font-weight: 900;
+        font-size: 12px;
+        font-weight: 600;
         gap: 0.45em;
         list-style: none;
         min-height: 2.35em;
         padding: 0.55em 0.7em;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .nexus-rich-text :global(.nexus-rich-disclosure > summary::-webkit-details-marker) {
@@ -12013,12 +11702,12 @@
     }
 
     .nexus-rich-text :global(.nexus-rich-spoiler-block > span) {
-        color: #eefcff;
+        color: #eef0f4;
         display: block;
-        font-size: 0.82em;
-        font-weight: 900;
+        font-size: 12px;
+        font-weight: 600;
         margin-bottom: 0.35em;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .nexus-rich-text :global(.nexus-rich-columns) {
@@ -12050,11 +11739,11 @@
     }
 
     .nexus-rich-text :global(.nexus-rich-tabs section > b) {
-        color: #eefcff;
+        color: #eef0f4;
         display: block;
-        font-size: 0.82em;
+        font-size: 12px;
         margin-bottom: 0.25em;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .nexus-rich-text :global(.nexus-rich-callout) {
@@ -12069,10 +11758,10 @@
 
     .nexus-rich-text :global(.nexus-rich-callout > span),
     .nexus-rich-text :global(.nexus-rich-callout-inline > b) {
-        color: #eefcff;
-        font-size: 0.82em;
-        font-weight: 900;
-        text-transform: uppercase;
+        color: #eef0f4;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: none;
     }
 
     .nexus-rich-text :global(.nexus-rich-callout-warning),
@@ -12098,12 +11787,12 @@
 
     .nexus-rich-text :global(.nexus-rich-box > span),
     .nexus-rich-text :global(.nexus-rich-box-inline > b) {
-        color: #eefcff;
+        color: #eef0f4;
         display: block;
-        font-size: 0.82em;
-        font-weight: 900;
+        font-size: 12px;
+        font-weight: 600;
         margin-bottom: 0.25em;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .nexus-rich-text :global(.nexus-rich-box-success) {
@@ -12127,7 +11816,7 @@
     .nexus-rich-text :global(.nexus-rich-box-inline) {
         background: rgba(15, 18, 20, 0.58);
         border: 1px solid rgba(255, 255, 255, 0.13);
-        color: #d6dde5;
+        color: #c9d0db;
         display: inline-block;
         margin-top: 0.25em;
         padding: 0.35em 0.5em;
@@ -12152,11 +11841,11 @@
     }
 
     .nexus-rich-text :global(.nexus-rich-media-block > span) {
-        color: #eefcff;
+        color: #eef0f4;
         flex: 0 0 auto;
-        font-size: 0.82em;
-        font-weight: 900;
-        text-transform: uppercase;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: none;
     }
 
     .nexus-rich-text :global(.nexus-rich-media-block > a) {
@@ -12190,8 +11879,8 @@
 
     .nexus-rich-text :global(.nexus-rich-table th) {
         background: rgba(120, 217, 244, 0.08);
-        color: #eefcff;
-        font-weight: 900;
+        color: #eef0f4;
+        font-weight: 600;
     }
 
     .nexus-rich-text :global(.nexus-rich-table td p),
@@ -12214,8 +11903,8 @@
     }
 
     .nexus-rich-text :global(.nexus-rich-definition-list dt) {
-        color: #eefcff;
-        font-weight: 900;
+        color: #eef0f4;
+        font-weight: 600;
     }
 
     .nexus-rich-text :global(.nexus-rich-definition-list dd) {
@@ -12232,9 +11921,9 @@
         background: rgba(120, 217, 244, 0.08);
         border: 1px solid rgba(120, 217, 244, 0.22);
         box-shadow: none;
-        color: #78d9f4;
-        font-size: 0.76em;
-        font-weight: 900;
+        color: #c7d4e3;
+        font-size: 12px;
+        font-weight: 600;
         flex: 0 0 auto;
         margin: 0;
         min-height: 2.25em;
@@ -12249,17 +11938,17 @@
     }
 
     .detail-section-title {
-        color: #eefcff;
-        font-size: 0.82em;
-        font-weight: 900;
-        letter-spacing: 0.09em;
-        text-transform: uppercase;
+        color: #e1e5ed;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0;
+        line-height: 1.5;
     }
 
     .detail-facts {
-        color: #8d99a5;
+        color: #9da6b6;
         display: grid;
-        font-size: 0.78em;
+        font-size: 12px;
         gap: 0.45em;
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -12283,31 +11972,31 @@
     .install-plan-head b {
         background: rgba(255, 255, 255, 0.06);
         border: 1px solid rgba(255, 255, 255, 0.1);
-        color: #aab8c5;
+        color: #aeb7c5;
         flex: 0 0 auto;
-        font-size: 0.72em;
-        font-weight: 900;
+        font-size: 11px;
+        font-weight: 600;
         padding: 0.2em 0.5em;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .install-plan-ready .install-plan-head b {
-        color: #62f09b;
+        color: #9ccbb2;
     }
 
     .install-plan-review .install-plan-head b {
-        color: #fdc66d;
+        color: #eeb66b;
     }
 
     .install-plan-blocked .install-plan-head b {
-        color: #fd9b9d;
+        color: #efa6a2;
     }
 
     .install-placement-control {
         align-items: center;
-        color: #8d99a5;
+        color: #9da6b6;
         display: grid;
-        font-size: 0.76em;
+        font-size: 12px;
         gap: 0.5em;
         grid-template-columns: minmax(5.5em, 0.35fr) minmax(0, 1fr);
         margin-top: 0.55em;
@@ -12315,8 +12004,8 @@
     }
 
     .install-placement-control span {
-        font-weight: 900;
-        text-transform: uppercase;
+        font-weight: 600;
+        text-transform: none;
     }
 
     .install-placement-control select {
@@ -12326,9 +12015,9 @@
     }
 
     .install-plan-facts {
-        color: #8d99a5;
+        color: #9da6b6;
         display: grid;
-        font-size: 0.76em;
+        font-size: 12px;
         gap: 0.35em 0.75em;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         margin-top: 0.55em;
@@ -12343,9 +12032,9 @@
     }
 
     .install-plan-facts b {
-        color: #d6dde5;
+        color: #c9d0db;
         display: block;
-        font-weight: 800;
+        font-weight: 550;
     }
 
     .install-plan-file-fact {
@@ -12366,8 +12055,8 @@
 
     .install-plan-notes span {
         color: #9aa5af;
-        font-size: 0.76em;
-        font-weight: 700;
+        font-size: 12px;
+        font-weight: 500;
         min-width: 0;
         overflow-wrap: anywhere;
     }
@@ -12398,10 +12087,10 @@
         border: 1px solid rgba(120, 217, 244, 0.22);
         color: #bdeefa;
         flex: 0 0 auto;
-        font-size: 0.72em;
-        font-weight: 900;
+        font-size: 11px;
+        font-weight: 600;
         padding: 0.2em 0.5em;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .author-instruction-list {
@@ -12429,20 +12118,20 @@
     }
 
     .author-instruction-row small {
-        color: #8d99a5;
-        font-size: 0.68em;
-        font-weight: 900;
+        color: #9da6b6;
+        font-size: 11px;
+        font-weight: 600;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
-        text-transform: uppercase;
+        text-transform: none;
         white-space: nowrap;
     }
 
     .author-instruction-row span {
         color: #dce4ea;
-        font-size: 0.78em;
-        font-weight: 900;
+        font-size: 12px;
+        font-weight: 600;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -12451,8 +12140,8 @@
 
     .author-instruction-row p {
         color: #aeb9c2;
-        font-size: 0.74em;
-        font-weight: 700;
+        font-size: 11px;
+        font-weight: 500;
         margin: 0;
         min-width: 0;
         overflow: hidden;
@@ -12491,21 +12180,21 @@
         border: 1px solid rgba(255, 255, 255, 0.1);
         color: #b9d7df;
         flex: 0 0 auto;
-        font-size: 0.72em;
-        font-weight: 900;
+        font-size: 11px;
+        font-weight: 600;
         max-width: 9em;
         overflow: hidden;
         padding: 0.2em 0.5em;
         text-overflow: ellipsis;
-        text-transform: uppercase;
+        text-transform: none;
         white-space: nowrap;
     }
 
     .selected-file-notes-subtitle {
         color: #9aa5af;
         display: block;
-        font-size: 0.76em;
-        font-weight: 800;
+        font-size: 12px;
+        font-weight: 550;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -12513,8 +12202,8 @@
     }
 
     .selected-file-rich-text {
-        color: #b8c0c8;
-        font-size: 0.82em;
+        color: #b8c1ce;
+        font-size: 12px;
         line-height: 1.38;
         margin: 0;
         overflow-wrap: anywhere;
@@ -12527,12 +12216,12 @@
     }
 
     .selected-file-changelog > span {
-        color: #eefcff;
+        color: #eef0f4;
         display: block;
-        font-size: 0.72em;
-        font-weight: 900;
+        font-size: 11px;
+        font-weight: 600;
         margin-bottom: 0.35em;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .nxm-link-box {
@@ -12559,7 +12248,7 @@
         color: #b9d7df;
         display: flex;
         font-family: "JetBrains Mono", "Consolas", monospace;
-        font-size: 0.72em;
+        font-size: 11px;
         line-height: 1.25;
         min-height: 2.75em;
         min-width: 0;
@@ -12601,27 +12290,27 @@
 
     .detail-conflict-head small {
         color: #9aa5af;
-        font-size: 0.72em;
-        font-weight: 700;
+        font-size: 11px;
+        font-weight: 500;
         line-height: 1.22;
     }
 
     .detail-conflict-head b {
         background: rgba(255, 255, 255, 0.06);
         border: 1px solid rgba(255, 255, 255, 0.1);
-        color: #fdc66d;
+        color: #eeb66b;
         flex: 0 0 auto;
-        font-size: 0.72em;
-        font-weight: 900;
+        font-size: 11px;
+        font-weight: 600;
         padding: 0.2em 0.5em;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .detail-conflict-note {
         color: #9aa5af;
         display: block;
-        font-size: 0.76em;
-        font-weight: 700;
+        font-size: 12px;
+        font-weight: 500;
         margin-top: 0.45em;
         min-width: 0;
         overflow: hidden;
@@ -12682,7 +12371,7 @@
 
     .dependency-box-head button {
         flex: 0 0 auto;
-        font-size: 0.72em;
+        font-size: 11px;
         margin: 0;
         min-height: 2.15em;
         min-width: 8.4em;
@@ -12707,9 +12396,9 @@
     }
 
     .use-recommended-file-btn {
-        color: #62f09b;
+        color: #9ccbb2;
         flex: 0 0 auto;
-        font-size: 0.72em;
+        font-size: 11px;
         margin: 0;
         min-height: 2.15em;
         min-width: 9.2em;
@@ -12737,15 +12426,15 @@
         box-shadow: none;
         color: #9fb0bf;
         display: inline-flex;
-        font-size: 0.68em;
-        font-weight: 900;
+        font-size: 11px;
+        font-weight: 600;
         justify-content: center;
         margin: 0;
         mask-image: none;
         min-height: 2.2em;
         min-width: 0;
         padding: 0.28em 0.45em;
-        text-transform: uppercase;
+        text-transform: none;
         white-space: nowrap;
     }
 
@@ -12757,7 +12446,7 @@
     .file-filter-row button:not(:disabled):hover,
     .file-filter-row .file-filter-selected {
         border-color: rgba(98, 240, 155, 0.42);
-        color: #62f09b;
+        color: #9ccbb2;
     }
 
     .file-filter-row b {
@@ -12783,11 +12472,11 @@
     .dependency-readiness-chip small,
     .file-readiness-chip small {
         color: #88939e;
-        font-size: 0.68em;
-        font-weight: 900;
+        font-size: 11px;
+        font-weight: 600;
         grid-column: 1 / -1;
         letter-spacing: 0;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .dependency-readiness-chip b,
@@ -12801,8 +12490,8 @@
     .file-readiness-chip span {
         align-self: center;
         color: #a8b2bc;
-        font-size: 0.72em;
-        font-weight: 800;
+        font-size: 11px;
+        font-weight: 550;
         grid-column: 1 / -1;
         line-height: 1.25;
         min-width: 0;
@@ -12819,7 +12508,7 @@
     .dependency-readiness-ok small,
     .file-readiness-ok b,
     .file-readiness-ok small {
-        color: #62f09b;
+        color: #9ccbb2;
     }
 
     .dependency-readiness-warn,
@@ -12831,7 +12520,7 @@
     .dependency-readiness-warn small,
     .file-readiness-warn b,
     .file-readiness-warn small {
-        color: #fdc66d;
+        color: #eeb66b;
     }
 
     .dependency-readiness-review,
@@ -12843,7 +12532,7 @@
     .dependency-readiness-review small,
     .file-readiness-review b,
     .file-readiness-review small {
-        color: #78d9f4;
+        color: #c7d4e3;
     }
 
     .changelog-box {
@@ -12855,7 +12544,7 @@
 
     .changelog-compact-note {
         align-items: center;
-        color: #8d99a5;
+        color: #9da6b6;
         display: flex;
         flex: 0 0 auto;
         gap: 0.65em;
@@ -12874,14 +12563,14 @@
     }
 
     .changelog-row span {
-        color: #78d9f4;
-        font-size: 0.82em;
-        font-weight: 900;
+        color: #c7d4e3;
+        font-size: 12px;
+        font-weight: 600;
     }
 
     .changelog-row .nexus-rich-text {
-        color: #b8c0c8;
-        font-size: 0.82em;
+        color: #b8c1ce;
+        font-size: 12px;
         line-height: 1.35;
         margin: 0.3em 0 0;
     }
@@ -12911,7 +12600,7 @@
 
     .file-row-selected {
         border-color: rgba(98, 240, 155, 0.7);
-        color: #62f09b;
+        color: #9ccbb2;
     }
 
     .file-row-recommended:not(.file-row-selected) {
@@ -12933,26 +12622,26 @@
     .file-row-head b {
         background: rgba(255, 255, 255, 0.06);
         border: 1px solid rgba(255, 255, 255, 0.12);
-        color: #aab8c5;
+        color: #aeb7c5;
         flex: 0 0 auto;
-        font-size: 0.68em;
-        font-weight: 900;
+        font-size: 11px;
+        font-weight: 600;
         padding: 0.2em 0.45em;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .file-row-recommended .file-row-head b {
-        color: #62f09b;
+        color: #9ccbb2;
     }
 
     .file-row-review .file-row-head b {
-        color: #fdc66d;
+        color: #eeb66b;
     }
 
     .file-name {
-        color: #eefcff;
+        color: #eef0f4;
         display: -webkit-box;
-        font-weight: 900;
+        font-weight: 600;
         line-height: 1.18;
         min-width: 0;
         overflow: hidden;
@@ -12968,8 +12657,8 @@
     .dependency-empty,
     .dependency-row small {
         color: #9aa5af;
-        font-size: 0.78em;
-        font-weight: 700;
+        font-size: 12px;
+        font-weight: 500;
     }
 
     .dependency-row {
@@ -12991,9 +12680,9 @@
 
     .dependency-subtitle {
         color: #d4d9df;
-        font-size: 0.75em;
-        font-weight: 900;
-        text-transform: uppercase;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: none;
     }
 
     .author-requirement-section {
@@ -13034,9 +12723,9 @@
     }
 
     .author-requirement-main span {
-        color: #78d9f4;
+        color: #c7d4e3;
         font-size: 0.84em;
-        font-weight: 900;
+        font-weight: 600;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -13045,13 +12734,13 @@
 
     .author-requirement-main small {
         color: #9aa5af;
-        font-size: 0.74em;
-        font-weight: 700;
+        font-size: 11px;
+        font-weight: 500;
     }
 
     .author-requirement-main .author-requirement-excerpt {
         color: #b9c6cf;
-        font-size: 0.72em;
+        font-size: 11px;
         font-style: italic;
         line-height: 1.25;
     }
@@ -13068,7 +12757,7 @@
 
     .author-requirement-row button {
         flex: 0 0 auto;
-        font-size: 0.72em;
+        font-size: 11px;
         margin: 0;
         min-height: 2.1em;
         min-width: 5.8em;
@@ -13076,8 +12765,8 @@
     }
 
     .dependency-row span {
-        color: #fdc66d;
-        font-weight: 900;
+        color: #eeb66b;
+        font-weight: 600;
     }
 
     .dependency-head {
@@ -13098,29 +12787,29 @@
     .dependency-head b {
         background: rgba(255, 255, 255, 0.06);
         border: 1px solid rgba(255, 255, 255, 0.1);
-        color: #aab8c5;
+        color: #aeb7c5;
         flex: 0 0 auto;
-        font-size: 0.72em;
-        font-weight: 900;
+        font-size: 11px;
+        font-weight: 600;
         padding: 0.18em 0.45em;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .dependency-installed .dependency-head span,
     .dependency-installed .dependency-head b {
-        color: #62f09b;
+        color: #9ccbb2;
     }
 
     .dependency-missing .dependency-head span,
     .dependency-missing .dependency-head b,
     .dependency-mismatch .dependency-head span,
     .dependency-mismatch .dependency-head b {
-        color: #fdc66d;
+        color: #eeb66b;
     }
 
     .dependency-review .dependency-head span,
     .dependency-review .dependency-head b {
-        color: #78d9f4;
+        color: #c7d4e3;
     }
 
     .dependency-actions {
@@ -13131,7 +12820,7 @@
     }
 
     .dependency-alternatives summary {
-        color: #78d9f4;
+        color: #c7d4e3;
         cursor: pointer;
         font-size: 0.85em;
         padding: 0.4em 0;
@@ -13146,7 +12835,7 @@
     }
 
     .dependency-alternative span {
-        color: #aab8c5;
+        color: #aeb7c5;
         flex: 1;
         font-size: 0.85em;
         font-weight: 400;
@@ -13156,14 +12845,14 @@
 
     .dependency-alternative button {
         flex: 0 0 auto;
-        font-size: 0.72em;
+        font-size: 11px;
         margin: 0;
         min-width: 5em;
         padding: 0.35em 0.55em;
     }
 
     .dependency-actions button {
-        font-size: 0.72em;
+        font-size: 11px;
         margin: 0;
         min-height: 2.15em;
         min-width: 6em;
@@ -13171,100 +12860,121 @@
     }
 
     .dependency-actions .dependency-primary-action {
-        color: #78d9f4;
+        color: #c7d4e3;
         min-width: 7.2em;
     }
 
     .dependency-actions .dependency-primary-warn {
-        color: #fdc66d;
+        color: #eeb66b;
     }
 
-    @media (max-width: 1240px) {
-        .nexus-filter-row {
-            grid-template-columns: minmax(13em, 1fr) repeat(2, minmax(8.5em, 0.55fr));
-        }
+    .detail-page-menu,
+    .deployment-readiness {
+        position: relative;
+    }
 
-        .vortex-summary {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
+    .detail-panel .panel-title {
+        font-size: 21px;
+        line-height: 1.35;
+    }
 
-        .facts {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
+    .detail-panel .panel-subtitle {
+        margin-top: 5px;
+    }
 
+    .detail-panel > .loading-line {
+        flex: 0 0 auto;
+        margin: 10px 22px;
+    }
+
+    .detail-panel .detail-text,
+    .detail-panel .changelog-box,
+    .detail-panel .changelog-compact-note {
+        background: transparent;
+        border: 0;
+        border-radius: 0;
+        padding: 4px 0;
+    }
+
+    .detail-panel .detail-facts {
+        background: transparent;
+        border: 0;
+        padding: 0 0 4px;
+    }
+
+    .detail-media-nav,
+    .thumbnail-nav,
+    .thumbnail-count,
+    .category-source-badge,
+    .file-readiness-chip,
+    .dependency-readiness-chip,
+    .file-row,
+    .author-instruction-row,
+    .author-requirement-row,
+    .selected-file-notes,
+    .detail-conflict-box {
+        border-radius: 7px;
+    }
+
+    .detail-panel .file-row-selected {
+        background: #2c261d;
+        border-color: #b88c51;
+    }
+
+    .detail-panel .file-row-recommended:not(.file-row-selected) {
+        border-color: #668575;
+    }
+
+    .detail-panel .file-filter-selected {
+        background: #2c261d;
+        border-color: #806441;
+        color: #eeb66b;
+    }
+
+    .detail-panel .detail-media-thumb-active {
+        border-color: #eeb66b;
+    }
+
+    .detail-panel .detail-actions .track-btn,
+    .detail-panel .detail-actions .endorse-btn {
+        background: transparent;
+        border-color: transparent;
+        color: #aeb7c5;
+    }
+
+    @media (max-width: 1120px) {
+        .catalog-toolbar { gap: 8px; }
+        .catalog-mode-buttons button { padding: 5px 9px; }
+        .nexus-page .view-buttons .cat-btn { font-size: 11px; padding: 6px; }
+        .queue-chip small { display: none; }
+        .nexus-page .queue-chip { min-height: 34px; padding: 6px 8px; }
+        .vortex-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 1080px) {
         .detail-grid {
             display: flex;
             flex-direction: column;
+            gap: 18px;
             overflow-y: auto;
-            padding-right: 0.2em;
+            scrollbar-width: thin;
         }
 
-        .detail-panel {
-            --detail-scroll-section-max: none;
-            max-height: calc(100vh - 1.5em);
-            min-height: 0;
-        }
+        .detail-main { display: contents; }
 
-        .detail-main,
         .detail-side {
             flex: 0 0 auto;
             min-height: auto;
-            overflow-y: visible;
+            overflow: visible;
             padding-right: 0;
         }
 
-        .detail-main {
-            display: contents;
-        }
-
         .detail-media-frame,
-        .detail-media-strip {
-            order: 1;
-        }
-
-        .detail-text {
-            order: 2;
-        }
-
-        .detail-side {
-            order: 3;
-        }
-
-        .detail-side {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            align-items: start;
-        }
-
-        .file-picker,
-        .selected-file-notes,
-        .dependency-box {
-            grid-column: 1 / -1;
-        }
-
-        .selected-file-notes {
-            order: 3;
-        }
-
-        .dependency-box {
-            order: 4;
-        }
-
-        .file-picker {
-            order: 2;
-        }
-
-        .install-plan {
-            order: 5;
-        }
-
-        .nxm-link-box {
-            order: 6;
-        }
-
-        .detail-conflict-box {
-            order: 7;
-        }
+        .detail-media-strip { order: 1; }
+        .detail-text { order: 2; }
+        .detail-side { order: 3; }
+        .changelog-box,
+        .changelog-compact-note { order: 4; }
 
         .file-picker,
         .selected-file-notes,
@@ -13275,331 +12985,58 @@
             overflow-y: visible;
         }
 
-        .detail-text {
-            flex: 0 0 auto;
-            max-height: none;
-            overflow-y: visible;
-        }
-
         .detail-text .detail-description-collapsed {
-            max-height: clamp(12em, 32vh, 18em);
+            max-height: 280px;
             overflow: hidden;
         }
 
-        .changelog-box,
-        .changelog-compact-note {
-            flex: 0 0 auto;
-            min-height: 0;
-            order: 4;
-        }
-
-        .detail-media-frame {
-            min-height: clamp(116px, 18vh, 180px);
-        }
-
-        .detail-img {
-            height: clamp(116px, 18vh, 180px);
-        }
-
-        .detail-header {
-            align-items: flex-start;
-            flex-direction: row;
-            gap: 0.65em;
-        }
-
-        .detail-header-actions {
-            flex-wrap: wrap;
-            margin-left: auto;
-            width: auto;
-        }
-
-        .detail-header-actions button {
-            flex: 0 0 auto;
-            min-width: 7em;
-        }
-
-        .nxm-link-row {
-            grid-template-columns: 1fr;
-        }
-
-        .detail-footer {
-            align-items: stretch;
-            grid-template-columns: 1fr;
-        }
-
-        .detail-link-actions {
-            grid-column: auto;
-        }
-
-        .detail-actions,
-        .detail-link-actions {
-            justify-content: stretch;
-        }
-
-        .detail-actions button,
-        .detail-link-actions button {
-            flex: 1 1 8em;
-        }
+        .detail-media-frame { min-height: 190px; }
+        .detail-img { height: 220px; }
     }
 
-    @media (min-width: 1241px) and (max-height: 900px) {
-        .detail-panel {
-            --detail-scroll-section-max: clamp(230px, 34vh, 430px);
-        }
-
-        .detail-text {
-            max-height: clamp(190px, 30vh, 360px);
-        }
-
-        .selected-file-notes {
-            max-height: clamp(140px, 22vh, 260px);
-        }
-    }
-
-    @media (max-height: 900px) {
-        .nexus-page {
-            gap: 0.45em;
-        }
-
-        .detail-panel {
-            gap: 0.55em;
-            padding: 0.85em;
-        }
-
-        .detail-section-nav button {
-            min-height: 2.35em;
-            padding: 0.28em 0.45em;
-        }
-
-        .detail-media-frame {
-            min-height: clamp(128px, 19vh, 220px);
-        }
-
-        .detail-img {
-            height: clamp(128px, 19vh, 220px);
-        }
-
-        .account-panel {
-            padding: 0.48em 0.75em;
-        }
-
-        .account-actions {
-            gap: 0.38em;
-        }
-
-        .account-actions button,
-        .auto-endorse-control {
-            font-size: 0.7em;
-            min-height: 2.25em;
-            padding: 0.25em 0.55em;
-        }
-
-        .rate-row,
-        .vortex-summary,
-        .catalog-panel,
-        .action-queue,
-        .nexus-filter-row {
-            gap: 0.38em;
-        }
-
-        .vortex-summary {
-            grid-template-columns: repeat(7, minmax(0, 1fr));
-        }
-
-        .summary-card {
-            gap: 0;
-            padding: 0.38em 0.5em;
-        }
-
-        .summary-note {
-            display: none;
-        }
-
-        .api-note {
-            padding: 0.36em 0.6em;
-        }
-
-        .queue-chip {
-            min-height: 2.45em;
-            padding: 0.32em 0.5em;
-        }
-
-        .queue-chip small {
-            display: none;
-        }
-
-        .nexus-filter-row select,
-        .nexus-filter-row .key-input {
-            min-height: 2.35em;
-            padding-bottom: 0.35em;
-            padding-top: 0.35em;
-        }
-
-        .nexus-filter-row {
-            grid-template-columns: minmax(10em, 1.5fr) repeat(4, minmax(6.5em, 1fr)) minmax(4.8em, 0.55fr);
-        }
-
-        .cat-btn,
-        .refresh-btn,
-        .catalog-mode-buttons button {
-            height: 2.3em;
-        }
-
-        .nexus-card {
-            grid-template-columns: clamp(86px, 10vw, 126px) minmax(0, 1fr);
-            min-height: clamp(104px, 13vh, 136px);
-        }
-
-        .thumbnail-button {
-            display: block;
-            min-width: 0;
-        }
-
-        .thumbnail-frame,
-        .nexus-img {
-            min-height: clamp(104px, 13vh, 136px);
-        }
-
-        .thumbnail-nav {
-            bottom: 0.3em;
-            left: 0.3em;
-            right: 0.3em;
-        }
-
-        .thumbnail-count {
-            left: 0.3em;
-            top: 0.3em;
-        }
-
-        .nexus-body {
-            gap: 0.38em;
-            padding: 0.55em 0.7em;
-        }
-
-        .description-content {
-            -webkit-line-clamp: 1;
-            line-clamp: 1;
-            min-height: auto;
-        }
-
-        .facts,
-        .inventory-facts {
-            grid-template-columns: repeat(5, minmax(0, 1fr));
-        }
-
-        .nexus-card-footer {
-            align-items: center;
-            flex-wrap: wrap;
-        }
-
-        .button-row {
-            flex-wrap: wrap;
-            margin-left: 0;
-        }
-
-        .button-row button,
-        .button-row .vortex-install-btn {
-            flex: 1 1 6.5em;
-            min-width: 0;
-        }
-
-        .detail-footer {
-            gap: 0.45em;
-            padding: 0.5em 0.6em;
-        }
-
-        .deployment-check-item {
-            min-height: 2.8em;
-            padding: 0.32em 0.45em;
-        }
-
-        .detail-actions button,
-        .detail-link-actions button {
-            min-height: 2.3em;
-        }
+    @media (max-height: 760px) {
+        .nexus-page { gap: 8px; }
+        .account-panel { padding-bottom: 4px; }
+        .catalog-panel { gap: 8px; }
+        .queue-chip small { display: none; }
+        .nexus-page .queue-chip { min-height: 32px; padding: 5px 8px; }
+        .detail-header { padding: 15px 20px 10px; }
+        .detail-section-nav { padding: 0 16px 9px; }
+        .detail-grid { padding: 16px 20px; }
+        .detail-footer { gap: 8px 14px; padding: 11px 18px; }
+        .detail-panel .panel-title { font-size: 19px; }
+        .detail-panel .detail-actions button { min-height: 32px; }
     }
 
     @media (max-width: 860px) {
-        .account-panel,
-        .connect-row,
-        .account-actions,
-        .catalog-toolbar,
-        .catalog-mode-buttons,
-        .nexus-card-footer {
-            align-items: stretch;
-            flex-direction: column;
-        }
-
-        .catalog-toolbar {
-            gap: 0.45em;
-        }
-
-        .view-buttons {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            width: 100%;
-        }
-
-        .cat-btn,
-        .refresh-btn,
-        .catalog-mode-buttons button {
-            width: 100%;
-        }
-
-        .nexus-filter-row,
-        .rate-row,
-        .vortex-summary,
-        .detail-side {
-            grid-template-columns: 1fr;
-        }
-
-        .deployment-checklist {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
-        .file-filter-row {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
-        .detail-header {
-            align-items: stretch;
-            flex-direction: column;
-        }
-
-        .detail-header-actions {
-            margin-left: 0;
-            width: 100%;
-        }
-
-        .detail-header-actions button {
-            flex: 1 1 0;
-            min-width: 0;
-        }
-
-        .nexus-card {
-            grid-template-columns: 1fr;
-        }
-
-        .nexus-img {
-            height: clamp(130px, 22vh, 190px);
-        }
+        .account-panel { align-items: flex-start; flex-wrap: wrap; }
+        .connect-column { align-items: flex-start; flex-basis: 100%; min-width: 0; }
+        .connect-row { justify-content: flex-start; }
+        .manual-key { text-align: left; }
+        .catalog-toolbar { flex-wrap: wrap; }
+        .view-buttons { order: 3; flex-basis: 100%; justify-content: flex-start; }
+        .feed-hidden { display: none; }
+        .nexus-card { gap: 12px; grid-template-columns: 112px minmax(0, 1fr); padding: 12px; }
+        .card-head { flex-wrap: wrap; gap: 6px; }
+        .card-pills { justify-content: flex-start; max-width: 100%; }
+        .vortex-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .detail-header { align-items: flex-start; }
+        .detail-header-actions { flex-wrap: wrap; justify-content: flex-end; }
+        .detail-panel .panel-title { font-size: 18px; }
+        .detail-section-nav span { font-size: 10px; }
+        .detail-section-nav b { font-size: 11px; }
+        .detail-footer { grid-template-columns: minmax(0, 1fr) auto; }
+        .detail-panel .detail-actions button { flex: 0 1 auto; }
+        .file-filter-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .nxm-link-row { grid-template-columns: 1fr; }
 
         .nexus-rich-text :global(.nexus-rich-image-left),
         .nexus-rich-text :global(.nexus-rich-image-right),
         .nexus-rich-text :global(.nexus-rich-float-left),
         .nexus-rich-text :global(.nexus-rich-float-right) {
             float: none;
-            margin: 0.75em 0 0;
+            margin: 10px 0 0;
             max-width: 100%;
-        }
-
-        .source-pill {
-            max-width: 100%;
-        }
-
-        .button-row {
-            margin-left: 0;
-            width: 100%;
         }
     }
 </style>

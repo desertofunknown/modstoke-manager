@@ -14,6 +14,7 @@
     import LucideChevronRight from "~icons/lucide/chevron-right";
     import LucideExternalLink from "~icons/lucide/external-link";
     import LucideImages from "~icons/lucide/images";
+    import LucidePackage from "~icons/lucide/package";
     import LucideRefreshCw from "~icons/lucide/refresh-cw";
     import LucideX from "~icons/lucide/x";
 
@@ -1025,15 +1026,16 @@
     bind:this={modsPageElement}
 >
     {#if $isPathValid}
-        <div class="row-center mods-toolbar">
+        <div class="mods-toolbar">
+            <span class="catalog-heading">SOTF Mods</span>
             {#if showEmbeddedSearch}
-                <input class="generic-input search-input" placeholder="Search" type="text" value={filterTerm} on:input={(event) => handleSearchInput((event.currentTarget as HTMLInputElement).value)} />
+                <input class="generic-input search-input" aria-label="Search SOTF Mods" placeholder="Search SOTF Mods" type="text" value={filterTerm} on:input={(event) => handleSearchInput((event.currentTarget as HTMLInputElement).value)} />
             {/if}
-            <div class="mode-buttons">
-                <button class="btn-left cat-btn" class:cat-btn-selected={onlineSelected} on:click={toggleOnline}>Online</button>
-                <button class="btn-right cat-btn" class:cat-btn-selected={installedSelected} on:click={toggleInstalled}>Installed</button>
+            <div class="mode-buttons" role="group" aria-label="SOTF Mods view">
+                <button type="button" class="cat-btn" class:cat-btn-selected={onlineSelected} aria-pressed={onlineSelected} on:click={toggleOnline}>Online</button>
+                <button type="button" class="cat-btn" class:cat-btn-selected={installedSelected} aria-pressed={installedSelected} on:click={toggleInstalled}>Installed</button>
             </div>
-            <button class="refresh-small icon-text-button" disabled={isLoading || isScanningInventory} on:click={refreshMods} title="Refresh mods">
+            <button type="button" class="refresh-small icon-text-button" disabled={isLoading || isScanningInventory} on:click={refreshMods} title="Refresh mods">
                 <LucideRefreshCw aria-hidden="true" />
                 <span>Refresh</span>
             </button>
@@ -1068,7 +1070,7 @@
                 </select>
             </label>
             <label>
-                <span>Sort loaded</span>
+                <span>Sort loaded mods</span>
                 <select bind:value={selectedSort}>
                     <option value="updated">Recently updated</option>
                     <option value="downloads">Downloads</option>
@@ -1078,35 +1080,31 @@
                     <option value="name">Name</option>
                 </select>
             </label>
-            <button class="filter-clear" disabled={!hasActiveModViewOptions || isLoading} on:click={clearModFilters}>Clear</button>
+            <button type="button" class="filter-clear" disabled={!hasActiveModViewOptions || isLoading} on:click={clearModFilters}>Reset filters</button>
         </div>
 
         <div class="mods-note">
-            <span>{visibleMods.length} shown from {filtered.length} {onlineSelected ? "loaded" : "installed"}.</span>
-            {#if isScanningInventory}<span>Checking installed mods...</span>{/if}
-            <span>Compact list.</span>
-            {#if categories.length > 0}
-                <span>{categories.length} categories.</span>
-            {/if}
+            <span class="result-count"><strong>{visibleMods.length}</strong> shown <span>of {filtered.length} {onlineSelected ? "loaded" : "installed"}</span></span>
+            {#if isScanningInventory}<span>Checking installed mods…</span>{/if}
             {#if selectedSort !== "updated"}
-                <span>Sorted loaded rows by {selectedSortLabel()}.</span>
+                <span>Sorted by {selectedSortLabel()}</span>
             {/if}
             {#if embeddedStorePreview && filterTerm.trim().length > 0 && !hasActiveLocalModViewOptions}
-                <span>Shared search active.</span>
+                <span class="active-filter-note">Shared search active</span>
             {:else if hasActiveModFilters}
-                <span>Filters active.</span>
+                <span class="active-filter-note">Filters active</span>
             {/if}
         </div>
 
         {#if catalogError}
-            <div class="catalog-error">
+            <div class="catalog-error" role="alert">
                 <span>{catalogError}</span>
                 <button disabled={isLoading} on:click={retryCatalog}>Retry</button>
             </div>
         {/if}
 
         {#if installedInventoryWarning}
-            <div class="catalog-error subtle warning-note">
+            <div class="catalog-error warning-note" role="status">
                 <span>{installedInventoryWarning}</span>
                 <button disabled={isScanningInventory} on:click={refreshMods}>Retry scan</button>
             </div>
@@ -1125,7 +1123,19 @@
             {/each}
 
             {#if isLoading}
-            <SvgSpinnersBlocksWave style="font-size: 2em; color: #38d68d; position: absolute; bottom: 40px;" />
+                <div class="catalog-loading" role="status">
+                    <SvgSpinnersBlocksWave aria-hidden="true" />
+                    <span>Loading mods…</span>
+                </div>
+            {:else if hasLoadedOnce && !catalogError && visibleMods.length === 0}
+                <div class="catalog-empty" role="status">
+                    <LucidePackage aria-hidden="true" />
+                    <h2>{hasActiveModFilters ? "No matching mods" : installedSelected ? "No installed mods" : "No mods available"}</h2>
+                    <p>{hasActiveModFilters ? "Try a different search or reset the filters." : installedSelected ? "Mods installed for this game will appear here." : "Refresh the catalog to check for available mods."}</p>
+                    {#if hasActiveModViewOptions}
+                        <button type="button" on:click={clearModFilters}>Reset filters</button>
+                    {/if}
+                </div>
             {/if}
 
             <InfiniteScroll
@@ -1136,22 +1146,17 @@
                 on:loadMore={loadMore} />
         </div>
 
-        {#if hasLoadedOnce && !isLoading && !catalogError && visibleMods.length === 0}
-            <div class="catalog-error subtle">No mods are available for the current filter.</div>
-        {/if}
-
         {#if selectedDetailMod}
             <div class="sotf-detail-backdrop">
                 <button class="sotf-detail-backdrop-dismiss" type="button" tabindex="-1" aria-label="Close SOTF Mods details" on:click={closeModDetails}></button>
                 <div class="sotf-detail-panel" role="dialog" aria-modal="true" aria-labelledby="sotf-detail-title" tabindex="-1" use:modalFocus={{ generation: detailGeneration, close: closeModDetails }}>
                     <header class="sotf-detail-header">
                         <div class="sotf-detail-title">
-                            <span id="sotf-detail-title">{selectedDetailMod.name}</span>
+                            <h2 id="sotf-detail-title">{selectedDetailMod.name}</h2>
                             <small>{detailCategoryLabel(selectedDetailMod)} · {detailLoaderLabel(selectedDetailMod)} · {detailAuthorName(selectedDetailMod)}</small>
                         </div>
                         <button class="sotf-detail-close" type="button" aria-label="Close SOTF Mods details" on:click={closeModDetails}>
                             <LucideX aria-hidden="true" />
-                            <span>Close</span>
                         </button>
                     </header>
 
@@ -1179,17 +1184,17 @@
                                 {/if}
                             </div>
 
-        <div class="sotf-detail-description">
-            <span class="sotf-detail-section-title">Description</span>
-            {#if selectedDetailIsLoading}
-                <small class="sotf-detail-description-note">Loading full author description...</small>
-            {:else if selectedDetailLoadError}
-                <small class="sotf-detail-description-note sotf-detail-description-warning">{selectedDetailLoadError}</small>
-            {/if}
-            <div class="sotf-rich-text">
-                {@html selectedDetailDescriptionHtml}
-            </div>
-        </div>
+                            <div class="sotf-detail-description">
+                                <span class="sotf-detail-section-title">About this mod</span>
+                                {#if selectedDetailIsLoading}
+                                    <small class="sotf-detail-description-note">Loading full author description…</small>
+                                {:else if selectedDetailLoadError}
+                                    <small class="sotf-detail-description-note sotf-detail-description-warning">{selectedDetailLoadError}</small>
+                                {/if}
+                                <div class="sotf-rich-text">
+                                    {@html selectedDetailDescriptionHtml}
+                                </div>
+                            </div>
                         </div>
 
                         <aside class="sotf-detail-side">
@@ -1304,7 +1309,7 @@
 
                     <footer class="sotf-detail-footer">
                         <div class="sotf-detail-footer-copy">
-                            <span class="sotf-detail-section-title">Deployment</span>
+                            <span class="sotf-detail-section-title">Installation</span>
                             <small>{detailInstallStateLabel(selectedDetailMod)} · {detailLoaderLabel(selectedDetailMod)}</small>
                         </div>
                         <div class="sotf-detail-footer-actions">
@@ -1325,7 +1330,11 @@
         {/if}
 
     {:else}
-        <b>Set the correct path in the main tab to start browsing mods.</b>
+        <div class="catalog-empty installation-empty" role="status">
+            <LucidePackage aria-hidden="true" />
+            <h2>Choose your game installation</h2>
+            <p>Set the game path in Overview to browse and manage your mods.</p>
+        </div>
     {/if}
     
 </div>
@@ -1333,46 +1342,25 @@
 <style>
     .mods-page {
         --sotf-scroller-target-height: 320px;
-        --sotf-thumb-height: clamp(74px, 9vh, 112px);
-        --sotf-thumb-width: clamp(136px, 15vw, 210px);
-        gap: clamp(0.34em, 0.64vh, 0.58em);
+        --sotf-thumb-height: 96px;
+        --sotf-thumb-width: 172px;
+        align-items: stretch;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
         height: 100%;
         justify-content: flex-start;
         min-height: 0;
+        min-width: 0;
+        text-align: left;
+        width: 100%;
     }
-
-    .sotf-embedded-store-preview {
-        --sotf-thumb-height: clamp(58px, 6.4vh, 74px);
-        --sotf-thumb-width: clamp(108px, 11vw, 148px);
-        gap: clamp(0.24em, 0.45vh, 0.36em);
-    }
-
+    .sotf-embedded-store-preview { gap: 8px; }
     .sotf-embedded-store-preview:not(.sotf-embedded-controls-needed) .mods-toolbar,
-    .sotf-embedded-store-preview:not(.sotf-embedded-controls-needed) .filter-row {
-        display: none;
-    }
-
-    .sotf-embedded-store-preview .mods-note {
-        font-size: 0.7em;
-        padding: 0.28em 0.58em;
-    }
-
-    .sotf-embedded-store-preview .scroller {
-        overscroll-behavior-y: auto;
-        padding-bottom: clamp(0.45em, 2.2vh, 1em);
-        scroll-snap-type: y mandatory;
-    }
-
-    .sotf-embedded-store-preview :global(.description) {
-        margin-bottom: 0.32em;
-        padding: 0.46em;
-    }
-
-    .sotf-embedded-store-preview :global(.mod-card-row) {
-        gap: 0.48em;
-        grid-template-columns: var(--sotf-thumb-width) minmax(0, 1fr) minmax(7.8em, 9.6em);
-    }
-
+    .sotf-embedded-store-preview:not(.sotf-embedded-controls-needed) .filter-row { display: none; }
+    .sotf-embedded-store-preview .catalog-heading { display: none; }
+    .sotf-embedded-store-preview .mods-note { padding: 0 2px; }
+    .sotf-embedded-store-preview .scroller { overscroll-behavior-y: auto; padding-bottom: 4px; }
     .sotf-embedded-store-preview :global(.description-content.header-desc) {
         display: -webkit-box;
         -webkit-box-orient: vertical;
@@ -1380,246 +1368,208 @@
         line-clamp: 1;
         overflow: hidden;
     }
-
-    .sotf-embedded-store-preview :global(.source-pill) {
-        font-size: 0.68em;
-        padding: 0.2em 0.42em;
-    }
-
-    .sotf-embedded-store-preview :global(.fact-row) {
-        display: none;
-    }
-
-    .sotf-embedded-store-preview :global(.mod-actions) {
-        gap: 0.28em;
-    }
-
-    .sotf-embedded-store-preview :global(.mod-actions button) {
-        font-size: 0.72em;
-        min-height: 2.12em;
-        padding: 0.34em 0.5em;
-    }
-
-    .scroller {
-        flex: 1 1 var(--sotf-scroller-target-height);
-        height: var(--sotf-scroller-target-height);
-        max-height: var(--sotf-scroller-target-height);
-        min-height: min(var(--sotf-scroller-target-height), 100%);
-        overflow-y: scroll;
-        overflow-x: hidden;
-        overscroll-behavior: contain;
-        padding-bottom: calc(0.6em + var(--app-bottom-safe-area, 42px));
-        position: relative;
-        scroll-padding-bottom: var(--app-bottom-safe-area, 42px);
-        scroll-padding-top: 0.3em;
-        scroll-snap-type: y proximity;
-        scrollbar-gutter: stable;
-        width: 100%;
-    }
-
-    .scroller :global(.feature-container) {
-        scroll-margin-top: 0.3em;
-        scroll-snap-align: start;
-        scroll-snap-stop: always;
-    }
-
-    .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        grid-gap: 1em;
-    }
+    .sotf-embedded-store-preview :global(.fact-row),
+    .sotf-embedded-store-preview :global(.meta-row) { display: none; }
 
     .mods-toolbar {
         align-items: center;
         display: flex;
+        flex: 0 0 auto;
         flex-wrap: wrap;
-        gap: 0.45em;
-        margin-bottom: 0;
+        gap: 10px;
+        min-width: 0;
         width: 100%;
     }
-
-    .search-input {
-        flex: 1 1 18rem;
-        margin: 0;
-        min-width: 14rem;
+    .catalog-heading {
+        color: var(--text-primary, #eef0f4);
+        font-size: 15px;
+        font-weight: 600;
+        margin-right: auto;
     }
-
+    .search-input { flex: 1 1 180px; font-size: 13px; margin: 0; min-width: 140px; }
     .mode-buttons {
+        background: var(--surface-panel, #171a21);
+        border: 1px solid var(--border-subtle, #2b303a);
+        border-radius: 8px;
         display: flex;
         flex: 0 0 auto;
+        gap: 2px;
+        padding: 3px;
     }
-
-    .filter-row {
-        display: grid;
-        gap: 0.6em;
-        grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(7em, 0.45fr);
-        margin: 0;
-        width: 100%;
-    }
-
-    .filter-row label {
-        align-items: flex-start;
-        display: flex;
-        flex-direction: column;
-        gap: 0.2em;
-        text-align: left;
-    }
-
-    .filter-row span {
-        color: #a2a2a2;
-        font-size: 0.74em;
-        font-weight: 800;
-        letter-spacing: 0.12em;
-        line-height: 1.1;
-        text-transform: uppercase;
-    }
-
-    .filter-row select {
-        background: rgba(18, 18, 18, 0.92);
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        color: #e8e8e8;
-        font-family: inherit;
-        font-weight: 700;
-        min-height: 2.35em;
-        padding: 0.36em 0.65em;
-        text-transform: uppercase;
-        width: 100%;
-    }
-
-    .filter-clear {
-        align-self: end;
-        color: #a2a2a2;
-        height: 2.35em;
-        margin: 0;
-        padding: 0;
-        width: 100%;
-    }
-
-    .mods-note {
-        align-items: center;
-        background: rgba(18, 18, 18, 0.7);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        box-sizing: border-box;
-        color: #8d99a5;
-        display: flex;
-        flex: 0 0 auto;
-        flex-wrap: wrap;
-        font-size: 0.78em;
-        font-weight: 800;
-        gap: 0.7em;
-        line-height: 1.2;
-        margin: 0;
-        padding: 0.42em 0.7em;
-        text-align: left;
-        width: 100%;
-    }
-
     .cat-btn {
-        color: #a2a2a2;
-        flex: 0 0 auto;
-        height: 2.42em;
+        background: transparent;
+        border: 0;
+        border-radius: 5px;
+        box-shadow: none;
+        color: var(--text-secondary, #9da6b6);
+        font-size: 12px;
+        font-weight: 550;
+        height: 29px;
         margin: 0;
-        padding: 0;
-        width: 6em;
+        min-height: 0;
+        min-width: 76px;
+        padding: 0 14px;
     }
-
+    .cat-btn:hover { color: var(--text-primary, #eef0f4); }
+    .cat-btn-selected { background: var(--surface-raised, #20242c); color: var(--text-primary, #eef0f4); }
     .refresh-small {
         align-items: center;
-        color: #a2a2a2;
+        background: transparent;
+        border: 1px solid var(--border-subtle, #2b303a);
+        border-radius: 8px;
+        color: var(--text-secondary, #9da6b6);
         display: flex;
         flex: 0 0 auto;
-        gap: 0.42em;
-        height: 2.42em;
+        font-size: 12px;
+        gap: 7px;
+        height: 37px;
         justify-content: center;
         margin: 0;
-        min-width: 7em;
-        padding: 0 0.8em;
+        min-height: 0;
+        padding: 0 12px;
     }
-
-    .icon-text-button :global(svg) {
-        display: block;
-        font-size: 1.05em;
-        stroke-width: 2.25;
+    .refresh-small:hover:not(:disabled) { background: var(--surface-raised, #20242c); color: var(--text-primary, #eef0f4); }
+    .icon-text-button :global(svg) { height: 14px; width: 14px; }
+    .filter-row {
+        align-items: end;
+        background: var(--surface-panel, #171a21);
+        border: 1px solid var(--border-subtle, #2b303a);
+        border-radius: 10px;
+        box-sizing: border-box;
+        display: grid;
+        flex: 0 0 auto;
+        gap: 12px;
+        grid-template-columns: 1fr 0.85fr 1.15fr 1.1fr auto;
+        margin: 0;
+        padding: 12px;
+        width: 100%;
     }
-
-    .cat-btn-selected {
-        background-color: #111;
-        color: #38d68d;
+    .filter-row label { display: flex; flex-direction: column; gap: 7px; min-width: 0; text-align: left; }
+    .filter-row label > span { color: var(--text-secondary, #9da6b6); font-size: 11px; font-weight: 500; line-height: 1.2; }
+    .filter-row select {
+        background: var(--surface-base, #101217);
+        border: 1px solid var(--border-subtle, #2b303a);
+        border-radius: 7px;
+        box-sizing: border-box;
+        color: var(--text-primary, #eef0f4);
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 400;
+        height: 35px;
+        min-height: 0;
+        min-width: 0;
+        padding: 0 8px;
+        text-overflow: ellipsis;
+        width: 100%;
     }
-
+    .filter-clear {
+        background: transparent;
+        border: 0;
+        border-radius: 7px;
+        color: var(--text-secondary, #9da6b6);
+        font-size: 11px;
+        height: 35px;
+        margin: 0;
+        min-height: 0;
+        padding: 0 6px;
+        white-space: nowrap;
+    }
+    .filter-clear:hover:not(:disabled) { background: var(--surface-raised, #20242c); color: var(--accent, #eeb66b); }
+    .mods-note {
+        align-items: center;
+        color: var(--text-secondary, #9da6b6);
+        display: flex;
+        flex: 0 0 auto;
+        flex-wrap: wrap;
+        font-size: 11px;
+        gap: 7px 14px;
+        line-height: 1.4;
+        min-height: 18px;
+        padding: 0 2px;
+    }
+    .result-count { color: var(--text-primary, #eef0f4); margin-right: auto; }
+    .result-count strong { font-weight: 600; }
+    .result-count > span { color: var(--text-secondary, #9da6b6); margin-left: 3px; }
+    .active-filter-note { color: var(--accent, #eeb66b); }
+    .scroller {
+        box-sizing: border-box;
+        flex: 1 1 var(--sotf-scroller-target-height);
+        height: var(--sotf-scroller-target-height);
+        max-height: var(--sotf-scroller-target-height);
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding-bottom: calc(8px + var(--app-bottom-safe-area, 12px));
+        position: relative;
+        scroll-padding-bottom: var(--app-bottom-safe-area, 12px);
+        scrollbar-gutter: stable;
+        width: 100%;
+    }
+    .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
     .catalog-error {
         align-items: center;
-        background: rgba(44, 44, 44, 0.88);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        color: #fdc66d;
+        background: rgba(238, 182, 107, 0.06);
+        border: 1px solid rgba(238, 182, 107, 0.22);
+        border-radius: 9px;
+        box-sizing: border-box;
+        color: var(--accent, #eeb66b);
         display: flex;
-        font-weight: 700;
-        gap: 1em;
+        flex: 0 0 auto;
+        font-size: 12px;
+        gap: 16px;
         justify-content: space-between;
-        margin: 0;
-        padding: 0.8em 1em;
+        line-height: 1.5;
+        padding: 12px 14px;
         text-align: left;
         width: 100%;
     }
-
-    @media (max-height: 820px) {
-        .mods-page {
-            gap: 0.34em;
-        }
-
-        .filter-row {
-            gap: 0.45em;
-        }
-
-        .filter-row span {
-            font-size: 0.68em;
-        }
-
-        .filter-row select,
-        .filter-clear,
-        .cat-btn,
-        .refresh-small {
-            height: 2.2em;
-            min-height: 2.2em;
-        }
-
-        .mods-note {
-            font-size: 0.72em;
-            padding: 0.32em 0.62em;
-        }
-    }
-
-    .catalog-error button {
-        flex: 0 0 auto;
-        margin: 0;
-        min-width: 8em;
-    }
-
-    .catalog-error.subtle {
-        color: #a2a2a2;
+    .catalog-error > span { min-width: 0; overflow-wrap: anywhere; }
+    .catalog-error button { flex: 0 0 auto; font-size: 12px; margin: 0; padding: 7px 12px; }
+    .warning-note { color: #d7b887; }
+    .catalog-loading {
+        align-items: center;
+        color: var(--text-secondary, #9da6b6);
+        display: flex;
+        font-size: 12px;
+        gap: 12px;
         justify-content: center;
+        min-height: 90px;
+        padding: 16px;
     }
-
-    .warning-note {
-        color: #fdc66d;
-        justify-content: flex-start;
+    .catalog-loading :global(svg) { color: var(--accent, #eeb66b); height: 24px; width: 24px; }
+    .catalog-empty {
+        align-items: center;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 220px;
+        padding: 28px;
+        text-align: center;
     }
+    .catalog-empty > :global(svg) { color: var(--accent, #eeb66b); height: 28px; margin-bottom: 14px; width: 28px; }
+    .catalog-empty h2 { color: var(--text-primary, #eef0f4); font-size: 17px; font-weight: 600; margin: 0; }
+    .catalog-empty p { color: var(--text-secondary, #9da6b6); font-size: 13px; line-height: 1.6; margin: 8px 0 0; max-width: 350px; }
+    .catalog-empty button { font-size: 12px; margin: 18px 0 0; padding: 8px 14px; }
+    .installation-empty { background: var(--surface-panel, #171a21); border: 1px dashed var(--border-subtle, #2b303a); border-radius: 12px; flex: 1 1 auto; }
 
     .sotf-detail-backdrop {
         align-items: center;
-        background: rgba(0, 0, 0, 0.58);
+        background: rgba(5, 7, 11, 0.78);
+        backdrop-filter: blur(8px);
         box-sizing: border-box;
         display: flex;
         inset: 0;
         justify-content: center;
-        padding: clamp(0.8em, 2vh, 1.4em);
+        padding: 48px 24px 24px;
         position: fixed;
         z-index: 20;
     }
-
     .sotf-detail-backdrop-dismiss {
         background: transparent;
         border: 0;
+        border-radius: 0;
         box-shadow: none;
         cursor: default;
         height: auto;
@@ -1629,230 +1579,58 @@
         padding: 0;
         position: absolute;
         width: auto;
-        -webkit-mask-image: none;
-        mask-image: none;
     }
-
     .sotf-detail-panel {
-        background: rgba(10, 10, 10, 0.97);
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        box-shadow: 0 1.2em 3em rgba(0, 0, 0, 0.48);
+        background: var(--surface-base, #101217);
+        border: 1px solid #353b46;
+        border-radius: 12px;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
         box-sizing: border-box;
-        color: #d8e3ea;
+        color: var(--text-primary, #eef0f4);
         display: flex;
         flex-direction: column;
-        gap: 0.75em;
-        max-height: calc(100vh - clamp(1.4em, 4vh, 2.8em));
-        max-width: min(1480px, calc(100vw - clamp(1.4em, 4vw, 3em)));
-        min-height: min(620px, calc(100vh - 2.8em));
+        gap: 18px;
+        height: min(820px, calc(100vh - 72px));
+        max-height: calc(100vh - 72px);
+        max-width: calc(100vw - 48px);
+        min-height: 0;
         min-width: 0;
         overflow: hidden;
-        padding: clamp(0.8em, 1.6vh, 1.15em);
+        padding: 22px;
         position: relative;
-        width: min(1480px, 96vw);
+        text-align: left;
+        width: 1180px;
         z-index: 1;
     }
-
-    .sotf-detail-header {
-        align-items: center;
-        display: flex;
-        flex: 0 0 auto;
-        gap: 1em;
-        justify-content: space-between;
-        min-width: 0;
-    }
-
-    .sotf-detail-title {
-        display: flex;
-        flex: 1 1 auto;
-        flex-direction: column;
-        gap: 0.18em;
-        min-width: 0;
-        text-align: left;
-    }
-
-    .sotf-detail-title span {
-        color: #eefcff;
-        font-size: clamp(1.05em, 1.45vw, 1.42em);
-        font-weight: 900;
-        line-height: 1.1;
-        overflow-wrap: anywhere;
-    }
-
-    .sotf-detail-title small {
-        color: #9aa5af;
-        font-size: 0.78em;
-        font-weight: 800;
-        line-height: 1.2;
-        overflow-wrap: anywhere;
-        text-transform: uppercase;
-    }
-
+    .sotf-detail-header { align-items: flex-start; display: flex; flex: 0 0 auto; gap: 20px; justify-content: space-between; min-width: 0; }
+    .sotf-detail-title { display: flex; flex: 1 1 auto; flex-direction: column; gap: 7px; min-width: 0; }
+    .sotf-detail-title h2 { color: var(--text-primary, #eef0f4); font-size: 25px; font-weight: 650; letter-spacing: -0.025em; line-height: 1.2; margin: 0; overflow-wrap: anywhere; }
+    .sotf-detail-title small { color: var(--text-secondary, #9da6b6); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
     .sotf-detail-close,
-    .sotf-detail-open-page {
-        align-items: center;
-        display: inline-flex;
-        gap: 0.45em;
-        justify-content: center;
-        margin: 0;
-        min-width: 8.5em;
-    }
-
+    .sotf-detail-open-page { align-items: center; display: inline-flex; flex: 0 0 auto; gap: 7px; justify-content: center; margin: 0; }
+    .sotf-detail-close { background: var(--surface-raised, #20242c); border: 1px solid var(--border-subtle, #2b303a); border-radius: 8px; color: var(--text-secondary, #9da6b6); height: 34px; min-height: 0; min-width: 34px; padding: 0; width: 34px; }
+    .sotf-detail-close:hover { color: var(--text-primary, #eef0f4); }
     .sotf-detail-close :global(svg),
-    .sotf-detail-open-page :global(svg) {
-        flex: 0 0 auto;
-        height: 1em;
-        width: 1em;
-    }
-
-    .sotf-detail-grid {
-        display: grid;
-        flex: 1 1 auto;
-        gap: 0.75em;
-        grid-template-columns: minmax(0, 1.12fr) minmax(19em, 0.88fr);
-        min-height: 0;
-        min-width: 0;
-        overflow: hidden;
-    }
-
+    .sotf-detail-open-page :global(svg) { flex: 0 0 auto; height: 16px; width: 16px; }
+    .sotf-detail-grid { display: grid; flex: 1 1 auto; gap: 20px; grid-template-columns: minmax(0, 1.5fr) minmax(290px, 1fr); min-height: 0; min-width: 0; overflow: hidden; }
     .sotf-detail-main,
-    .sotf-detail-side {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75em;
-        min-height: 0;
-        min-width: 0;
-    }
-
-    .sotf-detail-media {
-        background: rgba(8, 8, 8, 0.92);
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        flex: 0 0 auto;
-        height: clamp(210px, 34vh, 380px);
-        min-height: 0;
-        overflow: hidden;
-        position: relative;
-    }
-
-    .sotf-detail-media img {
-        display: block;
-        height: 100%;
-        object-fit: cover;
-        width: 100%;
-    }
-
+    .sotf-detail-side { display: flex; flex-direction: column; gap: 16px; min-height: 0; min-width: 0; overflow-y: auto; padding-right: 3px; scrollbar-gutter: stable; }
+    .sotf-detail-media { background: var(--surface-panel, #171a21); border: 1px solid var(--border-subtle, #2b303a); border-radius: 10px; flex: 0 0 auto; height: clamp(190px, 28vh, 300px); min-height: 0; overflow: hidden; position: relative; }
+    .sotf-detail-media img { display: block; height: 100%; object-fit: contain; width: 100%; }
     .sotf-detail-preview-count,
-    .sotf-detail-preview-controls {
-        align-items: center;
-        display: flex;
-        gap: 0.25em;
-        position: absolute;
-        z-index: 2;
-    }
-
-    .sotf-detail-preview-count {
-        background: rgba(6, 10, 12, 0.82);
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        color: #d6f3ff;
-        font-size: 0.72em;
-        font-weight: 900;
-        left: 0.65em;
-        padding: 0.28em 0.45em;
-        text-transform: uppercase;
-        top: 0.65em;
-    }
-
-    .sotf-detail-preview-count :global(svg) {
-        height: 1em;
-        width: 1em;
-    }
-
-    .sotf-detail-preview-fallback {
-        color: #9aa5af;
-    }
-
-    .sotf-detail-preview-controls {
-        bottom: 0.65em;
-        right: 0.65em;
-    }
-
-    .sotf-detail-preview-controls button {
-        align-items: center;
-        background: rgba(10, 14, 18, 0.84);
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        box-shadow: none;
-        color: #62f09b;
-        display: inline-flex;
-        height: 2.2em;
-        justify-content: center;
-        margin: 0;
-        min-width: 2.2em;
-        padding: 0;
-        -webkit-mask-image: none;
-        mask-image: none;
-    }
-
-    .sotf-detail-preview-controls button:hover {
-        border-color: rgba(98, 240, 155, 0.48);
-    }
-
-    .sotf-detail-preview-controls :global(svg) {
-        height: 1.1em;
-        width: 1.1em;
-    }
-
-    .sotf-detail-description,
-    .sotf-detail-facts,
-    .sotf-detail-community,
-    .sotf-detail-install-target,
-    .sotf-detail-dependencies,
-    .sotf-detail-versions,
-    .sotf-detail-footer {
-        background: rgba(18, 18, 18, 0.88);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        box-sizing: border-box;
-        padding: 0.75em;
-    }
-
-    .sotf-detail-section-title {
-        color: #eefcff;
-        font-size: 0.78em;
-        font-weight: 900;
-        letter-spacing: 0.09em;
-        text-transform: uppercase;
-    }
-
-    .sotf-detail-description {
-        flex: 1 1 auto;
-        min-height: 0;
-        overflow-y: auto;
-        text-align: left;
-    }
-
-    .sotf-rich-text {
-        color: #c2ccd5;
-        font-size: 0.92em;
-        line-height: 1.45;
-        margin: 0.55em 0 0;
-        overflow-wrap: anywhere;
-        min-width: 0;
-    }
-
-    .sotf-detail-description-note {
-        color: #8d99a5;
-        display: block;
-        font-size: 0.78em;
-        font-weight: 800;
-        line-height: 1.3;
-        margin-top: 0.5em;
-        text-transform: uppercase;
-    }
-
-    .sotf-detail-description-warning {
-        color: #fdc66d;
-        text-transform: none;
-    }
-
+    .sotf-detail-preview-controls { align-items: center; display: flex; gap: 5px; position: absolute; z-index: 2; }
+    .sotf-detail-preview-count { background: rgba(16, 18, 23, 0.82); border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 6px; color: #eef0f4; font-size: 11px; left: 12px; padding: 6px 8px; top: 12px; }
+    .sotf-detail-preview-count :global(svg) { height: 13px; width: 13px; }
+    .sotf-detail-preview-fallback { color: #bcc3cf; }
+    .sotf-detail-preview-controls { bottom: 12px; right: 12px; }
+    .sotf-detail-preview-controls button { align-items: center; background: rgba(16, 18, 23, 0.88); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 7px; color: #eef0f4; display: inline-flex; height: 32px; justify-content: center; margin: 0; min-height: 0; min-width: 32px; padding: 0; width: 32px; }
+    .sotf-detail-preview-controls button:hover { border-color: var(--accent, #eeb66b); color: var(--accent, #eeb66b); }
+    .sotf-detail-preview-controls :global(svg) { height: 16px; width: 16px; }
+    .sotf-detail-description { flex: 0 0 auto; min-height: 0; min-width: 0; padding: 2px 1px 12px; }
+    .sotf-detail-section-title { color: var(--text-primary, #eef0f4); font-size: 13px; font-weight: 600; line-height: 1.4; }
+    .sotf-rich-text { color: #bec5d1; font-size: 13px; line-height: 1.65; margin: 12px 0 0; min-width: 0; overflow-wrap: anywhere; }
+    .sotf-detail-description-note { color: var(--text-secondary, #9da6b6); display: block; font-size: 12px; line-height: 1.5; margin-top: 8px; }
+    .sotf-detail-description-warning { color: var(--accent, #eeb66b); }
     .sotf-rich-text :global(p),
     .sotf-rich-text :global(ul),
     .sotf-rich-text :global(ol),
@@ -1885,8 +1663,8 @@
     }
 
     .sotf-rich-text :global(a) {
-        color: #78d9f4;
-        font-weight: 800;
+        color: var(--accent, #eeb66b);
+        font-weight: 550;
         overflow-wrap: anywhere;
         text-decoration: underline;
         text-decoration-thickness: 1px;
@@ -1905,7 +1683,7 @@
     }
 
     .sotf-rich-text :global(blockquote) {
-        border-left: 3px solid rgba(98, 240, 155, 0.52);
+        border-left: 3px solid rgba(238, 182, 107, 0.45);
         color: #dce7ee;
         padding: 0.25em 0 0.25em 0.75em;
     }
@@ -1914,7 +1692,7 @@
         background: rgba(5, 7, 9, 0.76);
         border: 1px solid rgba(255, 255, 255, 0.12);
         box-sizing: border-box;
-        color: #d6dde5;
+        color: var(--text-primary, #eef0f4);
         font-size: 0.86em;
         line-height: 1.4;
         max-width: 100%;
@@ -1926,7 +1704,7 @@
     .sotf-rich-text :global(code) {
         background: rgba(255, 255, 255, 0.08);
         border-radius: 4px;
-        color: #e8f4ff;
+        color: var(--text-primary, #eef0f4);
         font-family: Consolas, "Liberation Mono", monospace;
         font-size: 0.92em;
         padding: 0.05em 0.28em;
@@ -1940,12 +1718,12 @@
     }
 
     .sotf-rich-text :global(.store-rich-heading) {
-        color: #eefcff;
-        font-weight: 900;
-        letter-spacing: 0.04em;
+        color: var(--text-primary, #eef0f4);
+        font-weight: 600;
+        letter-spacing: 0;
         line-height: 1.18;
         margin-top: 0.9em;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .sotf-rich-text :global(.store-rich-heading-1),
@@ -2030,11 +1808,11 @@
 
     .sotf-rich-text :global(.store-rich-media-link) {
         align-items: center;
-        background: rgba(120, 217, 244, 0.08);
-        border: 1px solid rgba(120, 217, 244, 0.22);
-        color: #9ee8fb;
+        background: var(--accent-soft, rgba(238, 182, 107, 0.1));
+        border: 1px solid rgba(238, 182, 107, 0.2);
+        color: var(--accent, #eeb66b);
         display: inline-flex;
-        font-weight: 900;
+        font-weight: 600;
         margin-top: 0.42em;
         max-width: 100%;
         overflow-wrap: anywhere;
@@ -2051,20 +1829,20 @@
     }
 
     .sotf-rich-text :global(.store-rich-callout > span) {
-        color: #eefcff;
+        color: var(--text-primary, #eef0f4);
         display: block;
         font-size: 0.76em;
-        font-weight: 900;
+        font-weight: 600;
         margin-bottom: 0.32em;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .sotf-rich-text :global(.store-rich-callout-note) {
-        border-left: 3px solid rgba(120, 217, 244, 0.48);
+        border-left: 3px solid rgba(238, 182, 107, 0.45);
     }
 
     .sotf-rich-text :global(.store-rich-callout-tip) {
-        border-left: 3px solid rgba(98, 240, 155, 0.5);
+        border-left: 3px solid rgba(238, 182, 107, 0.45);
     }
 
     .sotf-rich-text :global(.store-rich-callout-warning) {
@@ -2087,12 +1865,12 @@
     }
 
     .sotf-rich-text :global(.store-rich-disclosure > summary) {
-        color: #eefcff;
+        color: var(--text-primary, #eef0f4);
         cursor: pointer;
         font-size: 0.82em;
-        font-weight: 900;
+        font-weight: 600;
         list-style: none;
-        text-transform: uppercase;
+        text-transform: none;
     }
 
     .sotf-rich-text :global(.store-rich-disclosure > summary::-webkit-details-marker) {
@@ -2100,10 +1878,10 @@
     }
 
     .sotf-rich-text :global(.store-rich-disclosure > summary::before) {
-        color: #62f09b;
+        color: var(--accent, #eeb66b);
         content: "+";
         display: inline-block;
-        font-weight: 900;
+        font-weight: 600;
         margin-right: 0.45em;
         width: 0.8em;
     }
@@ -2129,8 +1907,8 @@
     }
 
     .sotf-rich-text :global(.store-rich-definition-list dt) {
-        color: #eefcff;
-        font-weight: 900;
+        color: var(--text-primary, #eef0f4);
+        font-weight: 600;
     }
 
     .sotf-rich-text :global(.store-rich-definition-list dd) {
@@ -2157,8 +1935,8 @@
     }
 
     .sotf-rich-text :global(th) {
-        color: #eefcff;
-        font-weight: 900;
+        color: var(--text-primary, #eef0f4);
+        font-weight: 600;
     }
 
     .sotf-rich-text :global(hr) {
@@ -2167,609 +1945,106 @@
         margin: 0.85em 0;
     }
 
-    .sotf-detail-facts {
-        display: grid;
-        flex: 0 0 auto;
-        gap: 0.45em 0.65em;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .sotf-detail-facts span,
-    .sotf-detail-install-target span {
-        color: #8d99a5;
-        font-size: 0.78em;
-        font-weight: 800;
-        line-height: 1.25;
-        min-width: 0;
-        overflow: hidden;
-        text-align: left;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .sotf-detail-facts b,
-    .sotf-detail-community-grid b,
-    .sotf-detail-install-target b {
-        color: #d6dde5;
-        display: block;
-        font-weight: 900;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .sotf-detail-community {
-        display: flex;
-        flex: 0 0 auto;
-        flex-direction: column;
-        gap: 0.55em;
-        min-width: 0;
-        text-align: left;
-    }
-
-    .sotf-detail-community-grid {
-        display: grid;
-        gap: 0.45em 0.65em;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        min-width: 0;
-    }
-
-    .sotf-detail-community-grid span {
-        color: #8d99a5;
-        font-size: 0.76em;
-        font-weight: 800;
-        line-height: 1.25;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .sotf-detail-community-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.35em;
-        min-width: 0;
-    }
-
-    .sotf-detail-community-actions button {
-        align-items: center;
-        color: #d6dde5;
-        display: inline-flex;
-        flex: 1 1 8em;
-        gap: 0.35em;
-        justify-content: center;
-        margin: 0;
-        min-height: 2.15em;
-        min-width: 0;
-        padding: 0.35em 0.5em;
-    }
-
-    .sotf-detail-community-actions :global(svg) {
-        flex: 0 0 auto;
-        height: 0.9em;
-        width: 0.9em;
-    }
-
-    .sotf-detail-community small {
-        color: #9aa5af;
-        font-size: 0.74em;
-        font-weight: 800;
-        line-height: 1.25;
-        overflow-wrap: anywhere;
-    }
-
+    .sotf-detail-facts,
+    .sotf-detail-community,
     .sotf-detail-install-target,
     .sotf-detail-dependencies,
     .sotf-detail-versions {
+        background: var(--surface-panel, #171a21);
+        border: 1px solid var(--border-subtle, #2b303a);
+        border-radius: 10px;
+        box-sizing: border-box;
         display: flex;
         flex: 0 0 auto;
         flex-direction: column;
-        gap: 0.55em;
+        gap: 12px;
         min-width: 0;
-        text-align: left;
+        padding: 15px;
     }
-
-    .sotf-detail-install-target > div {
-        display: grid;
-        gap: 0.45em;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .sotf-detail-dependencies {
-        flex: 1 1 auto;
-        min-height: 0;
-        overflow-y: auto;
-    }
-
-    .sotf-detail-dependencies small {
-        color: #9aa5af;
-        font-size: 0.82em;
-        font-weight: 800;
-    }
-
-    .sotf-detail-versions {
-        flex: 0 1 auto;
-        max-height: clamp(170px, 25vh, 310px);
-        min-height: 0;
-        overflow-y: auto;
-    }
-
-    .sotf-detail-versions > small {
-        color: #9aa5af;
-        font-size: 0.82em;
-        font-weight: 800;
-    }
-
-    .sotf-detail-dependency-list {
-        display: grid;
-        gap: 0.4em;
-        min-width: 0;
-    }
-
-    .sotf-detail-dependency-row {
-        background: rgba(255, 255, 255, 0.045);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        color: #d6dde5;
-        display: grid;
-        gap: 0.36em;
-        min-width: 0;
-        overflow-wrap: anywhere;
-        padding: 0.48em 0.58em;
-    }
-
-    .sotf-detail-dependency-installed {
-        border-color: rgba(98, 240, 155, 0.28);
-    }
-
-    .sotf-detail-dependency-available {
-        border-color: rgba(96, 169, 255, 0.28);
-    }
-
-    .sotf-detail-dependency-review {
-        border-color: rgba(255, 192, 92, 0.32);
-    }
-
-    .sotf-detail-dependency-head {
-        align-items: center;
-        display: flex;
-        gap: 0.5em;
-        justify-content: space-between;
-        min-width: 0;
-    }
-
-    .sotf-detail-dependency-head span {
-        color: #eefcff;
-        font-size: 0.84em;
-        font-weight: 900;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .sotf-detail-dependency-head b {
-        color: #62f09b;
-        flex: 0 0 auto;
-        font-size: 0.68em;
-        font-weight: 900;
-        text-transform: uppercase;
-    }
-
-    .sotf-detail-dependency-review .sotf-detail-dependency-head b {
-        color: #ffc05c;
-    }
-
-    .sotf-detail-dependency-row small {
-        color: #9aa5af;
-        font-size: 0.74em;
-        font-weight: 800;
-        line-height: 1.25;
-        overflow-wrap: anywhere;
-    }
-
-    .sotf-detail-dependency-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.35em;
-        min-width: 0;
-    }
-
-    .sotf-detail-dependency-actions button {
-        align-items: center;
-        display: inline-flex;
-        flex: 1 1 7.5em;
-        gap: 0.35em;
-        justify-content: center;
-        margin: 0;
-        min-height: 2.15em;
-        min-width: 0;
-        padding: 0.35em 0.5em;
-    }
-
-    .sotf-detail-dependency-actions :global(svg) {
-        flex: 0 0 auto;
-        height: 0.9em;
-        width: 0.9em;
-    }
-
-    .sotf-detail-version-list {
-        display: grid;
-        gap: 0.42em;
-        min-width: 0;
-    }
-
-    .sotf-detail-version-row {
-        background: rgba(255, 255, 255, 0.045);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        color: #d6dde5;
-        display: grid;
-        gap: 0.32em;
-        min-width: 0;
-        padding: 0.48em 0.58em;
-    }
-
-    .sotf-detail-version-latest {
-        border-color: rgba(98, 240, 155, 0.28);
-    }
-
-    .sotf-detail-version-head {
-        align-items: center;
-        display: flex;
-        gap: 0.5em;
-        justify-content: space-between;
-        min-width: 0;
-    }
-
-    .sotf-detail-version-head span {
-        color: #eefcff;
-        font-size: 0.84em;
-        font-weight: 900;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .sotf-detail-version-head b {
-        color: #62f09b;
-        flex: 0 0 auto;
-        font-size: 0.68em;
-        font-weight: 900;
-        text-transform: uppercase;
-    }
-
+    .sotf-detail-facts { display: grid; gap: 15px 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .sotf-detail-facts span,
+    .sotf-detail-community-grid span,
+    .sotf-detail-install-target span { color: var(--text-secondary, #9da6b6); font-size: 11px; line-height: 1.5; min-width: 0; overflow-wrap: anywhere; }
+    .sotf-detail-facts b,
+    .sotf-detail-community-grid b,
+    .sotf-detail-install-target b { color: var(--text-primary, #eef0f4); display: block; font-size: 12px; font-weight: 500; margin-top: 3px; min-width: 0; overflow-wrap: anywhere; }
+    .sotf-detail-community-grid { display: grid; gap: 14px 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; }
+    .sotf-detail-community-actions,
+    .sotf-detail-dependency-actions { display: flex; flex-wrap: wrap; gap: 7px; min-width: 0; }
+    .sotf-detail-community-actions button,
+    .sotf-detail-dependency-actions button { align-items: center; background: var(--surface-raised, #20242c); border: 1px solid var(--border-subtle, #2b303a); border-radius: 7px; color: var(--text-primary, #eef0f4); display: inline-flex; flex: 1 1 auto; font-size: 11px; gap: 6px; justify-content: center; margin: 0; min-height: 32px; min-width: 0; padding: 6px 9px; }
+    .sotf-detail-community-actions :global(svg),
+    .sotf-detail-dependency-actions :global(svg) { flex: 0 0 auto; height: 13px; width: 13px; }
+    .sotf-detail-community small,
+    .sotf-detail-dependencies > small,
+    .sotf-detail-versions > small { color: var(--text-secondary, #9da6b6); font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
+    .sotf-detail-install-target > div { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .sotf-detail-dependency-list,
+    .sotf-detail-version-list { display: grid; gap: 9px; min-width: 0; }
+    .sotf-detail-dependency-row,
+    .sotf-detail-version-row { background: var(--surface-base, #101217); border: 1px solid var(--border-subtle, #2b303a); border-radius: 7px; display: grid; gap: 8px; min-width: 0; padding: 11px; }
+    .sotf-detail-dependency-installed,
+    .sotf-detail-version-latest { border-color: rgba(136, 183, 155, 0.3); }
+    .sotf-detail-dependency-available { border-color: #3a4352; }
+    .sotf-detail-dependency-review { border-color: rgba(238, 182, 107, 0.3); }
+    .sotf-detail-dependency-head,
+    .sotf-detail-version-head { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; min-width: 0; }
+    .sotf-detail-dependency-head span,
+    .sotf-detail-version-head span { color: var(--text-primary, #eef0f4); font-size: 12px; font-weight: 550; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
+    .sotf-detail-dependency-head b,
+    .sotf-detail-version-head b { color: #9dc7ab; flex: 0 0 auto; font-size: 10px; font-weight: 500; line-height: 1.6; }
+    .sotf-detail-dependency-review .sotf-detail-dependency-head b { color: var(--accent, #eeb66b); }
+    .sotf-detail-dependency-row small,
     .sotf-detail-version-row small,
-    .sotf-detail-version-more {
-        color: #9aa5af;
-        font-size: 0.74em;
-        font-weight: 800;
-        line-height: 1.25;
-        overflow-wrap: anywhere;
-    }
-
-    .sotf-version-rich-text {
-        color: #c2ccd5;
-        font-size: 0.78em;
-        line-height: 1.34;
-        min-width: 0;
-        overflow-wrap: anywhere;
-    }
-
+    .sotf-detail-version-more { color: var(--text-secondary, #9da6b6); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+    .sotf-version-rich-text { color: #bec5d1; font-size: 12px; line-height: 1.55; min-width: 0; overflow-wrap: anywhere; }
     .sotf-version-rich-text :global(p),
     .sotf-version-rich-text :global(ul),
-    .sotf-version-rich-text :global(ol) {
-        margin: 0.36em 0 0;
-    }
-
+    .sotf-version-rich-text :global(ol) { margin: 6px 0 0; }
     .sotf-version-rich-text :global(p:first-child),
     .sotf-version-rich-text :global(ul:first-child),
-    .sotf-version-rich-text :global(ol:first-child) {
-        margin-top: 0;
-    }
-
+    .sotf-version-rich-text :global(ol:first-child) { margin-top: 0; }
     .sotf-version-rich-text :global(ul),
-    .sotf-version-rich-text :global(ol) {
-        padding-left: 1.2em;
+    .sotf-version-rich-text :global(ol) { padding-left: 18px; }
+    .sotf-version-rich-text :global(a) { color: var(--accent, #eeb66b); overflow-wrap: anywhere; }
+    .sotf-version-rich-text :global(code) { background: var(--surface-raised, #20242c); border-radius: 4px; color: var(--text-primary, #eef0f4); font-family: Consolas, "Liberation Mono", monospace; padding: 2px 4px; }
+    .sotf-detail-footer { align-items: center; border-top: 1px solid var(--border-subtle, #2b303a); display: flex; flex: 0 0 auto; gap: 18px; justify-content: space-between; min-width: 0; padding-top: 16px; }
+    .sotf-detail-footer-copy { display: flex; flex: 0 1 auto; flex-direction: column; gap: 4px; min-width: 0; }
+    .sotf-detail-footer-copy small { color: var(--text-secondary, #9da6b6); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+    .sotf-detail-footer-actions { align-items: center; display: flex; flex: 1 1 auto; gap: 10px; justify-content: flex-end; min-width: 0; }
+    .sotf-detail-open-page { background: var(--surface-raised, #20242c); border: 1px solid var(--border-subtle, #2b303a); border-radius: 8px; color: var(--text-primary, #eef0f4); font-size: 12px; min-height: 36px; padding: 8px 12px; }
+
+    @media (max-width: 1100px) {
+        .filter-row { gap: 8px; padding: 10px; }
+        .filter-row select { font-size: 11px; padding-left: 7px; }
+        .sotf-detail-panel { gap: 16px; padding: 18px; }
+        .sotf-detail-grid { gap: 16px; grid-template-columns: minmax(0, 1.35fr) minmax(280px, 1fr); }
+        .sotf-detail-community-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
-
-    .sotf-version-rich-text :global(a) {
-        color: #78d9f4;
-        font-weight: 800;
-        overflow-wrap: anywhere;
+    @media (max-height: 720px) {
+        .mods-page { gap: 9px; }
+        .sotf-embedded-store-preview { gap: 7px; }
+        .sotf-detail-panel { gap: 14px; padding: 18px; }
+        .sotf-detail-media { height: 185px; }
+        .sotf-detail-footer { padding-top: 12px; }
     }
-
-    .sotf-version-rich-text :global(code) {
-        background: rgba(255, 255, 255, 0.08);
-        border-radius: 4px;
-        color: #e8f4ff;
-        font-family: Consolas, "Liberation Mono", monospace;
-        padding: 0.04em 0.22em;
-    }
-
-    .sotf-detail-footer {
-        align-items: stretch;
-        display: grid;
-        flex: 0 0 auto;
-        gap: 0.75em;
-        grid-template-columns: minmax(12em, 0.72fr) minmax(0, 1fr);
-        min-width: 0;
-    }
-
-    .sotf-detail-footer-copy {
-        display: flex;
-        flex-direction: column;
-        gap: 0.3em;
-        justify-content: center;
-        min-width: 0;
-        text-align: left;
-    }
-
-    .sotf-detail-footer-copy small {
-        color: #9aa5af;
-        font-size: 0.78em;
-        font-weight: 800;
-        line-height: 1.25;
-        overflow-wrap: anywhere;
-    }
-
-    .sotf-detail-footer-actions {
-        align-items: stretch;
-        display: grid;
-        gap: 0.55em;
-        grid-template-columns: minmax(0, 1fr) minmax(9em, auto);
-        min-width: 0;
-    }
-
-    .sotf-detail-open-page {
-        color: #d6dde5;
-        min-height: 2.7em;
-    }
-
-    @media (max-height: 820px) {
-        .sotf-detail-backdrop {
-            align-items: stretch;
-            padding: clamp(0.45em, 1.2vh, 0.9em);
-        }
-
-        .sotf-detail-panel {
-            gap: 0.52em;
-            max-height: calc(100vh - clamp(0.7em, 2vh, 1.4em));
-            min-height: 0;
-            padding: clamp(0.56em, 1.1vh, 0.8em);
-        }
-
-        .sotf-detail-header {
-            gap: 0.65em;
-        }
-
-        .sotf-detail-close,
-        .sotf-detail-open-page {
-            min-height: 2.35em;
-            min-width: 7.8em;
-            padding: 0.34em 0.62em;
-        }
-
-        .sotf-detail-grid {
-            gap: 0.52em;
-            grid-template-columns: minmax(0, 1.16fr) minmax(18em, 0.84fr);
-        }
-
-        .sotf-detail-main,
-        .sotf-detail-side {
-            gap: 0.52em;
-        }
-
-        .sotf-detail-media {
-            height: clamp(140px, 24vh, 220px);
-        }
-
-        .sotf-detail-preview-count {
-            left: 0.48em;
-            top: 0.48em;
-        }
-
-        .sotf-detail-preview-controls {
-            bottom: 0.48em;
-            right: 0.48em;
-        }
-
-        .sotf-detail-preview-controls button {
-            height: 1.95em;
-            min-width: 1.95em;
-        }
-
-        .sotf-detail-description,
-        .sotf-detail-facts,
-        .sotf-detail-community,
-        .sotf-detail-install-target,
-        .sotf-detail-dependencies,
-        .sotf-detail-versions,
-        .sotf-detail-footer {
-            padding: 0.55em;
-        }
-
-        .sotf-detail-description {
-            min-height: min(210px, 28vh);
-        }
-
-        .sotf-rich-text {
-            font-size: 0.86em;
-            line-height: 1.36;
-            margin-top: 0.42em;
-        }
-
-        .sotf-rich-text :global(p),
-        .sotf-rich-text :global(ul),
-        .sotf-rich-text :global(ol),
-        .sotf-rich-text :global(blockquote),
-        .sotf-rich-text :global(pre),
-        .sotf-rich-text :global(.store-rich-table-wrap),
-        .sotf-rich-text :global(.store-rich-disclosure),
-        .sotf-rich-text :global(.store-rich-callout),
-        .sotf-rich-text :global(.store-rich-definition-list) {
-            margin-top: 0.46em;
-        }
-
-        .sotf-rich-text :global(.store-rich-media img) {
-            max-height: 260px;
-        }
-
-        .sotf-detail-facts {
-            gap: 0.34em 0.48em;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-        }
-
-        .sotf-detail-community,
-        .sotf-detail-install-target,
-        .sotf-detail-dependencies,
-        .sotf-detail-versions {
-            gap: 0.4em;
-        }
-
-        .sotf-detail-community-grid {
-            gap: 0.32em 0.48em;
-        }
-
-        .sotf-detail-community-actions button,
-        .sotf-detail-dependency-actions button {
-            min-height: 1.95em;
-            padding: 0.3em 0.45em;
-        }
-
-        .sotf-detail-dependency-row,
-        .sotf-detail-version-row {
-            gap: 0.25em;
-            padding: 0.38em 0.46em;
-        }
-
-        .sotf-detail-versions {
-            max-height: clamp(108px, 17vh, 170px);
-        }
-
-        .sotf-version-rich-text {
-            font-size: 0.74em;
-            line-height: 1.28;
-        }
-
-        .sotf-detail-footer {
-            gap: 0.5em;
-            grid-template-columns: minmax(10em, 0.56fr) minmax(0, 1fr);
-        }
-
-        .sotf-detail-footer-copy {
-            gap: 0.2em;
-        }
-
-        .sotf-detail-footer-copy small {
-            font-size: 0.72em;
-            line-height: 1.18;
-        }
-
-        .sotf-detail-footer-actions {
-            gap: 0.42em;
-            grid-template-columns: minmax(0, 1fr) minmax(8em, auto);
-        }
-    }
-
-    @media (max-height: 700px) {
-        .sotf-detail-panel {
-            gap: 0.44em;
-        }
-
-        .sotf-detail-grid {
-            gap: 0.44em;
-        }
-
-        .sotf-detail-main,
-        .sotf-detail-side {
-            gap: 0.44em;
-        }
-
-        .sotf-detail-media {
-            height: clamp(112px, 20vh, 150px);
-        }
-
-        .sotf-detail-description {
-            min-height: min(160px, 25vh);
-        }
-
-        .sotf-detail-community small {
-            display: none;
-        }
-
-        .sotf-detail-versions {
-            max-height: 120px;
-        }
-
-        .sotf-detail-footer {
-            grid-template-columns: 1fr;
-        }
-
-        .sotf-detail-footer-copy {
-            display: none;
-        }
-    }
-
-    @media (max-width: 850px) {
-        .search-input {
-            flex-basis: 100%;
-            min-width: 0;
-        }
-
-        .filter-row {
-            grid-template-columns: 1fr;
-        }
-    }
-
     @media (max-width: 920px) {
-        .sotf-detail-panel {
-            min-height: 0;
-            overflow-y: auto;
-        }
-
-        .sotf-detail-grid,
-        .sotf-detail-footer {
-            grid-template-columns: 1fr;
-            overflow: visible;
-        }
-
-        .sotf-detail-side {
-            overflow: visible;
-        }
+        .sotf-detail-panel { overflow-y: auto; }
+        .sotf-detail-grid { flex: 1 0 auto; grid-template-columns: 1fr; overflow: visible; }
+        .sotf-detail-main,
+        .sotf-detail-side { overflow: visible; padding-right: 0; }
+        .sotf-detail-media { height: 270px; }
+        .sotf-detail-footer { align-items: stretch; flex-direction: column; }
+        .sotf-detail-footer-actions { justify-content: stretch; }
     }
-
-    @media (max-width: 620px) {
-        .sotf-detail-backdrop {
-            padding: 0.45em;
-        }
-
-        .sotf-detail-panel {
-            max-height: calc(100vh - 0.9em);
-            max-width: calc(100vw - 0.9em);
-            padding: 0.62em;
-            width: calc(100vw - 0.9em);
-        }
-
-        .sotf-detail-header,
-        .sotf-detail-footer-actions {
-            grid-template-columns: 1fr;
-        }
-
-        .sotf-detail-header {
-            align-items: stretch;
-            flex-direction: column;
-        }
-
-        .sotf-detail-close,
-        .sotf-detail-open-page {
-            width: 100%;
-        }
-
-        .sotf-detail-facts,
-        .sotf-detail-install-target > div {
-            grid-template-columns: 1fr;
-        }
+    @media (max-width: 780px) {
+        .catalog-heading { flex-basis: 100%; }
+        .filter-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .filter-clear { justify-self: start; }
+        .search-input { flex-basis: 100%; }
+        .sotf-detail-backdrop { padding: 44px 12px 12px; }
+        .sotf-detail-panel { height: calc(100vh - 56px); max-height: calc(100vh - 56px); max-width: calc(100vw - 24px); padding: 16px; }
+        .sotf-detail-title h2 { font-size: 22px; }
+        .sotf-detail-footer-actions { flex-wrap: wrap; }
     }
 </style>

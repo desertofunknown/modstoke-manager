@@ -13,6 +13,10 @@
   import LucideSquare from "~icons/lucide/square";
   import LucideCopy from "~icons/lucide/copy";
   import LucideX from "~icons/lucide/x";
+  import LucideLayoutDashboard from "~icons/lucide/layout-dashboard";
+  import LucideLibrary from "~icons/lucide/library";
+  import LucideCode from "~icons/lucide/code-2";
+  import LucideTrees from "~icons/lucide/trees";
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { currentMonitor, getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
@@ -25,9 +29,9 @@
   };
 
   let tabs: Tab[] = [
-    { id: "main", label: "Main" },
-    { id: "mods", label: "Mods" },
-    { id: "modding", label: "Mod Creation" },
+    { id: "main", label: "Overview" },
+    { id: "mods", label: "Mod library" },
+    { id: "modding", label: "Creator tools" },
   ];
 
   let activeTab: TabId = "main";
@@ -55,9 +59,11 @@
     let nextIndex: number;
     switch (event.key) {
       case "ArrowLeft":
+      case "ArrowUp":
         nextIndex = (index + tabs.length - 1) % tabs.length;
         break;
       case "ArrowRight":
+      case "ArrowDown":
         nextIndex = (index + 1) % tabs.length;
         break;
       case "Home":
@@ -229,7 +235,7 @@
         <img class="window-mark" src="/modstoke-mark.svg" alt="" draggable="false" />
         <span class="window-wordmark" data-tauri-drag-region>
           <span class="window-title" data-tauri-drag-region>Modstoke Manager</span>
-          <span class="window-subtitle" data-tauri-drag-region>For Sons of the Forest <span class="window-credit">by OpenACAI</span></span>
+          <span class="window-credit" data-tauri-drag-region>by OpenACAI</span>
         </span>
       </div>
       <div class="window-controls">
@@ -243,7 +249,17 @@
 
   <div class="workspace" inert={$processing} aria-busy={$processing}>
   <button class="skip-content" on:click={() => document.getElementById(`panel-${activeTab}`)?.focus()}>Skip to content</button>
-  <div class="tabs" role="tablist" aria-label="Main navigation">
+  <aside class="sidebar" aria-label="Workspace">
+    <div class="sidebar-brand">
+      <img src="/modstoke-mark.svg" alt="" draggable="false" />
+      <span>Modstoke<small>Manager</small></span>
+    </div>
+    <div class="game-context">
+      <span class="game-icon"><LucideTrees aria-hidden="true" /></span>
+      <span class="game-label">Sons of the Forest<small>Game workspace</small></span>
+    </div>
+    <span class="navigation-label">Workspace</span>
+  <div class="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical">
     {#each tabs as tab}
       <button
         type="button"
@@ -257,11 +273,19 @@
         on:click={() => selectTab(tab.id)}
         on:keydown={(event) => handleTabKeyDown(event, tab.id)}
       >
-        {tab.label}
+        {#if tab.id === "main"}<LucideLayoutDashboard aria-hidden="true" />{:else if tab.id === "mods"}<LucideLibrary aria-hidden="true" />{:else}<LucideCode aria-hidden="true" />{/if}
+        <span>{tab.label}</span>
       </button>
     {/each}
   </div>
+    <div class="sidebar-footer">
+      <span>by OpenACAI</span>
+      <small>Independent modding tools</small>
+      <small>modstoke.com <span class="planned-site">planned</span></small>
+    </div>
+  </aside>
 
+  <div class="page-workspace">
   <div class="container" id="panel-main" role="tabpanel" aria-labelledby="tab-main" hidden={activeTab !== "main"} tabindex="0">
     {#if activeTab === "main"}
       <Page1 />
@@ -270,14 +294,14 @@
   <div class="container" id="panel-mods" role="tabpanel" aria-labelledby="tab-mods" hidden={activeTab !== "mods"} tabindex="0">
     {#if modsPage}
       {#await modsPage}
-        <div class="page-status" role="status">Loading Mods...</div>
+        <div class="page-status" role="status">Loading mod library…</div>
       {:then module}
         <module.default />
       {:catch error}
         <div class="page-status" role="alert">
-          <strong>Mods could not be loaded.</strong>
+          <strong>The mod library could not be loaded.</strong>
           <p>{pageLoadError(error)}</p>
-          <button type="button" on:click={() => { modsPage = import("./pages/ModHub.svelte"); }}>Retry loading Mods</button>
+          <button type="button" on:click={() => { modsPage = import("./pages/ModHub.svelte"); }}>Retry loading library</button>
         </div>
       {/await}
     {/if}
@@ -285,17 +309,18 @@
   <div class="container" id="panel-modding" role="tabpanel" aria-labelledby="tab-modding" hidden={activeTab !== "modding"} tabindex="0">
     {#if moddingPage}
       {#await moddingPage}
-        <div class="page-status" role="status">Loading Mod Creation...</div>
+        <div class="page-status" role="status">Loading creator tools…</div>
       {:then module}
         <module.default />
       {:catch error}
         <div class="page-status" role="alert">
-          <strong>Mod Creation could not be loaded.</strong>
+          <strong>Creator tools could not be loaded.</strong>
           <p>{pageLoadError(error)}</p>
-          <button type="button" on:click={() => { moddingPage = import("./pages/Modding.svelte"); }}>Retry loading Mod Creation</button>
+          <button type="button" on:click={() => { moddingPage = import("./pages/Modding.svelte"); }}>Retry loading creator tools</button>
         </div>
       {/await}
     {/if}
+  </div>
   </div>
   </div>
   {#if $processing}
@@ -305,195 +330,125 @@
 </main>
 
 <style>
-  .container[hidden] {
-    display: none;
+  .container[hidden] { display: none; }
+
+  .app-frame {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
   }
+
+  .titlebar {
+    align-items: center;
+    background: #0d0f13;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    flex: 0 0 38px;
+    justify-content: space-between;
+    min-width: 0;
+    padding-left: 14px;
+    position: relative;
+    user-select: none;
+    z-index: 0;
+  }
+
+  .titlebar.operation-active { z-index: 101; }
+  .window-brand, .window-wordmark, .window-controls { display: flex; align-items: center; }
+  .window-brand { gap: 8px; pointer-events: none; }
+  .window-mark { width: 20px; height: 20px; }
+  .window-wordmark { gap: 12px; }
+  .window-title { color: #b6bdc9; font-size: 12px; font-weight: 600; }
+  .window-credit { color: #737d8e; font-size: 11px; }
+  .window-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    height: 38px;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    color: #a9b1bf;
+    font-size: 14px;
+  }
+  .window-button.close:enabled:hover { background: #ae353f; color: white; }
 
   .workspace {
     display: flex;
     flex: 1 1 auto;
-    flex-direction: column;
     min-height: 0;
+    min-width: 0;
     position: relative;
     isolation: isolate;
   }
 
-  .skip-content {
-    position: absolute;
-    top: 4px;
-    left: 4px;
-    z-index: 2;
-    transform: translateY(-200vh);
-  }
-
-  .skip-content:focus-visible {
-    transform: none;
-  }
-
-  .tab {
-    border: 0;
-    box-shadow: none;
-    box-sizing: content-box;
-    line-height: inherit;
-    margin: 0;
-    -webkit-mask-image: none;
-    mask-image: none;
-  }
-
-  .tab:not(.activetab):not(:hover) {
-    background: transparent;
-  }
-
-  .tab.activetab {
-    border-bottom: 2px solid var(--focus-color);
-  }
-
-  .tab:focus-visible,
-  .page-status button:focus-visible {
-    outline: 2px solid var(--focus-color);
-    outline-offset: -3px;
-  }
-
-  .page-status {
-    margin: auto;
-    padding: 24px;
-    text-align: center;
-  }
-
-  .page-status p {
-    color: #c4c4c4;
-    overflow-wrap: anywhere;
-  }
-
-  .app-frame {
-    --frame-pad-x: clamp(18px, calc(1.65vw + 0.35vh), 52px);
-    --frame-pad-top: clamp(22px, calc(0.7vw + 1.7vh), 50px);
-    --frame-pad-bottom: clamp(12px, calc(0.55vw + 1.35vh), 32px);
-    --titlebar-height: clamp(58px, 8vh, 82px);
+  .sidebar {
+    background: #12151b;
+    border-right: 1px solid var(--border-subtle);
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    flex: 0 0 184px;
+    padding: 24px 12px 18px;
     min-height: 0;
-    padding:
-      var(--frame-pad-top)
-      var(--frame-pad-x)
-      var(--frame-pad-bottom);
+    overflow-y: auto;
   }
 
-  .titlebar {
-    position: relative;
-    z-index: 0;
+  .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 26px; }
+  .sidebar-brand img { width: 36px; height: 36px; }
+  .sidebar-brand > span { font-size: 20px; line-height: 1.2; font-weight: 700; letter-spacing: -0.6px; }
+  .sidebar-brand small { display: block; margin-top: 4px; color: var(--text-secondary); font-size: 11px; font-weight: 500; letter-spacing: 0.7px; }
+  .game-context { display: flex; align-items: center; gap: 9px; padding: 12px 8px; margin-bottom: 26px; border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); }
+  .game-icon { display: flex; color: #9aab9c; font-size: 23px; }
+  .game-label { color: #d7dce5; font-size: 12px; line-height: 1.4; font-weight: 600; }
+  .game-label small { display: block; color: var(--text-secondary); font-size: 11px; margin-top: 3px; font-weight: 400; }
+  .navigation-label { padding: 0 12px 10px; font-size: 10px; font-weight: 600; letter-spacing: 1.3px; text-transform: uppercase; color: #7d8797; }
+  .tabs { display: flex; flex-direction: column; gap: 5px; }
+  .tab {
     align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    box-shadow: none;
+    color: var(--text-secondary);
     display: flex;
-    flex: 0 0 auto;
-    justify-content: space-between;
-    min-height: var(--titlebar-height);
-    overflow: visible;
-    padding: 0 clamp(8px, 0.72vw, 18px) 0 clamp(8px, 0.82vw, 20px);
-    user-select: none;
-  }
-
-  .window-brand {
-    align-items: center;
-    display: flex;
-    gap: 0.7rem;
-    max-width: min(70vw, 760px);
-    min-width: 0;
-  }
-
-  .titlebar.operation-active {
-    z-index: 101;
-  }
-
-  .window-mark {
-    height: clamp(34px, 5.8vh, 48px);
-    width: clamp(34px, 5.8vh, 48px);
-    pointer-events: none;
-  }
-
-  .window-wordmark {
-    display: flex;
-    flex-direction: column;
-    gap: 0.28rem;
-  }
-
-  .window-title {
-    color: #f2eee7;
-    font-size: clamp(1rem, 1.5vw, 1.3rem);
-    font-weight: 700;
-    letter-spacing: 0.025em;
-    line-height: 1.1;
-  }
-
-  .window-subtitle {
-    color: #bcbcb8;
-    font-size: 0.72rem;
-    line-height: 1.3;
-  }
-
-  .window-credit {
-    color: #f2a64b;
-    margin-left: 0.7rem;
-    white-space: nowrap;
-  }
-
-  .window-controls {
-    align-items: center;
-    display: flex;
-    gap: 4px;
-    flex: 0 0 auto;
-  }
-
-  .window-button {
-    align-items: center;
-    border: 0;
-    display: inline-flex;
-    height: clamp(28px, calc(1.1vw + 1.1vh), 38px);
-    justify-content: center;
+    font-size: 13px;
+    font-weight: 500;
+    gap: 11px;
+    line-height: 1.4;
     margin: 0;
-    padding: 0;
-    width: clamp(34px, calc(1.35vw + 1.2vh), 46px);
-    font-size: 16px;
+    min-height: 42px;
+    padding: 10px 12px;
+    text-align: left;
+    width: 100%;
   }
+  .tab :global(svg) { flex-shrink: 0; width: 18px; height: 18px; }
+  .tab:enabled:hover { color: var(--text-primary); background: var(--surface-raised); border-color: transparent; }
+  .tab.activetab { color: var(--accent); background: var(--accent-soft); border-color: rgba(238, 182, 107, 0.13); }
+  .sidebar-footer { display: flex; flex-direction: column; gap: 5px; margin-top: auto; padding: 32px 10px 0; color: #9ba5b4; font-size: 11px; }
+  .sidebar-footer small { font-size: 10px; color: #7d8797; }
+  .planned-site { color: #77808d; margin-left: 4px; }
 
-  .window-button.close:hover {
-    background: rgba(132, 30, 30, 0.92);
-  }
+  .page-workspace { display: flex; flex: 1 1 0; min-width: 0; min-height: 0; }
+  .skip-content { position: absolute; top: 6px; left: 196px; z-index: 2; transform: translateY(-200vh); }
+  .skip-content:focus-visible { transform: none; }
+  .page-status { margin: auto; padding: 32px; max-width: 480px; text-align: center; background: var(--surface-panel); border: 1px solid var(--border-subtle); border-radius: 12px; }
+  .page-status p { color: var(--text-secondary); overflow-wrap: anywhere; }
 
   @media (max-width: 900px) {
-    .app-frame {
-      --frame-pad-x: 22px;
-      --frame-pad-top: 20px;
-      --frame-pad-bottom: 24px;
-      --titlebar-height: clamp(50px, 7.2vh, 66px);
-    }
-
-    .titlebar {
-      min-height: clamp(50px, 7.2vh, 66px);
-    }
-
-    .window-subtitle {
-      font-size: 0.62rem;
-    }
-  }
-
-  @media (max-height: 780px) {
-    .titlebar {
-      min-height: 46px;
-    }
-  }
-
-  @media (max-height: 720px) {
-    .app-frame {
-      --frame-pad-x: 18px;
-      --frame-pad-top: 16px;
-      --frame-pad-bottom: 10px;
-      --titlebar-height: 48px;
-    }
-
-    .window-subtitle {
-      font-size: 0.68rem;
-    }
+    .sidebar { flex-basis: 160px; padding-left: 8px; padding-right: 8px; }
+    .sidebar-brand { gap: 8px; padding-left: 5px; }
+    .sidebar-brand > span { font-size: 18px; }
+    .sidebar-brand img { width: 30px; height: 30px; }
+    .game-context { padding-left: 5px; gap: 7px; }
+    .game-label { font-size: 11px; }
+    .tab { gap: 9px; font-size: 12px; padding-left: 9px; }
+    .skip-content { left: 170px; }
   }
 </style>
