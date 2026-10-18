@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { processName, processProgress, processing } from './store';
-    import { createEventDispatcher } from 'svelte';
+  import { gameExePath, isPathValid, processName, processProgress, processing } from './store';
+    import { createEventDispatcher, onDestroy } from 'svelte';
     import { ModDatabase, modPreviewUrls, type Mod } from './mods';
     import { storeRichTextPlainText } from './richText';
     import { fallbackPreviewUrl } from './modPreview';
@@ -31,8 +31,21 @@
     let multiplayerDisplayLabel = "";
     let downloadCountLabel = "";
     let isVortexManagedMod = false;
+    let actionBusy = false;
+    let operationError = "";
+    let errorModKey = "";
+    let errorPath = "";
+    let destroyed = false;
 
     const dispatch = createEventDispatcher<{ refreshMods: void; details: Mod }>();
+    onDestroy(() => { destroyed = true; });
+
+    $: currentModKey = mod.mod_id || mod.slug || mod.name;
+    $: if (currentModKey !== errorModKey || $gameExePath !== errorPath) {
+      operationError = "";
+      errorModKey = currentModKey;
+      errorPath = $gameExePath;
+    }
 
     $: isLibrary = mod.type === "Library" || mod.installedMod?.loaderType === "redloader-library";
     $: {
@@ -77,52 +90,76 @@
     $: isVortexManagedMod = mod.installedMod?.installSource === "vortex";
 
     async function update() {
-      if (!mod.installedMod) {
-        return;
-      }
-
-      if (isVortexManagedMod) {
-        await showVortexManagedMessage("update");
-        return;
-      }
-
-      await runOperation(() => ModDatabase.updateMod(mod));
+      if (!mod.installedMod) return;
+      await runOperation("update", selectedMod => ModDatabase.updateMod(selectedMod));
     }
 
     async function uninstall() {
-
-      if (!mod.installedMod) {
-        return;
-      }
-
-      if (isVortexManagedMod) {
-        await showVortexManagedMessage("uninstall");
-        return;
-      }
-
       const installedMod = mod.installedMod;
-      await runOperation(() => ModDatabase.uninstallMod(installedMod));
+      if (!installedMod) return;
+      await runOperation("uninstall", () => ModDatabase.uninstallMod(installedMod));
     }
 
     async function install() {
-      await runOperation(() => ModDatabase.installMod(mod));
+      await runOperation("install", selectedMod => ModDatabase.installMod(selectedMod));
     }
 
-    async function runOperation(operation: () => Promise<void>) {
-      if ($processing || actionsDisabled) return;
-      processing.set(true);
-      processProgress.set(0);
+    type ModAction = "install" | "update" | "uninstall" | "enable" | "disable";
+
+    async function runOperation(action: ModAction, operation: (selectedMod: Mod) => Promise<void>) {
+      if (destroyed || actionBusy || $processing || actionsDisabled || !$isPathValid || !$gameExePath) return;
+      const selectedMod = mod;
+      const installedMod = selectedMod.installedMod;
+      const selectedPath = $gameExePath;
+      let operationStarted = false;
+      actionBusy = true;
+      operationError = "";
+
+      const isCurrentSelection = () => !destroyed && selectedMod === mod && selectedPath === $gameExePath;
 
       try {
-        await operation();
-      } catch (error) {
-        await dialog.message(`${error}`, { title: `${mod.name} operation failed`, kind: "error" });
-      } finally {
-        processing.set(false);
-        processName.set("");
+        if (installedMod?.installSource === "vortex") {
+          await showVortexManagedMessage(selectedMod, action);
+          return;
+        }
+
+        if (action === "uninstall") {
+          const confirmed = await dialog.confirm(
+            `Uninstall ${selectedMod.name} from this installation?\n\n${selectedPath}`,
+            { title: `Uninstall ${selectedMod.name}`, kind: "warning", okLabel: "Uninstall", cancelLabel: "Cancel" }
+          );
+          if (!confirmed) return;
+        }
+
+        if (!isCurrentSelection() || selectedMod.installedMod !== installedMod
+          || selectedMod.installedMod?.installSource === "vortex" || !$isPathValid || $processing || actionsDisabled) return;
+
+        operationStarted = true;
+        processing.set(true);
+        const actionLabel = { install: "Installing", update: "Updating", uninstall: "Removing", enable: "Enabling", disable: "Disabling" }[action];
+        processName.set(`${actionLabel} ${selectedMod.name}...`);
         processProgress.set(0);
-        mod = mod;
-        dispatch("refreshMods");
+        await operation(selectedMod);
+      } catch (error) {
+        if (isCurrentSelection()) {
+          operationError = `${selectedMod.name}: ${error instanceof Error ? error.message : String(error)}`;
+          try {
+            await dialog.message(operationError, { title: `${selectedMod.name} operation failed`, kind: "error" });
+          } catch {
+            // The inline error remains available if the native dialog cannot open.
+          }
+        }
+      } finally {
+        actionBusy = false;
+        if (operationStarted) {
+          processing.set(false);
+          processName.set("");
+          processProgress.set(0);
+          if (isCurrentSelection()) {
+            mod = mod;
+            dispatch("refreshMods");
+          }
+        }
       }
     }
 
@@ -134,13 +171,8 @@
 
       const checked = input.checked;
       input.checked = mod.installedMod.isEnabled;
-      if (isVortexManagedMod) {
-        await showVortexManagedMessage(checked ? "enable" : "disable");
-        return;
-      }
-
       const installedMod = mod.installedMod;
-      await runOperation(() => ModDatabase.toggleMod(installedMod, checked));
+      await runOperation(checked ? "enable" : "disable", () => ModDatabase.toggleMod(installedMod, checked));
     }
 
     function formatDate(dateString: string) {
@@ -173,9 +205,9 @@
       currentPreviewIndex = (currentPreviewIndex + direction + previewUrls.length) % previewUrls.length;
     }
 
-    async function showVortexManagedMessage(action: string) {
+    async function showVortexManagedMessage(selectedMod: Mod, action: string) {
       await dialog.message(
-        `${mod.name} is currently managed by Vortex/Nexus. Use Vortex to ${action} it so deployment metadata stays consistent.`,
+        `${selectedMod.name} is currently managed by Vortex/Nexus. Use Vortex to ${action} it so deployment metadata stays consistent.`,
         {
           title: "Managed by Vortex",
           kind: "info"
@@ -203,14 +235,16 @@
         <input
           type="checkbox"
           checked={!!mod.installedMod?.isEnabled}
-          disabled={isVortexManagedMod || actionsDisabled || $processing}
+          aria-label={`Enable ${mod.name}`}
+          disabled={isVortexManagedMod || actionsDisabled || actionBusy || $processing || !$isPathValid}
           on:change={handleEnabledChange}
         />
         <span>{mod.installedMod?.isEnabled ? "Enabled" : "Disabled"}</span>
       </label>
     {/if}
 
-    <StatusButton disabled={actionsDisabled || $processing} isUpdateAvailable={mod.hasUpdate} isModInstalled={mod.isInstalled} update={update} uninstall={uninstall} install={install} />
+    <StatusButton subject={mod.name} disabled={actionsDisabled || actionBusy || $processing || !$isPathValid} isUpdateAvailable={mod.hasUpdate} isModInstalled={mod.isInstalled} update={update} uninstall={uninstall} install={install} />
+    {#if operationError}<p class="operation-error" role="alert">{operationError}</p>{/if}
   </div>
 {:else}
 <div class="feature-container description">
@@ -289,24 +323,33 @@
           <input
             type="checkbox"
             checked={!!mod.installedMod?.isEnabled}
-            disabled={isVortexManagedMod || actionsDisabled || $processing}
+            aria-label={`Enable ${mod.name}`}
+            disabled={isVortexManagedMod || actionsDisabled || actionBusy || $processing || !$isPathValid}
             on:change={handleEnabledChange}
           />
           <span>{mod.installedMod?.isEnabled ? "Enabled" : "Disabled"}</span>
         </label>
       {/if}
 
-      <StatusButton disabled={actionsDisabled || $processing} isUpdateAvailable={mod.hasUpdate} isModInstalled={mod.isInstalled} update={update} uninstall={uninstall} install={install} />
+      <StatusButton subject={mod.name} disabled={actionsDisabled || actionBusy || $processing || !$isPathValid} isUpdateAvailable={mod.hasUpdate} isModInstalled={mod.isInstalled} update={update} uninstall={uninstall} install={install} />
+      {#if operationError}<p class="operation-error" role="alert">{operationError}</p>{/if}
       {#if showDetailsButton}
-        <button class="details-button" type="button" on:click={showDetails}>Details</button>
+        <button class="details-button" type="button" aria-label={`Details for ${mod.name}`} on:click={showDetails}>Details</button>
       {/if}
-      <button class="open-page-button" type="button" on:click={openModPage}>Open Page</button>
+      <button class="open-page-button" type="button" aria-label={`Open Page for ${mod.name}`} on:click={openModPage}>Open Page</button>
     </div>
   </div>
 </div>
 {/if}
 
 <style>
+  .operation-error {
+    color: #fd9b9d;
+    font-size: 0.85em;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
   .mod-card-row {
     align-items: stretch;
     display: grid;

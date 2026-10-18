@@ -8,8 +8,12 @@
     processing,
   } from "./lib/store";
   import Page1 from "./pages/MainPage.svelte";
+  import OperationStatus from "./lib/OperationStatus.svelte";
+  import LucideMinus from "~icons/lucide/minus";
+  import LucideSquare from "~icons/lucide/square";
+  import LucideCopy from "~icons/lucide/copy";
+  import LucideX from "~icons/lucide/x";
   import { onMount } from "svelte";
-  import { fade } from "svelte/transition";
   import { invoke } from "@tauri-apps/api/core";
   import { currentMonitor, getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 
@@ -86,9 +90,7 @@
   async function toggleMaximizeWindow() {
     try {
       await getCurrentWindow().toggleMaximize();
-      window.setTimeout(() => {
-        void refreshMaximizedState();
-      }, 80);
+      await refreshMaximizedState();
     } catch (error) {
       console.log("Failed to toggle maximize", error);
     }
@@ -176,7 +178,12 @@
     const onResize = () => {
       void refreshMaximizedState();
     };
-    const onContextMenu = (event: MouseEvent) => event.preventDefault();
+    const onContextMenu = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || !target.closest('input, textarea, [contenteditable="true"]')) {
+        event.preventDefault();
+      }
+    };
     window.addEventListener("resize", onResize);
     document.addEventListener("contextmenu", onContextMenu);
 
@@ -186,25 +193,24 @@
 
       processing.set(true);
       processName.set("Initializing...");
+      processProgress.set(0);
 
       try {
-        let steamPath = await invoke("get_steam_path");
-        console.log(steamPath);
-        gameExePath.set(steamPath as string);
-        isPathValid.set(true);
+        const steamPath = await invoke<string | null>("get_steam_path");
+        gameExePath.set(steamPath ?? "");
+        isPathValid.set(!!steamPath);
       } catch (err) {
         console.log(err);
       }
 
       try {
-        let hasDotnet = await invoke("is_dotnet11_installed");
-        console.log(hasDotnet);
-        isDotnetInstalled.set(hasDotnet as boolean);
+        isDotnetInstalled.set(await invoke<boolean>("is_dotnet11_installed"));
       } catch (err) {
         console.log(err);
       } finally {
         processing.set(false);
         processName.set("");
+        processProgress.set(0);
       }
     }
 
@@ -218,7 +224,7 @@
 
 <main class:maximized={isWindowMaximized}>
   <div class="app-frame">
-    <div class="titlebar" data-tauri-drag-region role="presentation" on:mousedown={startWindowDrag}>
+    <div class="titlebar" class:operation-active={$processing} data-tauri-drag-region role="presentation" on:mousedown={startWindowDrag}>
       <div class="window-brand" data-tauri-drag-region>
         <img class="window-mark" src="/modstoke-mark.svg" alt="" draggable="false" />
         <span class="window-wordmark" data-tauri-drag-region>
@@ -227,12 +233,16 @@
         </span>
       </div>
       <div class="window-controls">
-        <button class="window-button" aria-label="Minimize" title="Minimize" on:click={(event) => { event.stopPropagation(); minimizeWindow(); }}>-</button>
-        <button class="window-button" aria-label="Maximize" title="Maximize" on:click={(event) => { event.stopPropagation(); toggleMaximizeWindow(); }}>□</button>
-        <button class="window-button close" aria-label="Close" title="Close" on:click={(event) => { event.stopPropagation(); closeWindow(); }}>x</button>
+        <button class="window-button" aria-label="Minimize" title="Minimize" on:click={(event) => { event.stopPropagation(); minimizeWindow(); }}><LucideMinus aria-hidden="true" /></button>
+        <button class="window-button" aria-label={isWindowMaximized ? "Restore window" : "Maximize"} title={isWindowMaximized ? "Restore window" : "Maximize"} on:click={(event) => { event.stopPropagation(); toggleMaximizeWindow(); }}>
+          {#if isWindowMaximized}<LucideCopy aria-hidden="true" />{:else}<LucideSquare aria-hidden="true" />{/if}
+        </button>
+        <button class="window-button close" aria-label="Close" title="Close" on:click={(event) => { event.stopPropagation(); closeWindow(); }}><LucideX aria-hidden="true" /></button>
       </div>
     </div>
 
+  <div class="workspace" inert={$processing} aria-busy={$processing}>
+  <button class="skip-content" on:click={() => document.getElementById(`panel-${activeTab}`)?.focus()}>Skip to content</button>
   <div class="tabs" role="tablist" aria-label="Main navigation">
     {#each tabs as tab}
       <button
@@ -288,20 +298,36 @@
     {/if}
   </div>
   </div>
-
   {#if $processing}
-    <div class="loading-overlay" transition:fade={{ delay: 0, duration: 150 }}>
-      {$processName}
-      <div class="progress-bar">
-        <div class="progress" style="width: {$processProgress}%"></div>
-      </div>
-    </div>
+    <OperationStatus name={$processName} progress={$processProgress} />
   {/if}
+  </div>
 </main>
 
 <style>
   .container[hidden] {
     display: none;
+  }
+
+  .workspace {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    position: relative;
+    isolation: isolate;
+  }
+
+  .skip-content {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    z-index: 2;
+    transform: translateY(-200vh);
+  }
+
+  .skip-content:focus-visible {
+    transform: none;
   }
 
   .tab {
@@ -319,12 +345,12 @@
   }
 
   .tab.activetab {
-    border-bottom: 2px solid rgba(255, 255, 255, 0.75);
+    border-bottom: 2px solid var(--focus-color);
   }
 
   .tab:focus-visible,
   .page-status button:focus-visible {
-    outline: 2px solid #e5e5e5;
+    outline: 2px solid var(--focus-color);
     outline-offset: -3px;
   }
 
@@ -356,6 +382,8 @@
   }
 
   .titlebar {
+    position: relative;
+    z-index: 0;
     align-items: center;
     display: flex;
     flex: 0 0 auto;
@@ -372,6 +400,10 @@
     gap: 0.7rem;
     max-width: min(70vw, 760px);
     min-width: 0;
+  }
+
+  .titlebar.operation-active {
+    z-index: 101;
   }
 
   .window-mark {
@@ -422,41 +454,11 @@
     margin: 0;
     padding: 0;
     width: clamp(34px, calc(1.35vw + 1.2vh), 46px);
+    font-size: 16px;
   }
 
   .window-button.close:hover {
     background: rgba(132, 30, 30, 0.92);
-  }
-
-  .loading-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.7);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 24px;
-    gap: 20px;
-    z-index: 20;
-  }
-
-  .progress-bar {
-    background: rgba(255, 255, 255, 0.2);
-    width: 70%;
-    height: 20px;
-    border-radius: 2px;
-    overflow: hidden;
-  }
-
-  .progress {
-    height: 100%;
-    background-color: #e5e5e5;
-    transition: width 0.3s;
   }
 
   @media (max-width: 900px) {

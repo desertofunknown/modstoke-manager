@@ -15,6 +15,8 @@
   --app-bottom-safe-area: clamp(34px, 4.2vh, 58px);
   --app-content-max-width: 1680px;
   --app-content-side-rail: clamp(52px, 6vw, 156px);
+  --focus-color: #f2bf70;
+  color-scheme: dark;
 
   font-family: "SonsRoboto", "Arial Narrow", "Segoe UI Condensed", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   font-size: 16px;
@@ -30,40 +32,6 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
-}
-
-@keyframes sotf-chromatic-text {
-  0%,
-  100% {
-    text-shadow:
-      -2px 0 rgba(255, 41, 76, 0.9),
-      2px 0 rgba(51, 238, 255, 0.84),
-      0 0 2px rgba(255, 255, 255, 0.32);
-    filter: none;
-  }
-
-  31% {
-    text-shadow:
-      -3px 0 rgba(255, 41, 76, 0.82),
-      2px 0 rgba(62, 255, 123, 0.62),
-      3px 0 rgba(51, 238, 255, 0.82);
-    filter: contrast(1.08);
-  }
-
-  62% {
-    text-shadow:
-      -1px 0 rgba(255, 214, 43, 0.82),
-      -2.6px 0 rgba(255, 41, 76, 0.72),
-      2.6px 0 rgba(51, 238, 255, 0.84);
-    filter: contrast(1.04);
-  }
-}
-
-.activetab,
-.tab:hover,
-button:hover,
-a:hover {
-  animation: sotf-chromatic-text 0.95s steps(2, end) infinite;
 }
 
 body {
@@ -127,7 +95,8 @@ a {
 
 a:hover {
   color: #ffffff;
-  text-shadow: -0.55px 0 rgba(255, 64, 64, 0.76), 0.55px 0 rgba(66, 232, 255, 0.68);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 h1 {
@@ -135,19 +104,22 @@ h1 {
 }
 
 input,
-button {
-  border-radius: 0;
+button,
+select,
+textarea {
+  border-radius: 6px;
   border: 1px solid rgba(252,252,252,0.14);
   padding: 0.8em 1.2em;
   font-size: 1em;
-  font-weight: 700;
+  font-weight: 600;
   font-family: inherit;
   color: #ffffff;
-  text-transform: uppercase;
   transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
 }
 
-input {
+input,
+select,
+textarea {
   background: rgba(13, 13, 13, 0.92);
   text-transform: none;
 }
@@ -155,17 +127,9 @@ input {
 button {
   cursor: pointer;
   margin-bottom: 0.5em;
-  background:
-    linear-gradient(180deg, rgba(84, 84, 84, 0.88), rgba(42, 42, 42, 0.94)),
-    rgba(49, 49, 49, 0.92);
+  background: #303238;
   border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -12px 18px rgba(0, 0, 0, 0.28);
-  -webkit-mask-image: var(--sons-button-mask);
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-size: 100% 100%;
-  mask-image: var(--sons-button-mask);
-  mask-repeat: no-repeat;
-  mask-size: 100% 100%;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .outline-btn {
@@ -176,24 +140,37 @@ button {
   border: 0px;
 }
 
-.outline-btn:hover {
+.outline-btn:enabled:hover {
   background: rgba(72, 72, 72, 0.9);
 }
 
-button:hover {
+button:enabled:hover {
   border-color: rgba(255, 255, 255, 0.4);
   color: #ffffff;
-  text-shadow: -0.55px 0 rgba(255, 64, 64, 0.76), 0.55px 0 rgba(66, 232, 255, 0.68);
+  background-color: #3d4047;
 }
 
-button:active {
+button:enabled:active {
   border-color: rgba(255, 255, 255, 0.8);
   background-color: rgba(18, 18, 18, 0.96);
 }
 
-input,
-button {
-  outline: none;
+:is(button, input, select, textarea, a, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-color);
+  outline-offset: 2px;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+::selection {
+  color: #fff6e8;
+  background: #78572c;
 }
 
 .tabs {
@@ -228,18 +205,16 @@ button {
   font-size: 1.3em;
 }
 
-.tab:hover {
+.tab:enabled:hover {
   color: #ffffff;
   background: rgba(68, 68, 68, 0.86);
-  text-shadow: -0.55px 0 rgba(255, 64, 64, 0.76), 0.55px 0 rgba(66, 232, 255, 0.68);
 }
 
 .activetab {
   color: #ffffff;
-  background: rgba(72, 72, 72, 0.88);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.75);
+  background: rgba(242, 191, 112, 0.1);
+  border-bottom: 2px solid var(--focus-color);
   border-radius: 0;
-  text-shadow: -0.55px 0 rgba(255, 64, 64, 0.76), 0.55px 0 rgba(66, 232, 255, 0.68);
 }
 
 .uninstall {
@@ -269,6 +244,7 @@ button {
 }
 
 input[type="checkbox"]  { 
+  cursor: pointer;
   float: left; 
   margin: 3px 0 0 -27px;
   padding: 0px;
@@ -296,6 +272,10 @@ input[type="checkbox"]:checked::before {
   transform: scale(1);
 }
 
+input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+}
+
 .generic-input {
   box-sizing: border-box;
   color: #a2a2a2;
@@ -320,6 +300,7 @@ input[type="checkbox"]:checked::before {
 
 ::-webkit-scrollbar {
   width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -332,7 +313,18 @@ input[type="checkbox"]:checked::before {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: #a6a6a6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 main {

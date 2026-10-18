@@ -1,7 +1,32 @@
+import semver from "semver";
+
+interface GithubRelease {
+    tag_name: string;
+    draft: boolean;
+    prerelease: boolean;
+    assets: { name: string }[];
+}
+
+function isGithubRelease(value: unknown): value is GithubRelease {
+    if (typeof value !== "object" || value === null) return false;
+
+    const release = value as Record<string, unknown>;
+    return typeof release.tag_name === "string"
+        && typeof release.draft === "boolean"
+        && typeof release.prerelease === "boolean"
+        && Array.isArray(release.assets)
+        && release.assets.every((asset: unknown) => typeof asset === "object"
+            && asset !== null
+            && "name" in asset
+            && typeof asset.name === "string");
+}
+
 export class GithubInfo {
     private readonly _repo: string;
     private readonly _githubFileName: string;
     private _releases: string[] = [];
+    private _initialised = false;
+    private _fetchPromise: Promise<void> | null = null;
 
     constructor(repo: string, githubFileName: string) {
         this._repo = repo;
@@ -22,37 +47,47 @@ export class GithubInfo {
 
     public async fetch(): Promise<void> {
         if (this.isInitialised()) return;
+        if (this._fetchPromise) return this._fetchPromise;
 
+        this._fetchPromise = this.fetchReleases();
+        try {
+            await this._fetchPromise;
+        } finally {
+            this._fetchPromise = null;
+        }
+    }
+
+    private async fetchReleases(): Promise<void> {
         const headers = new Headers();
         headers.append("User-Agent", "Tauri App");
 
-        let response;
-        try {
-            response = await fetch(this.apiPath, { headers: headers });
-            if (!response.ok) {
-                throw new Error('Failed to fetch data from GitHub');
-            }
-        } catch (error) {
-            console.error(error);
-            return;
+        const response = await fetch(this.apiPath, { headers });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch releases for ${this._repo} (HTTP ${response.status}).`);
         }
 
-        const data = await response.json();
+        let data: unknown;
+        try {
+            data = await response.json();
+        } catch {
+            throw new Error(`GitHub returned invalid release data for ${this._repo}.`);
+        }
 
-        if (data.length <= 0) return;
+        if (!Array.isArray(data) || !data.every(isGithubRelease)) {
+            throw new Error(`GitHub returned invalid release data for ${this._repo}.`);
+        }
 
-        this._releases = [];
+        const releases = data.filter(release => {
+            if (release.draft || release.prerelease) return false;
+            if (!release.assets.some(asset => asset.name === this._githubFileName)) return false;
 
-        data.forEach((release: any) => {
-            const assets = release.assets;
-            if (assets.length <= 0) return;
+            const version = semver.parse(release.tag_name);
+            return version !== null && version.prerelease.length === 0;
+        }).map(release => release.tag_name);
 
-            const version = release.tag_name;
-
-            this._releases.push(version);
-        });
-
-        this._releases.sort().reverse();
+        // Preserve the original tag for GitHub's download URL.
+        this._releases = [...new Set(releases)].sort(semver.rcompare);
+        this._initialised = true;
     }
 
     public async getLatest(): Promise<string | null> {
@@ -63,11 +98,11 @@ export class GithubInfo {
 
     public async getReleases(): Promise<string[]> {
         await this.fetch();
-        return this._releases;
+        return [...this._releases];
     }
 
     public isInitialised(): boolean {
-        return this._releases && this._releases.length > 0;
+        return this._initialised;
     }
 }
 

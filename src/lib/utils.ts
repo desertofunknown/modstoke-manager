@@ -19,6 +19,7 @@ export async function downloadAndInstall(
     downloadName: string,
     installArchive?: (sourcePath: string) => Promise<void>): Promise<void> {
     processName.set(`Downloading ${downloadName}...`);
+    processProgress.set(0);
 
     if (!downloadUrl) {
       throw new Error(`Couldn't find download URL for ${downloadName}!`);
@@ -35,13 +36,14 @@ export async function downloadAndInstall(
         tempPath,
         ({ progress, total }) => {
           downloadProgress += progress;
-          if (total > 0) {
-            processProgress.set(downloadProgress / total * 100);
+          if (Number.isFinite(total) && total > 0 && Number.isFinite(downloadProgress)) {
+            processProgress.set(Math.min(100, Math.max(0, downloadProgress / total * 100)));
           }
         }
       );
 
       processName.set(`Installing ${downloadName}...`);
+      processProgress.set(0);
       if (installArchive) {
         await installArchive(tempPath);
       } else {

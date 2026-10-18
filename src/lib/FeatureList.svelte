@@ -11,5 +11,16 @@
         {#each features as feature}
             <InstallFeature feature={feature} />
         {/each}
+    {:else}
+        <p class="unavailable" role="status">Select a valid game installation to manage loaders and tools.</p>
     {/if}
 </div>
+
+<style>
+    .unavailable {
+        margin: 0;
+        color: #a2a2a2;
+        font-size: 0.9em;
+        text-align: center;
+    }
+</style>

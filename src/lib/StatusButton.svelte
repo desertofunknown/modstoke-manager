@@ -2,6 +2,7 @@
     export let isUpdateAvailable: boolean;
     export let isModInstalled: boolean;
     export let disabled = false;
+    export let subject = "";
 
     export let update: () => Promise<void>;
     export let uninstall: () => Promise<void>;
@@ -10,14 +11,14 @@
 
 {#if isUpdateAvailable}
     <div class="horizontal">
-        <button {disabled} class="update btn-left button-wrapper" on:click={update}>Update</button>
-        <button {disabled} class="uninstall btn-right button-wrapper" on:click={uninstall}>Uninstall</button>
+        <button type="button" {disabled} aria-label={subject ? `Update ${subject}` : "Update"} class="update btn-left button-wrapper" on:click={update}>Update</button>
+        <button type="button" {disabled} aria-label={subject ? `Uninstall ${subject}` : "Uninstall"} class="uninstall btn-right button-wrapper" on:click={uninstall}>Uninstall</button>
     </div>
 {:else}
     {#if isModInstalled}
-        <button {disabled} class="uninstall button-wrapper" on:click={uninstall}>Uninstall</button>
+        <button type="button" {disabled} aria-label={subject ? `Uninstall ${subject}` : "Uninstall"} class="uninstall button-wrapper" on:click={uninstall}>Uninstall</button>
     {:else}
-        <button {disabled} class="install button-wrapper" on:click={install}>Install</button>
+        <button type="button" {disabled} aria-label={subject ? `Install ${subject}` : "Install"} class="install button-wrapper" on:click={install}>Install</button>
     {/if}
 {/if}
 
@@ -26,19 +27,24 @@
     .horizontal {
         display: flex;
         flex-direction: row;
-        align-items: center;
+        flex-wrap: wrap;
+        align-items: stretch;
         gap: 0.35em;
+        min-width: 0;
         width: 100%;
     }
 
-    .horizontal > * {
-        /* margin-right: 1em; */
-        flex: 1;
+    .horizontal > .button-wrapper {
+        flex: 1 1 5.5em;
+        width: auto;
     }
 
     .button-wrapper {
         width: 100%;
-        flex: 0 0 auto;
+        box-sizing: border-box;
+        min-width: 0;
+        overflow-wrap: anywhere;
+        white-space: normal;
         margin-bottom: 0;
     }
 </style>

@@ -2,7 +2,7 @@
     import InstallFeature from "../lib/InstallationComponent.svelte";
     import PathSelector from "../lib/PathSelector.svelte";
     import { openAcaiLoaderFeature, melonFeature } from "../lib/featureInstaller";
-    import { gameExePath, isPathValid, isDotnetInstalled, getDirectoryPath, processProgress, processing } from "../lib/store";
+    import { gameExePath, isPathValid, isDotnetInstalled, getDirectoryPath, processName, processProgress, processing } from "../lib/store";
     import {
         ensureLatestOpenAcaiLoader,
         getInstalledLoaderVersion,
@@ -41,27 +41,25 @@
     }
 
     async function startGame() {
-        const installedVersion = await getInstalledLoaderVersion();
-        if (installedVersion) {
-            processing.set(true);
-            processProgress.set(0);
-
-            try {
+        if ($processing || !$isPathValid) return;
+        const selectedExecutable = $gameExePath;
+        processing.set(true);
+        processName.set("Preparing Sons of the Forest...");
+        processProgress.set(0);
+        try {
+            const installedVersion = await getInstalledLoaderVersion();
+            if (installedVersion) {
                 loaderReport = await ensureLatestOpenAcaiLoader();
                 updateLoaderStatus(loaderReport);
-            } catch (error) {
-                await dialog.message(`Modstoke Loader could not be verified or updated:\n${error}`, {
-                    title: "Loader update failed",
-                    kind: "error"
-                });
-                processing.set(false);
-                return;
             }
-
+            if ($isPathValid && $gameExePath === selectedExecutable) await launchGame();
+        } catch (error) {
+            await dialog.message(`The game could not be prepared or started:\n${error}`, { title: "Start failed", kind: "error" });
+        } finally {
             processing.set(false);
+            processName.set("");
+            processProgress.set(0);
         }
-
-        await launchGame();
     }
 
     async function launchGame() {
@@ -82,6 +80,7 @@
     }
 
     async function refreshLoaderStatus(showProgress = true) {
+        if (showProgress && ($processing || !$isPathValid)) return;
         const requestId = ++loaderStatusRequestId;
         const expectedExePath = $gameExePath;
         lastCheckedLoaderExePath = expectedExePath;
@@ -89,6 +88,7 @@
         if (showProgress) {
             loaderProgressRequestId = requestId;
             processing.set(true);
+            processName.set("Checking Modstoke Loader files...");
             processProgress.set(0);
         }
 
@@ -110,6 +110,8 @@
         } finally {
             if (showProgress && loaderProgressRequestId === requestId) {
                 processing.set(false);
+                processName.set("");
+                processProgress.set(0);
             }
         }
     }
@@ -119,7 +121,9 @@
     }
 
     async function repairLoader() {
+        if ($processing || !$isPathValid) return;
         processing.set(true);
+        processName.set("Preparing Modstoke Loader repair...");
         processProgress.set(0);
 
         try {
@@ -136,6 +140,8 @@
             });
         } finally {
             processing.set(false);
+            processName.set("");
+            processProgress.set(0);
         }
     }
 
@@ -194,15 +200,15 @@
                 <span class="health-detail">{loaderDetail(loaderReport)}</span>
             {/if}
             <div class="health-actions">
-                <button class="tool-button" on:click={() => refreshLoaderStatus(true)}>Check</button>
-                <button class="tool-button install" on:click={repairLoader}>{loaderReport?.needsUpdate ? "Update / Repair" : "Verify / Repair"}</button>
+                <button class="tool-button" disabled={$processing} on:click={() => refreshLoaderStatus(true)}>Check</button>
+                <button class="tool-button install" disabled={$processing} on:click={repairLoader}>{loaderReport?.needsUpdate ? "Update / Repair" : "Verify / Repair"}</button>
             </div>
         </section>
     {/if}
     {#if $isPathValid}
         <div class="main-actions">
-            <button class="tool-button" on:click={openFolder}>Open Game Folder</button>
-            <button class="tool-button" on:click={startGame}>Start Game</button>
+            <button class="tool-button" disabled={$processing} on:click={openFolder}>Open Game Folder</button>
+            <button class="tool-button" disabled={$processing} on:click={startGame}>Start Game</button>
         </div>
     {/if}
     {#if !$isDotnetInstalled}
@@ -307,9 +313,8 @@
     .health-detail {
         color: #c7c7c7;
         font-size: 0.8em;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        overflow-wrap: anywhere;
+        line-height: 1.45;
     }
 
     .health-actions {
@@ -375,10 +380,6 @@
         .brand-subtitle,
         .health-status {
             font-size: 0.78em;
-        }
-
-        .health-detail {
-            display: none;
         }
 
         .loader-health {

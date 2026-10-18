@@ -32,6 +32,7 @@ export abstract class BaseWebInstaller extends BaseZipInstaller {
 
   private async downloadAndInstall(destination: string, selectedVersion: string): Promise<void> {
     processName.set(`Downloading ${this.getName()}...`);
+    processProgress.set(0);
     const downloadUrl = await this.getDownloadUrl(selectedVersion);
 
     if (!downloadUrl) {
@@ -49,13 +50,14 @@ export abstract class BaseWebInstaller extends BaseZipInstaller {
         tempPath,
         ({ progress, total }) => {
           downloadProgress += progress;
-          if (total > 0) {
-            processProgress.set(downloadProgress / total * 100);
+          if (Number.isFinite(total) && total > 0 && Number.isFinite(downloadProgress)) {
+            processProgress.set(Math.min(100, Math.max(0, downloadProgress / total * 100)));
           }
         }
       );
 
       processName.set(`Extracting ${this.getName()}...`);
+      processProgress.set(0);
       await this.unzip(tempPath, destination);
     } finally {
       await TempFileCache.clearCache();

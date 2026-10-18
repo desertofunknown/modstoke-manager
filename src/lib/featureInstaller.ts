@@ -29,11 +29,15 @@ export class FeatureInstaller {
     private _uninstaller: BaseUninstaller;
     private _versionCheckPath: string | null = null;
     private _modeRefreshGeneration = 0;
+    private _remoteVersion: string | null = null;
+    private _installAvailable = false;
+    private _isInstalled = false;
 
     public currentMode: InstallMode = InstallMode.Install;
     public currentModeState: string = "Install";
     public description: string | null = null;
     public displayName: string | null = null;
+    public releaseWarning: string | null = null;
 
     public expectedMode: InstallMode | null = null;
     public additionalFoldersToCreate: string[] | null = null;
@@ -146,23 +150,40 @@ export class FeatureInstaller {
         const generation = ++this._modeRefreshGeneration;
         const exePath = get(gameExePath);
         const gameRoot = await path.dirname(exePath);
-        let mode = InstallMode.Install;
+        const installed = await this._uninstaller.isInstalled(gameRoot);
+        let mode = installed ? InstallMode.Uninstall : InstallMode.Install;
+        let remoteVersion: string | null = null;
+        let installAvailable = false;
+        let releaseWarning: string | null = null;
 
-        if (await this._uninstaller.isInstalled(gameRoot)) {
-            mode = await this.checkRemoteVersion(gameRoot) === VersionResult.Greater
-                ? InstallMode.Update
-                : InstallMode.Uninstall;
+        if (this._installer) {
+            try {
+                remoteVersion = await this._installer.getTargetVersion();
+                // Local debug installers do not have a release version.
+                installAvailable = !!remoteVersion || this._installer instanceof DebugInstaller;
+                if (!installAvailable) {
+                    releaseWarning = `Latest ${this.getName()} release information is unavailable.`;
+                } else if (installed && await this.checkRemoteVersion(gameRoot, remoteVersion) === VersionResult.Greater) {
+                    mode = InstallMode.Update;
+                }
+            } catch (error) {
+                releaseWarning = `Could not check ${this.getName()} releases: ${error}`;
+            }
         }
 
         // Instances survive component remounts, so only the latest scan may publish mode.
         if (generation === this._modeRefreshGeneration && exePath === get(gameExePath)) {
+            this._isInstalled = installed;
+            this._remoteVersion = remoteVersion;
+            this._installAvailable = installAvailable;
+            this.releaseWarning = releaseWarning;
             this.setMode(mode);
         }
 
         return mode;
     }
 
-    public async checkRemoteVersion(gameRoot?: string): Promise<VersionResult | null> {
+    public async checkRemoteVersion(gameRoot?: string, targetVersion?: string | null): Promise<VersionResult | null> {
         if(!this._versionCheckPath)
         {
             return null;
@@ -174,7 +195,7 @@ export class FeatureInstaller {
             return null;
         }
 
-        let remoteVersion = await this._installer?.getTargetVersion();
+        let remoteVersion = targetVersion === undefined ? await this._installer?.getTargetVersion() : targetVersion;
         if(!remoteVersion)
         {
             return null;
@@ -221,20 +242,15 @@ export class FeatureInstaller {
     }
 
     public async canDoAction(mode: InstallMode = this.getMode()): Promise<boolean>{
-        if(this.expectedMode === null)
-        {
-            return true;
-        }
-
-        if(this.expectedMode !== mode){
+        if(this.expectedMode !== null && this.expectedMode !== mode){
             return false;
         }
 
-        return true;
+        return mode === InstallMode.Uninstall ? this._isInstalled : this._installAvailable;
     }
 
     public async getRemoteVersionString(withPrefix: boolean): Promise<string | null> {
-        let version = await this._installer?.getTargetVersion();
+        const version = this._remoteVersion;
         if(!version)
         {
             return null;

@@ -89,6 +89,7 @@
     type InstallPlacement = "auto" | "bepinex-plugin" | "redloader-mod" | "redloader-library" | "manual-review";
     type VersionComparison = "same" | "remote-newer" | "local-newer" | "different" | "unknown";
     type DetailSectionTarget = "description" | "files" | "dependencies" | "plan" | "changelog" | "deployment";
+    type DetailLoadSection = "description" | "files" | "changelog";
     type NexusFileListFilter = "all" | "main" | "review" | "selected";
     type NexusSurfaceTab = "description" | "files" | "posts" | "images" | "bugs";
     type NexusSurfaceLink = {
@@ -177,6 +178,8 @@
     };
 
     let session: NexusSession = { is_connected: false };
+    let nexusSessionGeneration = 0;
+    let isDisconnecting = false;
     let apiKey = "";
     let mods: NexusMod[] = [];
     let knownNexusDetails: Record<number, NexusMod> = {};
@@ -237,7 +240,12 @@
     let detailDependenciesFirst = false;
     let hasActiveNexusFilters = false;
     let isLoading = false;
-    let isDetailLoading = false;
+    let catalogRequestId = 0;
+    let isCatalogLoading = false;
+    let catalogLoadingMessage = "";
+    let catalogError = "";
+    let detailLoadingSections: DetailLoadSection[] = [];
+    let detailErrors: Record<DetailLoadSection, string> = { description: "", files: "", changelog: "" };
     let status = "";
     let vortexStagingPath: string | null = null;
     let selectedMod: NexusMod | null = null;
@@ -351,6 +359,7 @@
     const NEXUS_SORT_MODES: NexusSortMode[] = ["attention", "updated", "downloads", "endorsements", "name", "version"];
     const INSTALLED_SORT_MODES: InstalledSortMode[] = ["attention", "name", "source", "location", "state", "version"];
     let nextManualRefreshAt = 0;
+    $: isDetailLoading = detailLoadingSections.length > 0;
     $: manualRefreshButtonLabel = refreshCooldownSeconds > 0 ? `Refresh ${refreshCooldownSeconds}s` : "Refresh";
     $: manualRefreshButtonTitle = refreshCooldownSeconds > 0
         ? `Manual Nexus refresh available in ${refreshCooldownSeconds}s`
@@ -407,6 +416,8 @@
         selectedModDetails;
         selectedNexusFile;
         selectedChangelogs;
+        detailErrors.description;
+        detailLoadingSections;
         selectedDetailDescription = selectedDetailDescriptionText();
         selectedDetailDescriptionHtml = selectedDetailDescriptionMarkup();
         selectedDetailDescriptionCanToggle = shouldOfferDetailDescriptionToggle(selectedDetailDescription, selectedDetailDescriptionSource());
@@ -494,7 +505,9 @@
         visible: catalogMode === "online" ? visibleNexusMods.length : visibleInstalledEntries.length,
         total: catalogMode === "online" ? mods.length : installedCount,
         mode: catalogMode === "online" ? viewLabel(selectedView) : "Installed",
-        note: nexusSummaryNote(),
+        note: catalogMode === "online" && catalogError
+            ? mods.length > 0 ? "Showing retained results" : "Catalog unavailable"
+            : catalogMode === "online" && isCatalogLoading ? "Loading catalog" : nexusSummaryNote(),
         activeFilters: (catalogMode === "online" && selectedNexusCategory !== "all")
             || selectedInstallFilter !== "all"
             || selectedModTypeFilter !== "all",
@@ -532,6 +545,7 @@
         visibleNexusMods.length;
         visibleInstalledEntries.length;
         hasActiveNexusFilters;
+        catalogError;
         const emptyState = buildNexusEmptyState();
         nexusEmptyTitle = emptyState.title;
         nexusEmptyDetail = emptyState.detail;
@@ -688,9 +702,15 @@
     $: selectedFileSizeLabel = selectedNexusFile ? formatSizeKb(selectedNexusFile.size) : "-";
     $: selectedFileReviewCount = selectedModFiles.filter(isReviewNexusFile).length;
     $: selectedFileRecommendedCount = selectedModFiles.filter(file => isMainNexusFileChoice(file, recommendedNexusFileId)).length;
-    $: fileChoiceReadinessText = describeFileChoiceReadiness(selectedModFiles.length, selectedFileRecommendedCount, selectedFileReviewCount, isDetailLoading);
+    $: fileChoiceReadinessText = detailErrors.files
+        ? "Files unavailable"
+        : describeFileChoiceReadiness(selectedModFiles.length, selectedFileRecommendedCount, selectedFileReviewCount, detailLoadingSections.includes("files"));
     $: selectedFileReadinessText = describeSelectedFileReadiness(selectedNexusFile, recommendedNexusFileId, selectedModFiles.length);
-    $: fileReviewReadinessText = describeFileReviewReadiness(selectedModFiles.length, selectedFileReviewCount);
+    $: fileReviewReadinessText = detailErrors.files
+        ? "Files need a retry"
+        : detailLoadingSections.includes("files")
+            ? "Loading files"
+            : describeFileReviewReadiness(selectedModFiles.length, selectedFileReviewCount);
     $: {
         selectedNexusFile;
         recommendedNexusFileId;
@@ -744,6 +764,8 @@
         session.is_connected;
         session.rate_limit;
         status;
+        catalogError;
+        isCatalogLoading;
         catalogMode;
         selectedInstallFilter;
         visibleNexusMods.length;
@@ -788,7 +810,6 @@
         if (isDestroyed) return;
 
         if (session.is_connected) {
-            applyNexusLocalCatalogCache();
             await loadMods();
         }
 
@@ -797,6 +818,8 @@
 
     onDestroy(() => {
         isDestroyed = true;
+        nexusSessionGeneration += 1;
+        catalogRequestId += 1;
         inventoryRequestId += 1;
         detailGeneration += 1;
         clearNestedDependencyCheck();
@@ -911,9 +934,13 @@
 
 
     async function refreshSession() {
+        const generation = nexusSessionGeneration;
         try {
-            session = await getNexusSession();
+            const nextSession = await getNexusSession();
+            if (isDestroyed || generation !== nexusSessionGeneration) return;
+            session = nextSession;
         } catch (error) {
+            if (isDestroyed || generation !== nexusSessionGeneration) return;
             const message = `${error}`;
             session = {
                 is_connected: false,
@@ -924,6 +951,15 @@
 
     function isTauriBridgeError(message: string): boolean {
         return message.includes("__TAURI_IPC__") || message.includes("reading 'invoke'");
+    }
+
+    function isCurrentNexusSession(generation: number): boolean {
+        return !isDestroyed && !isDisconnecting && session.is_connected && generation === nexusSessionGeneration;
+    }
+
+    function nexusRequestError(error: unknown): string {
+        const message = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").trim();
+        return message.length > 280 ? `${message.slice(0, 277)}...` : message || "The request could not be completed. Try again.";
     }
 
     function loadNexusUiPreferences() {
@@ -1188,20 +1224,25 @@
 
         isLoading = true;
         status = "Validating Nexus account...";
+        const generation = nexusSessionGeneration;
 
         try {
-            session = await saveNexusApiKey(apiKey);
+            const nextSession = await saveNexusApiKey(apiKey);
+            if (isDestroyed || generation !== nexusSessionGeneration) return;
+            session = nextSession;
             apiKey = "";
-            applyNexusLocalCatalogCache();
             await loadMods();
         } catch (error) {
+            if (isDestroyed || generation !== nexusSessionGeneration) return;
             await dialog.message(`${error}`, {
                 title: "Nexus account error",
                 kind: "error"
             });
         } finally {
-            status = "";
-            isLoading = false;
+            if (!isDestroyed && generation === nexusSessionGeneration) {
+                status = "";
+                isLoading = false;
+            }
         }
     }
 
@@ -1233,20 +1274,25 @@
         }
 
         status = "Validating approved Nexus session...";
+        const generation = nexusSessionGeneration;
 
         try {
-            session = await saveNexusApiKey(payload.data.api_key);
-            applyNexusLocalCatalogCache();
+            const nextSession = await saveNexusApiKey(payload.data.api_key);
+            if (isDestroyed || generation !== nexusSessionGeneration) return;
+            session = nextSession;
             await loadMods();
         } catch (error) {
+            if (isDestroyed || generation !== nexusSessionGeneration) return;
             await dialog.message(`${error}`, {
                 title: "Nexus account error",
                 kind: "error"
             });
         } finally {
-            cleanupSso();
-            status = "";
-            isLoading = false;
+            if (!isDestroyed && generation === nexusSessionGeneration) {
+                cleanupSso();
+                status = "";
+                isLoading = false;
+            }
         }
     }
 
@@ -1347,7 +1393,7 @@
     }
 
     async function maybeAutoRefreshNexusCatalog() {
-        if (!session.is_connected || isLoading || nexusCatalogAutoRefreshInFlight) {
+        if (!isCurrentNexusSession(nexusSessionGeneration) || isLoading || isCatalogLoading || nexusCatalogAutoRefreshInFlight) {
             return;
         }
 
@@ -1356,58 +1402,85 @@
             return;
         }
 
+        const requestId = ++catalogRequestId;
+        const generation = nexusSessionGeneration;
+        const view = selectedView;
+        const isCurrent = () => isCurrentNexusSession(generation) && requestId === catalogRequestId && view === selectedView;
         nexusCatalogAutoRefreshInFlight = true;
         try {
             const response = await fetchNexusSotfMods("all");
-            nexusLatestApiRowCount = response.mods.length;
+            if (!isCurrent()) return;
             const rememberedRows = persistNexusLocalCatalog(response.mods);
-            if (selectedView === "all") {
+            if (view === "all") {
                 mods = mergeNexusMods([...rememberedRows, ...mods]);
+                nexusLatestApiRowCount = response.mods.length;
+                nexusCatalogLoadedAt = Date.now();
+                nexusCatalogUsedLocalFallback = false;
+                catalogError = "";
             }
             nexusCategories = response.categories;
-            nexusCatalogLoadedAt = Date.now();
-            nexusCatalogUsedLocalFallback = false;
             session = {
                 ...session,
                 rate_limit: response.rate_limit
             };
         } catch (error) {
+            if (!isCurrent()) return;
             console.log("Background Nexus catalog sync failed", error);
-            nexusCatalogUsedLocalFallback = (readNexusLocalCatalog()?.mods.length ?? 0) > 0;
+            if (view === "all") {
+                catalogError = nexusRequestError(error);
+                nexusCatalogUsedLocalFallback = mods.length > 0;
+            }
         } finally {
-            nexusCatalogAutoRefreshInFlight = false;
+            if (isCurrent()) nexusCatalogAutoRefreshInFlight = false;
         }
     }
 
     async function disconnect() {
+        if (isDisconnecting) return;
+        isDisconnecting = true;
+        nexusSessionGeneration += 1;
+        catalogRequestId += 1;
+        isLoading = false;
+        status = "";
+        isCatalogLoading = false;
+        catalogLoadingMessage = "";
+        nexusCatalogAutoRefreshInFlight = false;
+        activeCatalogPreviewLoadId = null;
+        catalogPreviewLoadNotices = {};
+        closeModDetails();
         cleanupSso();
         cleanupManualRefreshCooldown();
         nextManualRefreshAt = 0;
-        await clearNexusApiKey();
-        session = { is_connected: false };
-        mods = [];
-        knownNexusDetails = {};
-        knownNexusPreviewUrls = {};
-        catalogPreviewCacheVersion += 1;
-        nexusCategories = [];
-        nexusCatalogLoadedAt = null;
-        nexusLatestApiRowCount = 0;
-        nexusCatalogUsedLocalFallback = false;
-        endorsements = [];
-        endorsementsLoaded = false;
-        trackedMods = [];
-        trackedModsLoaded = false;
+        try {
+            await clearNexusApiKey();
+            if (isDestroyed) return;
+            session = { is_connected: false };
+            mods = [];
+            knownNexusDetails = {};
+            knownNexusPreviewUrls = {};
+            catalogPreviewCacheVersion += 1;
+            nexusCategories = [];
+            nexusCatalogLoadedAt = null;
+            nexusLatestApiRowCount = 0;
+            nexusCatalogUsedLocalFallback = false;
+            catalogError = "";
+            endorsements = [];
+            endorsementsLoaded = false;
+            trackedMods = [];
+            trackedModsLoaded = false;
+        } catch (error) {
+            if (!isDestroyed) {
+                await dialog.message(nexusRequestError(error), { title: "Nexus disconnect", kind: "error" });
+            }
+        } finally {
+            if (!isDestroyed) isDisconnecting = false;
+        }
     }
 
     async function loadMods(view: NexusView = selectedView, forceRefresh = false) {
-        selectedView = view;
-        if (!session.is_connected) {
+        if (!isCurrentNexusSession(nexusSessionGeneration) || (isCatalogLoading && view === selectedView)) {
             return;
         }
-
-        const isAllCatalog = selectedView === "all";
-        const localRows = isAllCatalog ? applyNexusLocalCatalogCache() : [];
-        nexusCatalogUsedLocalFallback = false;
 
         if (forceRefresh) {
             const now = Date.now();
@@ -1422,8 +1495,22 @@
             beginManualRefreshCooldown(now);
         }
 
-        isLoading = true;
-        status = forceRefresh
+        const requestId = ++catalogRequestId;
+        const generation = nexusSessionGeneration;
+        const isCurrent = () => isCurrentNexusSession(generation) && requestId === catalogRequestId && view === selectedView;
+        if (view !== selectedView) {
+            mods = [];
+            nexusCatalogLoadedAt = null;
+            nexusLatestApiRowCount = 0;
+            nexusCatalogUsedLocalFallback = false;
+            catalogError = "";
+        }
+        selectedView = view;
+        const isAllCatalog = view === "all";
+        const localRows = isAllCatalog ? applyNexusLocalCatalogCache() : [];
+        nexusCatalogAutoRefreshInFlight = false;
+        isCatalogLoading = true;
+        catalogLoadingMessage = forceRefresh
             ? "Refreshing Nexus catalog..."
             : localRows.length > 0
                 ? "Syncing Nexus catalog..."
@@ -1431,37 +1518,42 @@
 
         try {
             await refreshInventory();
-            const response = await fetchNexusSotfMods(selectedView, { force: forceRefresh });
+            if (!isCurrent()) return;
+            const response = await fetchNexusSotfMods(view, { force: forceRefresh });
+            if (!isCurrent()) return;
             nexusLatestApiRowCount = response.mods.length;
             const rememberedRows = persistNexusLocalCatalog(response.mods);
             mods = isAllCatalog ? rememberedRows : response.mods;
             nexusCategories = response.categories;
             nexusCatalogLoadedAt = Date.now();
+            nexusCatalogUsedLocalFallback = false;
+            catalogError = "";
             session = {
                 ...session,
                 rate_limit: response.rate_limit
             };
-            await refreshEndorsements(forceRefresh);
-            await refreshTrackedMods(forceRefresh);
-            await maybeAutoEndorseInstalledVortexMods();
         } catch (error) {
+            if (!isCurrent()) return;
+            catalogError = nexusRequestError(error);
             const cachedRows = isAllCatalog ? applyNexusLocalCatalogCache() : [];
-            if (cachedRows.length > 0) {
-                nexusCatalogUsedLocalFallback = true;
-                return;
-            }
-
-            await dialog.message(`${error}`, {
-                title: "Nexus Mods error",
-                kind: "error"
-            });
+            nexusCatalogUsedLocalFallback = cachedRows.length > 0;
         } finally {
-            status = "";
-            isLoading = false;
+            if (isCurrent()) {
+                catalogLoadingMessage = "";
+                isCatalogLoading = false;
+            }
         }
+
+        if (!isCurrent() || catalogError) return;
+        await refreshEndorsements(forceRefresh);
+        if (!isCurrent()) return;
+        await refreshTrackedMods(forceRefresh);
+        if (!isCurrent()) return;
+        await maybeAutoEndorseInstalledVortexMods();
     }
 
     async function refreshEndorsements(forceRefresh = false) {
+        const generation = nexusSessionGeneration;
         if (!session.is_connected) {
             endorsements = [];
             endorsementsLoaded = false;
@@ -1470,6 +1562,7 @@
 
         try {
             const response = await fetchNexusUserEndorsements({ force: forceRefresh });
+            if (!isCurrentNexusSession(generation)) return;
             endorsements = response.endorsements.filter(endorsement =>
                 !endorsement.game_domain_name || endorsement.game_domain_name.toLowerCase() === "sonsoftheforest"
             );
@@ -1479,12 +1572,14 @@
                 rate_limit: response.rate_limit
             };
         } catch (error) {
+            if (!isCurrentNexusSession(generation)) return;
             console.log("Failed to refresh Nexus endorsements", error);
             endorsementsLoaded = false;
         }
     }
 
     async function refreshTrackedMods(forceRefresh = false) {
+        const generation = nexusSessionGeneration;
         if (!session.is_connected) {
             trackedMods = [];
             trackedModsLoaded = false;
@@ -1493,6 +1588,7 @@
 
         try {
             const response = await fetchNexusUserTrackedMods({ force: forceRefresh });
+            if (!isCurrentNexusSession(generation)) return;
             trackedMods = response.tracked_mods.filter(tracked =>
                 !tracked.game_domain_name || tracked.game_domain_name.toLowerCase() === "sonsoftheforest"
             );
@@ -1502,6 +1598,7 @@
                 rate_limit: response.rate_limit
             };
         } catch (error) {
+            if (!isCurrentNexusSession(generation)) return;
             console.log("Failed to refresh Nexus tracked mods", error);
             trackedModsLoaded = false;
         }
@@ -1961,15 +2058,17 @@
         event.preventDefault();
         event.stopPropagation();
 
-        if (activeCatalogPreviewLoadId === mod.mod_id) {
+        if (!isCurrentNexusSession(nexusSessionGeneration) || activeCatalogPreviewLoadId === mod.mod_id) {
             return;
         }
 
+        const generation = nexusSessionGeneration;
         activeCatalogPreviewLoadId = mod.mod_id;
         setCatalogPreviewNotice(mod.mod_id, "Loading");
 
         try {
             const details = await fetchNexusModDetails(mod.mod_id);
+            if (!isCurrentNexusSession(generation)) return;
             const mergedDetails = {
                 ...mod,
                 ...details,
@@ -1990,9 +2089,9 @@
             };
             rememberNexusPreviewUrls(mod.mod_id, previewUrls);
         } catch {
-            setCatalogPreviewNotice(mod.mod_id, "Preview failed");
+            if (isCurrentNexusSession(generation)) setCatalogPreviewNotice(mod.mod_id, "Preview failed");
         } finally {
-            if (activeCatalogPreviewLoadId === mod.mod_id) {
+            if (isCurrentNexusSession(generation) && activeCatalogPreviewLoadId === mod.mod_id) {
                 activeCatalogPreviewLoadId = null;
             }
         }
@@ -2101,11 +2200,13 @@
     }
 
     function selectedDetailDescriptionText(): string {
-        return plainText(selectedDetailDescriptionSource()) || NEXUS_DESCRIPTION_FALLBACK;
+        return plainText(selectedDetailDescriptionSource()) || (detailErrors.description
+            ? "Retry the description or open the Nexus page to review the author's instructions."
+            : detailLoadingSections.includes("description") ? "Loading the mod description..." : NEXUS_DESCRIPTION_FALLBACK);
     }
 
     function selectedDetailDescriptionMarkup(): string {
-        return renderNexusRichText(selectedDetailDescriptionSource(), NEXUS_DESCRIPTION_FALLBACK);
+        return renderNexusRichText(selectedDetailDescriptionSource(), selectedDetailDescriptionText());
     }
 
     function shouldOfferDetailDescriptionToggle(description: string, source?: string): boolean {
@@ -2699,8 +2800,8 @@
     }
 
     async function openModDetails(mod: NexusMod, options: { pushCurrent?: boolean } = {}) {
-        const generation = ++detailGeneration;
-        const isCurrent = () => generation === detailGeneration && selectedMod === mod;
+        if (!isCurrentNexusSession(nexusSessionGeneration)) return;
+        detailGeneration += 1;
         if (options.pushCurrent && selectedMod && selectedMod.mod_id !== mod.mod_id) {
             detailBackStack = [...detailBackStack, selectedModDetails ?? selectedMod].slice(-8);
         }
@@ -2717,61 +2818,92 @@
         selectedDependencyMessage = "";
         clearNestedDependencyCheck();
         selectedChangelogs = [];
-        isDetailLoading = true;
+        detailErrors = { description: "", files: "", changelog: "" };
+        detailLoadingSections = [];
+
+        await Promise.all([
+            loadDetailSection("description"),
+            loadDetailSection("files"),
+            loadDetailSection("changelog")
+        ]);
+    }
+
+    async function loadDetailSection(section: DetailLoadSection, forceRefresh = false) {
+        const mod = selectedMod;
+        if (!mod || !isCurrentNexusSession(nexusSessionGeneration) || detailLoadingSections.includes(section)) return;
+
+        const generation = detailGeneration;
+        const sessionGeneration = nexusSessionGeneration;
+        const isCurrent = () => isCurrentNexusSession(sessionGeneration) && generation === detailGeneration && selectedMod === mod;
+        detailLoadingSections = [...detailLoadingSections, section];
 
         try {
-            const [detailResponse, fileResponse, changelogResponse] = await Promise.all([
-                fetchNexusModDetails(mod.mod_id)
-                    .then(details => ({ details, fetched: true }))
-                    .catch(() => ({ details: mod, fetched: false })),
-                fetchNexusModFiles(mod.mod_id),
-                fetchNexusModChangelogs(mod.mod_id).catch(() => ({ changelogs: [], rate_limit: session.rate_limit ?? {} }))
-            ]);
-            if (!isCurrent()) {
-                return;
-            }
-            const mergedDetails = {
-                ...mod,
-                ...detailResponse.details,
-                mod_id: detailResponse.details.mod_id ?? mod.mod_id
-            };
-            const recommendedFileVersion = preferredNexusFileVersion(fileResponse.files);
-            selectedModDetails = recommendedFileVersion
-                ? { ...mergedDetails, version: recommendedFileVersion }
-                : mergedDetails;
-            if (detailResponse.fetched) {
+            let dependencyFileId: number | null = null;
+            if (section === "description") {
+                const details = await fetchNexusModDetails(mod.mod_id, { force: forceRefresh });
+                if (!isCurrent()) return;
+                const mergedDetails = { ...selectedModDetails, ...details, mod_id: details.mod_id ?? mod.mod_id };
+                const fileVersion = preferredNexusFileVersion(selectedModFiles);
+                selectedModDetails = fileVersion ? { ...mergedDetails, version: fileVersion } : mergedDetails;
                 rememberNexusDetails(selectedModDetails);
+            } else if (section === "files") {
+                const response = await fetchNexusModFiles(mod.mod_id, { force: forceRefresh });
+                if (!isCurrent()) return;
+                const previousFileId = selectedFileId;
+                selectedModFiles = response.files;
+                const preferredFile = response.files.find(file => file.file_id === previousFileId)
+                    ?? pickRecommendedNexusFile(response.files)
+                    ?? response.files[0]
+                    ?? null;
+                selectedFileId = preferredFile?.file_id ?? null;
+                const fileVersion = preferredNexusFileVersion(response.files);
+                if (fileVersion && selectedModDetails) {
+                    selectedModDetails = { ...selectedModDetails, version: fileVersion };
+                    if (knownNexusDetails[mod.mod_id]) rememberNexusDetails(selectedModDetails);
+                }
+                session = { ...session, rate_limit: response.rate_limit };
+                if (selectedFileId !== previousFileId) dependencyFileId = selectedFileId;
+            } else {
+                const response = await fetchNexusModChangelogs(mod.mod_id, { force: forceRefresh });
+                if (!isCurrent()) return;
+                selectedChangelogs = response.changelogs.slice(0, 5);
             }
-            const recommendedFile = pickRecommendedNexusFile(fileResponse.files) ?? fileResponse.files[0] ?? null;
-            const fetchedChangelogs = changelogResponse.changelogs.slice(0, 5);
-            selectedModFiles = fileResponse.files;
-            selectedChangelogs = fetchedChangelogs;
-            selectedFileId = recommendedFile?.file_id ?? null;
+
+            detailErrors = { ...detailErrors, [section]: "" };
             rememberNexusPreviewUrls(
                 mod.mod_id,
-                catalogPreviewUrlsFromLoadedDetails(selectedModDetails, recommendedFile, fetchedChangelogs)
+                catalogPreviewUrlsFromLoadedDetails(
+                    selectedModDetails ?? mod,
+                    selectedModFiles.find(file => file.file_id === selectedFileId) ?? null,
+                    selectedChangelogs
+                )
             );
-            session = {
-                ...session,
-                rate_limit: fileResponse.rate_limit
-            };
-
-            if (selectedFileId !== null) {
-                await loadDependenciesForFile(selectedFileId);
+            if (dependencyFileId !== null) {
+                void loadDependenciesForFile(dependencyFileId);
             }
         } catch (error) {
-            if (!isCurrent()) {
-                return;
-            }
-            await dialog.message(`${error}`, {
-                title: "Nexus mod details",
-                kind: "error"
-            });
+            if (isCurrent()) detailErrors = { ...detailErrors, [section]: nexusRequestError(error) };
         } finally {
             if (isCurrent()) {
-                isDetailLoading = false;
+                detailLoadingSections = detailLoadingSections.filter(pending => pending !== section);
             }
         }
+    }
+
+    async function retryDetailSection(section: DetailLoadSection) {
+        const generation = detailGeneration;
+        const retryButton = document.activeElement;
+        await loadDetailSection(section, true);
+        await tick();
+        if (isDestroyed || generation !== detailGeneration || document.activeElement !== document.body
+            || !(retryButton instanceof HTMLButtonElement)) return;
+
+        const sectionElement = {
+            description: detailDescriptionSectionElement,
+            files: detailFilesSectionElement,
+            changelog: detailChangelogSectionElement
+        }[section];
+        (retryButton.isConnected ? retryButton : sectionElement)?.focus({ preventScroll: true });
     }
 
     function scrollDetailSection(target: DetailSectionTarget) {
@@ -2881,7 +3013,8 @@
 
     function closeModDetails() {
         detailGeneration += 1;
-        isDetailLoading = false;
+        detailLoadingSections = [];
+        detailErrors = { description: "", files: "", changelog: "" };
         selectedMod = null;
         selectedModDetails = null;
         selectedDetailPreviewIndex = 0;
@@ -4569,6 +4702,14 @@
 
         if (visibleCount > 0) {
             return { title: "", detail: "", chips };
+        }
+
+        if (isOnline && catalogError && loadedCount === 0) {
+            return {
+                title: "Nexus catalog unavailable",
+                detail: `The ${viewLabel(selectedView)} feed could not be loaded. Retry above or choose another feed.`,
+                chips
+            };
         }
 
         if (hasActiveNexusFilters && loadedCount > 0) {
@@ -7914,7 +8055,7 @@
                 <button class="inventory-refresh-btn" disabled={isRefreshingInventory} title="Rescan local and Vortex-managed mod inventory" on:click={refreshLocalInventoryFromUi}>
                     {isRefreshingInventory ? "Scanning..." : "Refresh Inventory"}
                 </button>
-                <button class="uninstall" on:click={disconnect}>Disconnect</button>
+                <button class="uninstall" disabled={isDisconnecting} on:click={disconnect}>{isDisconnecting ? "Disconnecting..." : "Disconnect"}</button>
             </div>
         {:else}
             <div class="connect-column">
@@ -8006,7 +8147,7 @@
             </button>
         </div>
 
-        <section class="catalog-panel">
+        <section class="catalog-panel" class:catalog-has-error={catalogMode === "online" && !!catalogError}>
             <div class="catalog-toolbar">
                 <div class="catalog-mode-buttons">
                     <button class:cat-btn-selected={catalogMode === "online"} on:click={() => catalogMode = "online"}>Online Nexus</button>
@@ -8018,7 +8159,7 @@
                     <button class="cat-btn middle-btn" class:cat-btn-selected={selectedView === "latest_added"} on:click={() => loadMods("latest_added")}>{viewLabel("latest_added")}</button>
                     <button class="btn-right cat-btn" class:cat-btn-selected={selectedView === "latest_updated"} on:click={() => loadMods("latest_updated")}>{viewLabel("latest_updated")}</button>
                 </div>
-                <button class="cat-btn refresh-btn" disabled={isLoading || refreshCooldownSeconds > 0} title={manualRefreshButtonTitle} on:click={() => loadMods(selectedView, true)}>{manualRefreshButtonLabel}</button>
+                <button class="cat-btn refresh-btn" disabled={isLoading || isCatalogLoading || isDisconnecting || refreshCooldownSeconds > 0} title={manualRefreshButtonTitle} on:click={() => loadMods(selectedView, true)}>{manualRefreshButtonLabel}</button>
             </div>
 
             <div class="notice api-note">
@@ -8029,6 +8170,26 @@
                     <span>{visibleInstalledEntries.length} shown from {installedCount} installed. {installedAttentionCount > 0 ? `${installedAttentionCount} need attention.` : ""} {trackedModsLoaded ? `${trackedCount} tracked.` : ""} {conflictCount > 0 ? `${conflictCount} in conflicts.` : ""}</span>
                 {/if}
             </div>
+
+            {#if catalogMode === "online" && catalogError}
+                <div class="notice request-error catalog-request-error" role="status">
+                    <div class="request-error-copy">
+                        <strong>{mods.length > 0 ? "Nexus refresh failed" : "Nexus catalog unavailable"}</strong>
+                        <span>{mods.length > 0 ? `${formatNumber(mods.length)} previously loaded mods remain available below. Current filters still apply.` : "No results are available for this feed yet."}</span>
+                        <small>{catalogError}</small>
+                    </div>
+                    <button type="button" disabled={isCatalogLoading || isDisconnecting || refreshCooldownSeconds > 0} title={manualRefreshButtonTitle} on:click={() => loadMods(selectedView, true)}>
+                        {isCatalogLoading ? "Retrying..." : refreshCooldownSeconds > 0 ? `Retry in ${refreshCooldownSeconds}s` : "Retry catalog"}
+                    </button>
+                </div>
+            {/if}
+
+            {#if catalogMode === "online" && isCatalogLoading}
+                <div class="loading-line catalog-loading" role="status">
+                    <SvgSpinnersBlocksWave />
+                    <span>{catalogLoadingMessage}{mods.length > 0 ? " Showing previously available results." : ""}</span>
+                </div>
+            {/if}
 
             {#if showFullActionQueue}
                 <div class="action-queue" aria-label="Nexus action queue">
@@ -8413,14 +8574,7 @@
                     {/each}
                 {/if}
 
-                {#if isLoading}
-                    <div class="loading-line">
-                        <SvgSpinnersBlocksWave />
-                        <span>{status}</span>
-                    </div>
-                {/if}
-
-                {#if !isLoading && ((catalogMode === "online" && visibleNexusMods.length === 0) || (catalogMode === "installed" && visibleInstalledEntries.length === 0))}
+                {#if (catalogMode === "online" && !isCatalogLoading && visibleNexusMods.length === 0) || (catalogMode === "installed" && visibleInstalledEntries.length === 0)}
                     <div class="notice empty-nexus empty-nexus-panel">
                         <div class="empty-nexus-copy">
                             <span>{nexusEmptyTitle}</span>
@@ -8474,11 +8628,11 @@
             <div class="detail-section-nav" aria-label="Detail sections">
                 <button type="button" on:click={() => scrollDetailSection("description")}>
                     <span>Description</span>
-                    <b>{selectedDetailDescriptionCanToggle ? "Long" : "Ready"}</b>
+                    <b>{detailLoadingSections.includes("description") ? "Loading" : detailErrors.description ? "Unavailable" : selectedDetailDescriptionCanToggle ? "Long" : "Ready"}</b>
                 </button>
                 <button type="button" on:click={() => scrollDetailSection("files")}>
                     <span>Files</span>
-                    <b>{selectedModFiles.length}</b>
+                    <b>{detailLoadingSections.includes("files") ? "Loading" : detailErrors.files ? "Unavailable" : selectedModFiles.length}</b>
                 </button>
                 <button type="button" on:click={() => scrollDetailSection("dependencies")}>
                     <span>Dependencies</span>
@@ -8490,7 +8644,7 @@
                 </button>
                 <button type="button" on:click={() => scrollDetailSection("changelog")}>
                     <span>Changelog</span>
-                    <b>{selectedChangelogs.length}</b>
+                    <b>{detailLoadingSections.includes("changelog") ? "Loading" : detailErrors.changelog ? "Unavailable" : selectedChangelogs.length}</b>
                 </button>
                 <button type="button" on:click={() => scrollDetailSection("deployment")}>
                     <span>Deploy</span>
@@ -8563,6 +8717,18 @@
                                 </button>
                             {/if}
                         </div>
+                        {#if detailErrors.description}
+                            <div class="notice request-error" role="status">
+                                <div class="request-error-copy">
+                                    <strong>Full description unavailable</strong>
+                                    <span>Available mod information is kept below.</span>
+                                    <small>{detailErrors.description}</small>
+                                </div>
+                                <button type="button" disabled={detailLoadingSections.includes("description")} on:click={() => retryDetailSection("description")}>
+                                    {detailLoadingSections.includes("description") ? "Retrying..." : "Retry description"}
+                                </button>
+                            </div>
+                        {/if}
                         <div
                             class="nexus-rich-text"
                             class:detail-description-collapsed={selectedDetailDescriptionCanToggle && !detailDescriptionExpanded}
@@ -8571,24 +8737,37 @@
                         </div>
                     </div>
 
-                    {#if selectedChangelogs.length === 0}
-                        <div class="changelog-compact-note" tabindex="-1" bind:this={detailChangelogSectionElement}>
-                            <span class="detail-section-title">Changelog</span>
-                            <span class="dependency-empty">No API-listed changelog entries were returned for this mod.</span>
-                        </div>
-                    {:else}
-                        <div class="changelog-box" tabindex="-1" bind:this={detailChangelogSectionElement}>
-                            <span class="detail-section-title">Changelog</span>
-                            {#each selectedChangelogs as changelog (`${changelog.version}:${changelog.updated_at ?? ""}`)}
-                                <div class="changelog-row">
-                                    <span>{changelog.version}</span>
-                                    <div class="nexus-rich-text changelog-rich-text">
-                                        {@html renderNexusRichText(changelog.changes, "No changelog text was returned.")}
-                                    </div>
+                    <div
+                        class:changelog-compact-note={selectedChangelogs.length === 0 && !detailErrors.changelog}
+                        class:changelog-box={selectedChangelogs.length > 0 || !!detailErrors.changelog}
+                        tabindex="-1"
+                        bind:this={detailChangelogSectionElement}
+                    >
+                        <span class="detail-section-title">Changelog</span>
+                        {#if detailErrors.changelog}
+                            <div class="notice request-error" role="status">
+                                <div class="request-error-copy">
+                                    <strong>Changelog unavailable</strong>
+                                    <small>{detailErrors.changelog}</small>
                                 </div>
-                            {/each}
-                        </div>
-                    {/if}
+                                <button type="button" disabled={detailLoadingSections.includes("changelog")} on:click={() => retryDetailSection("changelog")}>
+                                    {detailLoadingSections.includes("changelog") ? "Retrying..." : "Retry changelog"}
+                                </button>
+                            </div>
+                        {:else if detailLoadingSections.includes("changelog")}
+                            <span class="dependency-empty">Loading changelog...</span>
+                        {:else if selectedChangelogs.length === 0}
+                            <span class="dependency-empty">No API-listed changelog entries were returned for this mod.</span>
+                        {/if}
+                        {#each selectedChangelogs as changelog (`${changelog.version}:${changelog.updated_at ?? ""}`)}
+                            <div class="changelog-row">
+                                <span>{changelog.version}</span>
+                                <div class="nexus-rich-text changelog-rich-text">
+                                    {@html renderNexusRichText(changelog.changes, "No changelog text was returned.")}
+                                </div>
+                            </div>
+                        {/each}
+                    </div>
                 </div>
 
                 <div class="detail-side" class:detail-side-dependencies-first={detailDependenciesFirst}>
@@ -8732,15 +8911,28 @@
                                 </button>
                             {/if}
                         </div>
+                        {#if detailErrors.files}
+                            <div class="notice request-error" role="status">
+                                <div class="request-error-copy">
+                                    <strong>Downloadable files unavailable</strong>
+                                    <span>Retry to check which files Nexus offers for this mod.</span>
+                                    <small>{detailErrors.files}</small>
+                                </div>
+                                <button type="button" disabled={detailLoadingSections.includes("files")} on:click={() => retryDetailSection("files")}>
+                                    {detailLoadingSections.includes("files") ? "Retrying..." : "Retry files"}
+                                </button>
+                            </div>
+                        {/if}
                         <div class="file-readiness-grid" aria-label="File choice summary">
                             <span
                                 class="file-readiness-chip"
                                 class:file-readiness-ok={selectedModFiles.length > 0 && selectedFileReviewCount === 0}
                                 class:file-readiness-review={selectedFileReviewCount > 0}
+                                class:file-readiness-warn={!!detailErrors.files}
                                 title={fileChoiceReadinessText}
                             >
                                 <small>Files</small>
-                                <b>{selectedModFiles.length}</b>
+                                <b>{selectedModFiles.length === 0 && (detailErrors.files || detailLoadingSections.includes("files")) ? "—" : selectedModFiles.length}</b>
                                 <span>{fileChoiceReadinessText}</span>
                             </span>
                             <span
@@ -8803,9 +8995,9 @@
                                 Selected <b>{selectedNexusFile ? 1 : 0}</b>
                             </button>
                         </div>
-                        {#if selectedModFiles.length === 0 && !isDetailLoading}
+                        {#if selectedModFiles.length === 0 && !detailLoadingSections.includes("files") && !detailErrors.files}
                             <div class="notice empty-nexus">No downloadable files were returned by Nexus.</div>
-                        {:else if displayedSelectedModFiles.length === 0 && !isDetailLoading}
+                        {:else if selectedModFiles.length > 0 && displayedSelectedModFiles.length === 0 && !detailLoadingSections.includes("files")}
                             <div class="notice empty-nexus">No {describeFileListFilter(selectedFileListFilter)} match this file set.</div>
                         {/if}
 
@@ -9697,6 +9889,65 @@
 
     .warning {
         color: #fdc66d;
+    }
+
+    .request-error {
+        align-items: flex-start;
+        border-color: rgba(253, 198, 109, 0.3);
+        color: #d5b989;
+        display: flex;
+        flex: 0 0 auto;
+        flex-wrap: wrap;
+        gap: 0.65em;
+        margin: 0.55em 0;
+        min-width: 0;
+    }
+
+    .catalog-request-error {
+        margin: 0;
+    }
+
+    .request-error-copy {
+        display: grid;
+        flex: 1 1 14em;
+        gap: 0.25em;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .request-error-copy strong {
+        color: #fdc66d;
+        font-size: 0.88em;
+    }
+
+    .request-error-copy span,
+    .request-error-copy small {
+        font-size: 0.78em;
+        line-height: 1.4;
+    }
+
+    .request-error-copy small {
+        color: #aab8c5;
+        max-height: 4.2em;
+        overflow-y: auto;
+    }
+
+    .request-error button {
+        flex: 0 0 auto;
+        font-size: 0.78em;
+        max-width: 100%;
+        white-space: normal;
+    }
+
+    .loading-line.catalog-loading {
+        flex: 0 0 auto;
+        font-size: 0.85em;
+        min-height: 2.4em;
+        min-width: 0;
+    }
+
+    .catalog-has-error .nexus-scroller {
+        min-height: 0;
     }
 
     .vortex-summary {
