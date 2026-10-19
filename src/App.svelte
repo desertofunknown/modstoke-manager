@@ -1,8 +1,6 @@
 <script lang="ts">
   import {
-    gameExePath,
     isDotnetInstalled,
-    isPathValid,
     processName,
     processProgress,
     processing,
@@ -15,29 +13,37 @@
   import LucideX from "~icons/lucide/x";
   import LucideLayoutDashboard from "~icons/lucide/layout-dashboard";
   import LucideLibrary from "~icons/lucide/library";
+  import LucideServer from "~icons/lucide/server";
+  import LucidePackage from "~icons/lucide/package";
+  import LucideLayers from "~icons/lucide/layers";
+  import LucideUsers from "~icons/lucide/users";
   import LucideCode from "~icons/lucide/code-2";
   import LucideTrees from "~icons/lucide/trees";
+  import { initializeInstallationProfiles, selectedInstallation } from "./lib/installationProfiles";
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { currentMonitor, getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 
-  type TabId = "main" | "mods" | "modding";
-
-  type Tab = {
-    id: TabId;
-    label: string;
-  };
-
-  let tabs: Tab[] = [
-    { id: "main", label: "Overview" },
-    { id: "mods", label: "Mod library" },
-    { id: "modding", label: "Creator tools" },
+  type TabId = "main" | "installed" | "mods" | "loaders" | "servers" | "multiplayer" | "modding";
+  type Tab = { id: TabId; label: string; group: string };
+  const tabs: Tab[] = [
+    { id: "main", label: "Overview", group: "Game" },
+    { id: "installed", label: "Installed mods", group: "Game" },
+    { id: "mods", label: "Browse mods", group: "Game" },
+    { id: "loaders", label: "Loaders", group: "Toolkit" },
+    { id: "servers", label: "Dedicated servers", group: "Toolkit" },
+    { id: "multiplayer", label: "Multiplayer", group: "Toolkit" },
+    { id: "modding", label: "Creator tools", group: "Toolkit" },
   ];
-
+  $: serverSelected = $selectedInstallation?.target.kind === "server";
   let activeTab: TabId = "main";
+  let catalogRevision = 0;
+  let displayedCatalogRevision = 0;
   let tabButtons: Partial<Record<TabId, HTMLButtonElement>> = {};
   let modsPage: Promise<typeof import("./pages/ModHub.svelte")> | null = null;
   let moddingPage: Promise<typeof import("./pages/Modding.svelte")> | null = null;
+  let installedPage: Promise<typeof import("./pages/InstalledMods.svelte")> | null = null;
+  let serversPage: Promise<typeof import("./pages/Servers.svelte")> | null = null;
   let isWindowMaximized = false;
 
   const MIN_WINDOW_WIDTH = 980;
@@ -46,11 +52,15 @@
   const MAX_WINDOW_HEIGHT = 1240;
 
   function selectTab(tab: TabId) {
+    if (!tabs.some(item => item.id === tab)) return;
     if (tab === "mods" && !modsPage) {
       modsPage = import("./pages/ModHub.svelte");
     } else if (tab === "modding" && !moddingPage) {
       moddingPage = import("./pages/Modding.svelte");
     }
+    if (tab === "installed" && !installedPage) installedPage = import("./pages/InstalledMods.svelte");
+    if (tab === "servers" && !serversPage) serversPage = import("./pages/Servers.svelte");
+    if (tab === "mods") displayedCatalogRevision = catalogRevision;
     activeTab = tab;
   }
 
@@ -201,13 +211,7 @@
       processName.set("Initializing...");
       processProgress.set(0);
 
-      try {
-        const steamPath = await invoke<string | null>("get_steam_path");
-        gameExePath.set(steamPath ?? "");
-        isPathValid.set(!!steamPath);
-      } catch (err) {
-        console.log(err);
-      }
+      await initializeInstallationProfiles();
 
       try {
         isDotnetInstalled.set(await invoke<boolean>("is_dotnet11_installed"));
@@ -256,11 +260,11 @@
     </div>
     <div class="game-context">
       <span class="game-icon"><LucideTrees aria-hidden="true" /></span>
-      <span class="game-label">Sons of the Forest<small>Game workspace</small></span>
+      <span class="game-label">Sons of the Forest<small>{serverSelected ? "Dedicated server" : "Game workspace"}</small></span>
     </div>
-    <span class="navigation-label">Workspace</span>
   <div class="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical">
-    {#each tabs as tab}
+    {#each tabs as tab, index}
+      {#if index === 0 || tabs[index - 1].group !== tab.group}<span class="navigation-label" role="presentation">{tab.group}</span>{/if}
       <button
         type="button"
         id="tab-{tab.id}"
@@ -273,14 +277,14 @@
         on:click={() => selectTab(tab.id)}
         on:keydown={(event) => handleTabKeyDown(event, tab.id)}
       >
-        {#if tab.id === "main"}<LucideLayoutDashboard aria-hidden="true" />{:else if tab.id === "mods"}<LucideLibrary aria-hidden="true" />{:else}<LucideCode aria-hidden="true" />{/if}
+        {#if tab.id === "main"}<LucideLayoutDashboard aria-hidden="true" />{:else if tab.id === "mods"}<LucideLibrary aria-hidden="true" />{:else if tab.id === "installed"}<LucidePackage aria-hidden="true" />{:else if tab.id === "servers"}<LucideServer aria-hidden="true" />{:else if tab.id === "loaders"}<LucideLayers aria-hidden="true" />{:else if tab.id === "multiplayer"}<LucideUsers aria-hidden="true" />{:else}<LucideCode aria-hidden="true" />{/if}
         <span>{tab.label}</span>
       </button>
     {/each}
   </div>
     <div class="sidebar-footer">
       <span>by OpenACAI</span>
-      <small>Independent modding tools</small>
+      <small>Game & server toolkit</small>
       <small>modstoke.com <span class="planned-site">planned</span></small>
     </div>
   </aside>
@@ -288,7 +292,26 @@
   <div class="page-workspace">
   <div class="container" id="panel-main" role="tabpanel" aria-labelledby="tab-main" hidden={activeTab !== "main"} tabindex="0">
     {#if activeTab === "main"}
-      <Page1 />
+      <Page1 on:navigate={(event) => selectTab(event.detail.id)} />
+    {/if}
+  </div>
+  {#each ["loaders", "multiplayer"] as section}
+    <div class="container" id="panel-{section}" role="tabpanel" aria-labelledby="tab-{section}" hidden={activeTab !== section} tabindex="0">
+      {#if activeTab === section}<Page1 view={section === "loaders" ? "loaders" : "multiplayer"} on:navigate={(event) => selectTab(event.detail.id)} />{/if}
+    </div>
+  {/each}
+  <div class="container" id="panel-installed" role="tabpanel" aria-labelledby="tab-installed" hidden={activeTab !== "installed"} tabindex="0">
+    {#if activeTab === "installed" && installedPage}
+      {#await installedPage}<div class="page-status" role="status">Loading installed mods…</div>
+      {:then module}<module.default on:navigate={(event) => selectTab(event.detail.id)} on:changed={() => catalogRevision++} />
+      {:catch error}<div class="page-status" role="alert"><p>{pageLoadError(error)}</p><button on:click={() => installedPage = import("./pages/InstalledMods.svelte")}>Retry</button></div>{/await}
+    {/if}
+  </div>
+  <div class="container" id="panel-servers" role="tabpanel" aria-labelledby="tab-servers" hidden={activeTab !== "servers"} tabindex="0">
+    {#if activeTab === "servers" && serversPage}
+      {#await serversPage}<div class="page-status" role="status">Loading dedicated servers…</div>
+      {:then module}<module.default />
+      {:catch error}<div class="page-status" role="alert"><p>{pageLoadError(error)}</p><button on:click={() => serversPage = import("./pages/Servers.svelte")}>Retry</button></div>{/await}
     {/if}
   </div>
   <div class="container" id="panel-mods" role="tabpanel" aria-labelledby="tab-mods" hidden={activeTab !== "mods"} tabindex="0">
@@ -296,7 +319,7 @@
       {#await modsPage}
         <div class="page-status" role="status">Loading mod library…</div>
       {:then module}
-        <module.default />
+        {#key displayedCatalogRevision}<module.default />{/key}
       {:catch error}
         <div class="page-status" role="alert">
           <strong>The mod library could not be loaded.</strong>
@@ -307,7 +330,7 @@
     {/if}
   </div>
   <div class="container" id="panel-modding" role="tabpanel" aria-labelledby="tab-modding" hidden={activeTab !== "modding"} tabindex="0">
-    {#if moddingPage}
+    {#if moddingPage && activeTab === "modding"}
       {#await moddingPage}
         <div class="page-status" role="status">Loading creator tools…</div>
       {:then module}
@@ -394,7 +417,7 @@
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    flex: 0 0 184px;
+    flex: 0 0 202px;
     padding: 24px 12px 18px;
     min-height: 0;
     overflow-y: auto;
@@ -404,11 +427,11 @@
   .sidebar-brand img { width: 36px; height: 36px; }
   .sidebar-brand > span { font-size: 20px; line-height: 1.2; font-weight: 700; letter-spacing: -0.6px; }
   .sidebar-brand small { display: block; margin-top: 4px; color: var(--text-secondary); font-size: 11px; font-weight: 500; letter-spacing: 0.7px; }
-  .game-context { display: flex; align-items: center; gap: 9px; padding: 12px 8px; margin-bottom: 26px; border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); }
+  .game-context { display: flex; align-items: center; gap: 9px; padding: 12px 8px; margin-bottom: 6px; border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); }
   .game-icon { display: flex; color: #9aab9c; font-size: 23px; }
   .game-label { color: #d7dce5; font-size: 12px; line-height: 1.4; font-weight: 600; }
   .game-label small { display: block; color: var(--text-secondary); font-size: 11px; margin-top: 3px; font-weight: 400; }
-  .navigation-label { padding: 0 12px 10px; font-size: 10px; font-weight: 600; letter-spacing: 1.3px; text-transform: uppercase; color: #7d8797; }
+  .navigation-label { padding: 16px 12px 5px; font-size: 10px; font-weight: 600; letter-spacing: 1.3px; text-transform: uppercase; color: #7d8797; }
   .tabs { display: flex; flex-direction: column; gap: 5px; }
   .tab {
     align-items: center;
@@ -418,9 +441,9 @@
     box-shadow: none;
     color: var(--text-secondary);
     display: flex;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
-    gap: 11px;
+    gap: 9px;
     line-height: 1.4;
     margin: 0;
     min-height: 42px;
@@ -436,7 +459,7 @@
   .planned-site { color: #77808d; margin-left: 4px; }
 
   .page-workspace { display: flex; flex: 1 1 0; min-width: 0; min-height: 0; }
-  .skip-content { position: absolute; top: 6px; left: 196px; z-index: 2; transform: translateY(-200vh); }
+  .skip-content { position: absolute; top: 6px; left: 214px; z-index: 2; transform: translateY(-200vh); }
   .skip-content:focus-visible { transform: none; }
   .page-status { margin: auto; padding: 32px; max-width: 480px; text-align: center; background: var(--surface-panel); border: 1px solid var(--border-subtle); border-radius: 12px; }
   .page-status p { color: var(--text-secondary); overflow-wrap: anywhere; }

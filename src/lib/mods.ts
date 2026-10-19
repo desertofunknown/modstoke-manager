@@ -2,8 +2,10 @@ import * as path from "@tauri-apps/api/path";
 import { invoke } from '@tauri-apps/api/core';
 import { gameExePath, getDirectoryPath, getLibsDir, getModsDir, isPathValid, processName, processProgress } from './store';
 import { get } from 'svelte/store';
-import { downloadAndInstall, showMessageBox, unzip } from './utils';
+import { downloadAndInstall, showMessageBox } from './utils';
 import { assertCurrentGameRoot, scanInstalledInventory, type InstallSource, type LoaderType } from './modInventory';
+import { resolveInstallPlan, type InstallPlan } from './modInstallPlan';
+import { applyProfilePackage, completedPackage, discardModProfileRollback, freshPlanInventory, mergeRequestedRoots, pinArchive, readModProfile, rollbackModProfile, saveModProfile, type ModProfile, type ProfileState } from './modProfile';
 import * as fs from "@tauri-apps/plugin-fs"
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 
@@ -69,6 +71,7 @@ export type Mod = {
     averageRating?: number;
     sourceUrl?: string | null;
     dependencies: string[];
+    dependencyMetadataError?: string;
     versions?: ModVersion[];
 
     isInstalled: boolean;
@@ -208,6 +211,8 @@ export class ModDatabase {
     private static installedModsExePath: string | null = null;
     private static installedModsRequest: { exePath: string; promise: Promise<void> } | null = null;
     private static installedScanGeneration = 0;
+    private static installPlanActive = false;
+    private static pendingProfileRoot: { gameRoot: string; modId: string } | null = null;
 
     public static async fetchMods(
             page: number, 
@@ -364,6 +369,15 @@ export class ModDatabase {
     }
 
     private static normalizeMod(mod: Mod): Mod {
+        if (!mod || typeof mod !== "object") {
+            throw new Error("The catalog returned incomplete mod metadata.");
+        }
+        const raw: unknown = mod.dependencies;
+        const values = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(/[,\n;]+/).filter(value => value.trim()) : raw == null ? [] : [raw];
+        if (raw === undefined || values.length > 64 || values.some(value => !dependencyIdentifier(value)
+            || typeof value === "object" && value !== null && Object.keys(value).some(key => /version|range/i.test(key)))) {
+            mod.dependencyMetadataError = "The catalog contains missing, unsupported, or ambiguous dependency metadata. No packages were installed; review the mod's dependencies before retrying.";
+        }
         mod.dependencies = modDependencies(mod);
         return mod;
     }
@@ -495,11 +509,35 @@ export class ModDatabase {
         const promise = (async () => {
             try {
                 const gameRoot = await path.dirname(exePath);
+                let pendingProfileRoot: { gameRoot: string; modId: string } | null | undefined;
+                if (!this.installPlanActive) {
+                    pendingProfileRoot = null;
+                    try {
+                        const state = await readModProfile(gameRoot);
+                        const plan = state.profile?.pendingPlan;
+                        if (plan) {
+                            pendingProfileRoot = { gameRoot, modId: plan.requestedRoots[0] };
+                            if ((!state.profile?.rollback || state.profile.rollback.phase === "available")
+                                && plan.steps.every(step => step.status === "applied")) {
+                                await freshPlanInventory(gameRoot, plan);
+                                state.profile!.requestedRoots = mergeRequestedRoots(state.profile!.requestedRoots, plan.requestedRoots);
+                                state.profile!.pendingPlan = null;
+                                await saveModProfile(gameRoot, state, state.profile!);
+                                pendingProfileRoot = null;
+                            }
+                        }
+                    } catch (error) {
+                        console.log("Mod profile recovery needs attention before another install", error);
+                    }
+                }
                 const mods = await this.readInstalledMods(gameRoot);
                 if (generation === this.installedScanGeneration
                     && exePath === get(gameExePath) && get(isPathValid)) {
                     this.installedMods = mods;
                     this.installedModsExePath = exePath;
+                    if (pendingProfileRoot !== undefined) {
+                        this.pendingProfileRoot = pendingProfileRoot;
+                    }
                 }
             } finally {
                 if (generation === this.installedScanGeneration) {
@@ -516,6 +554,7 @@ export class ModDatabase {
         this.installedModsExePath = null;
         this.installedModsRequest = null;
         this.installedScanGeneration += 1;
+        this.pendingProfileRoot = null;
     }
 
     private static currentInstalledMods(): InstalledMod[] {
@@ -679,7 +718,9 @@ export class ModDatabase {
             let installedMod = installedMods.find(installedMod => installedMod.manifest.id === mod.mod_id);
             mod.isInstalled = installedMod !== undefined;
             mod.installedMod = installedMod;
-            mod.hasUpdate = mod.isInstalled && installedMod?.manifest.version !== mod.latestVersion;
+            mod.hasUpdate = mod.isInstalled && (installedMod?.manifest.version !== mod.latestVersion
+                || this.pendingProfileRoot?.modId.toLowerCase() === mod.mod_id.toLowerCase()
+                    && this.normalizePath(this.pendingProfileRoot.gameRoot) === this.normalizePath(installedMod!.gameRoot));
         });
     }
 
@@ -695,7 +736,7 @@ export class ModDatabase {
 
     public static async installMod(mod: Mod): Promise<void> {
         const gameRoot = await getDirectoryPath();
-        await this.installModAtRoot(mod, gameRoot, new Set<string>());
+        await this.installModAtRoot(mod, gameRoot);
     }
 
     public static async updateMod(mod: Mod): Promise<void> {
@@ -708,50 +749,107 @@ export class ModDatabase {
         }
 
         const gameRoot = installedMod.gameRoot;
-        await this.installModAtRoot(mod, gameRoot, new Set<string>(), installedMod);
+        await this.installModAtRoot(mod, gameRoot, installedMod);
+    }
+
+    public static async changeProfileRecovery(gameRoot: string, state: ProfileState, action: "rollback" | "discard"): Promise<ProfileState> {
+        if (this.installPlanActive) throw new Error("Wait for the current mod operation before changing pack recovery.");
+        this.installPlanActive = true;
+        try {
+            await assertCurrentGameRoot(gameRoot);
+            return await (action === "rollback" ? rollbackModProfile(gameRoot, state) : discardModProfileRollback(gameRoot, state));
+        } finally {
+            this.installPlanActive = false;
+            this.invalidateInstalledMods();
+        }
     }
 
     private static async installModAtRoot(
         mod: Mod,
         gameRoot: string,
-        visited: Set<string>,
         previousInstall?: InstalledMod): Promise<void> {
-        if (visited.has(mod.mod_id)) {
-            return;
-        }
-        visited.add(mod.mod_id);
-
-        await assertCurrentGameRoot(gameRoot);
-        const modUrl = `${MOD_REPOSITORY_WEB}/mods/${mod.user.slug}/${mod.slug}/download/${mod.latestVersion}`;
-        await downloadAndInstall(gameRoot, modUrl, mod.name, async (sourcePath) => {
+        if (this.installPlanActive) throw new Error("Another mod install plan is running. Wait for it to finish before installing another mod.");
+        this.installPlanActive = true;
+        try {
             await assertCurrentGameRoot(gameRoot);
-            if (previousInstall) {
-                await invoke('update_native_mod', {
-                    source: sourcePath,
-                    destination: gameRoot,
-                    previousInstall: {
-                        assemblyPath: previousInstall.assemblyPath,
-                        enabledAssemblyPath: previousInstall.enabledAssemblyPath,
-                        packagePath: previousInstall.packagePath,
-                        enabledPackagePath: previousInstall.enabledPackagePath,
-                        isEnabled: previousInstall.isEnabled
-                    }
-                });
+            let state = await readModProfile(gameRoot);
+            if (state.profile?.rollback && state.profile.rollback.phase !== "available") {
+                throw new Error("This installation has unfinished pack recovery. Resume it from the Main page before installing mods.");
+            }
+            const selectedId = typeof mod.mod_id === "string" ? mod.mod_id.trim().toLowerCase() : "";
+            let plan: InstallPlan;
+            if (state.profile?.pendingPlan) {
+                plan = state.profile.pendingPlan;
+                if (plan.steps.some(step => step.package.dependencyBasis === "modstoke-native-required-versions")) {
+                    throw new Error("Resume this install from Native packages using its original ZIP, or use Pack recovery.");
+                }
+                const root = plan.steps.find(step => step.package.id.toLowerCase() === selectedId);
+                if (plan.requestedRoots[0].toLowerCase() !== selectedId || !root) {
+                    throw new Error(`This game folder has a pending plan for ${plan.requestedRoots[0]}. Retry that mod to resume its recorded versions and completed packages.`);
+                }
+                processName.set(`Resuming ${root.package.name} ${root.package.version} from the game profile...`);
             } else {
-                await unzip(sourcePath, gameRoot);
+                processName.set("Resolving all mod dependencies...");
+                const inventory = await scanInstalledInventory(gameRoot);
+                await assertCurrentGameRoot(gameRoot);
+                plan = await resolveInstallPlan(mod, inventory, id => this.fetchMod(id), Boolean(previousInstall));
+                if (previousInstall) {
+                    const before = plan.steps.find(step => step.package.id.toLowerCase() === selectedId)?.before;
+                    if (!before || before.id.toLowerCase() !== previousInstall.manifest.id.toLowerCase() || before.version !== previousInstall.manifest.version
+                        || before.enabled !== previousInstall.isEnabled
+                        || this.normalizePath(before.assemblyPath ?? "") !== this.normalizePath(previousInstall.assemblyPath ?? "")
+                        || this.normalizePath(before.packagePath ?? "") !== this.normalizePath(previousInstall.packagePath ?? "")) {
+                        throw new Error("The selected installed mod changed. Refresh the installed list before updating it.");
+                    }
+                }
+                const profile: ModProfile = state.profile ?? {
+                    schemaVersion: 1, gameRoot, requestedRoots: [], packages: [], archives: [], pendingPlan: null
+                };
+                for (const step of plan.steps) {
+                    const known = profile.packages.find(pkg => pkg.id.toLowerCase() === step.package.id.toLowerCase() && pkg.version === step.package.version
+                        && pkg.ownership === step.package.ownership);
+                    if (step.action === "preserve" && known) {
+                        step.package.source = known.source;
+                        step.package.archiveSha256 = known.archiveSha256;
+                    }
+                }
+                profile.pendingPlan = plan;
+                await freshPlanInventory(gameRoot, plan);
+                state = await saveModProfile(gameRoot, state, profile);
             }
-        });
-
-        for (const dependency of modDependencies(mod)) {
-            if (visited.has(dependency)) {
-                continue;
+            await freshPlanInventory(gameRoot, plan);
+            for (let index = 0; index < plan.steps.length; index++) {
+                // Native persistence/recovery returns the authoritative step state.
+                plan = state.profile!.pendingPlan!;
+                const step = plan.steps[index];
+                if (step.status === "applied") continue;
+                await freshPlanInventory(gameRoot, plan);
+                if (step.action === "preserve") {
+                    step.status = "applied";
+                    completedPackage(state.profile!, step.package);
+                    state = await saveModProfile(gameRoot, state, state.profile!);
+                    continue;
+                }
+                await assertCurrentGameRoot(gameRoot);
+                await downloadAndInstall(gameRoot, step.package.source.url!, step.package.name, async sourcePath => {
+                    const digest = (await invoke<string>("sha256_file", { path: sourcePath })).toLowerCase();
+                    await freshPlanInventory(gameRoot, plan);
+                    pinArchive(state.profile!, step, digest);
+                    state = await saveModProfile(gameRoot, state, state.profile!);
+                    state = await applyProfilePackage(gameRoot, state, state.profile!.pendingPlan!.steps[index], sourcePath);
+                });
             }
-
-            const dependencyMod = await this.fetchMod(dependency);
-            if (dependencyMod && !visited.has(dependencyMod.mod_id)) {
-                await showMessageBox("Installing dependency", `Installing dependency ${dependency} for mod ${mod.name} (a refresh may be needed to show the dependency as installed)`);
-                await this.installModAtRoot(dependencyMod, gameRoot, visited);
+            plan = state.profile!.pendingPlan!;
+            await freshPlanInventory(gameRoot, plan);
+            if (plan.steps.some(step => step.status !== "applied")) {
+                throw new Error("The install plan still has unfinished packages. Retry to resume it.");
             }
+            const profile = state.profile!;
+            profile.requestedRoots = mergeRequestedRoots(profile.requestedRoots, plan.requestedRoots);
+            profile.pendingPlan = null;
+            await saveModProfile(gameRoot, state, profile);
+        } finally {
+            this.installPlanActive = false;
         }
     }
 

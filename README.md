@@ -1,6 +1,6 @@
 # Modstoke Manager
 
-Modstoke Manager is a Windows mod manager for **Sons of the Forest**, maintained by OpenACAI. It is based on [RedManager](https://github.com/ToniMacaroni/RedManager) by Toni Macaroni. The app brings the SOTF Mods and Nexus Mods catalogs together, shows installed mods, and manages Modstoke Loader files.
+Modstoke Manager is a Windows toolkit for **Sons of the Forest**, maintained by OpenACAI. It is based on [RedManager](https://github.com/ToniMacaroni/RedManager) by Toni Macaroni. Manage installed mods and loaders, browse SOTF Mods and Nexus Mods, and look after local dedicated servers from one app.
 
 ![Modstoke Manager](docs/screenshots/openacai-mod-manager-main.png)
 
@@ -21,7 +21,8 @@ These signed files still display **OpenACAI Mod Manager**. The Modstoke branding
 
 1. Run the portable app or installer on Windows 10 or 11. WebView2 is required; the installer is configured to bootstrap it if needed.
 2. Select `SonsOfTheForest.exe` in your game installation folder.
-3. Open **Mods** to browse SOTF Mods and Nexus Mods or inspect your installed mods. Nexus file installation is handed to Vortex. Manage Vortex deployments in Vortex.
+3. Use **Installed mods** for your loadout, **Browse mods** for the catalogs, and **Loaders** for installation and repair. Nexus file installation is handed to Vortex; manage Vortex deployments there.
+4. Open **Dedicated servers** to add an existing server installation, choose its data folder, edit its name or player limit, start it, and manage world backups. See the [server setup guide](docs/DEDICATED_SERVERS.md).
 
 **Loader installation is currently blocked by its release feed.** The Manager's install and repair actions request `OpenACAILoader.manifest.json` from [the old loader release URL](https://github.com/desertofunknown/openacai-loader/releases/latest/download/OpenACAILoader.manifest.json), which is unavailable at present. The current UI does not offer a working local ZIP picker. These actions will need a compatible public loader release feed or a code update before they can install or repair Modstoke Loader. See [troubleshooting](docs/TROUBLESHOOTING.md) for the errors you may see.
 

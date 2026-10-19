@@ -60,14 +60,8 @@ export class FeatureInstaller {
             return;
         }
 
-        if (this._installer instanceof OpenAcaiLoaderInstaller) {
-            // Keep the working loader until its replacement passes package validation.
-            await this._installer.install(() => this.uninstall());
-        } else {
-            await this.uninstall();
-            processName.set("Installing " + this.getName() + "...");
-            await this._installer.install();
-        }
+        processName.set("Installing " + this.getName() + "...");
+        await this._installer.install();
 
         if(this.additionalFoldersToCreate)
         {
@@ -303,7 +297,7 @@ openAcaiLoaderUninstaller.overrideCheckFiles = [
 export let openAcaiLoaderFeature = new FeatureInstaller(openAcaiLoaderInstaller, openAcaiLoaderUninstaller, "BepInEx\\plugins\\OpenACAILoader\\openacai-loader.manifest.json");
 openAcaiLoaderFeature.displayName = "Modstoke Loader";
 openAcaiLoaderFeature.additionalFoldersToCreate = ["Mods"];
-openAcaiLoaderFeature.description = "Installs or repairs the BepInEx-first Modstoke Loader package from the public GitHub release manifest, then verifies installed file hashes.";
+openAcaiLoaderFeature.description = "Installs or repairs Modstoke Loader from a verified package while preserving existing user configuration.";
 
 export let ueFeature = new FeatureInstaller(ueInstaller, ueUninstaller);
 ueFeature.description = "UnityExplorer is a modding tool which lets you analyze and manipulate the game at runtime."

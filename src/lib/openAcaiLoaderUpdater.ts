@@ -75,9 +75,9 @@ export class OpenAcaiLoaderInstaller extends BaseZipInstaller {
         return true;
     }
 
-    public async install(beforeInstall?: () => Promise<void>): Promise<void> {
+    public async install(): Promise<void> {
         const manifest = this.manifest ?? await fetchLatestLoaderManifest();
-        await downloadVerifyAndInstallLoader(manifest, beforeInstall);
+        await downloadVerifyAndInstallLoader(manifest);
         this.manifest = null;
     }
 
@@ -182,8 +182,7 @@ export async function ensureLatestOpenAcaiLoader(): Promise<LoaderIntegrityRepor
 }
 
 export async function downloadVerifyAndInstallLoader(
-    manifest: LoaderUpdateManifest,
-    beforeInstall?: () => Promise<void>
+    manifest: LoaderUpdateManifest
 ): Promise<LoaderIntegrityReport> {
     const gameRoot = await getDirectoryPath();
     const tempPath = await TempFileCache.createFile();
@@ -217,25 +216,8 @@ export async function downloadVerifyAndInstallLoader(
             throw new Error(inspection.errors.join("\n") || "Downloaded loader package failed validation.");
         }
 
-        const existingBepInExConfig = await readExistingBepInExConfig(gameRoot);
-        try {
-            await beforeInstall?.();
-            processName.set(`Installing Modstoke Loader ${manifest.version}...`);
-            await thisUnzip(tempPath, gameRoot);
-        } catch (installError) {
-            try {
-                await restoreBepInExConfig(gameRoot, existingBepInExConfig);
-            } catch (restoreError) {
-                throw new AggregateError(
-                    [installError, restoreError],
-                    `Loader installation failed: ${installError}\nRestoring BepInEx configuration also failed: ${restoreError}`
-                );
-            }
-
-            throw installError;
-        }
-
-        await restoreBepInExConfig(gameRoot, existingBepInExConfig);
+        processName.set(`Installing Modstoke Loader ${manifest.version}...`);
+        await thisUnzip(tempPath, gameRoot);
 
         const report = await verifyInstalledLoader(manifest);
         if (report.needsUpdate) {
@@ -316,18 +298,4 @@ async function thisUnzip(sourcePath: string, destinationPath: string): Promise<v
         source: sourcePath.replace(/\\/g, "/"),
         destination: destinationPath.replace(/\\/g, "/")
     });
-}
-
-async function readExistingBepInExConfig(gameRoot: string): Promise<string | null> {
-    const configPath = await path.join(gameRoot, "BepInEx/config/BepInEx.cfg");
-    return await fs.exists(configPath) ? await fs.readTextFile(configPath) : null;
-}
-
-async function restoreBepInExConfig(gameRoot: string, config: string | null): Promise<void> {
-    if (config === null) {
-        return;
-    }
-
-    const configPath = await path.join(gameRoot, "BepInEx/config/BepInEx.cfg");
-    await fs.writeTextFile(configPath, config);
 }

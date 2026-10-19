@@ -7,6 +7,18 @@ use std::io::Read;
 use zip::read::ZipArchive;
 
 mod mod_update;
+mod mod_profile;
+mod mod_pack;
+mod installation_profiles;
+mod native_inventory;
+mod server_requirements;
+mod client_admission;
+mod server_process;
+mod server_native_config;
+mod server_launch;
+mod server_capacity;
+mod server_world;
+mod server_world_restore;
 
 use regex::Regex;
 use serde::Serialize;
@@ -1169,7 +1181,7 @@ fn inspect_openacai_loader_zip(source: String) -> Result<LoaderZipInspection, St
 
 #[tauri::command]
 fn unzip_handler(source: String, destination: String) -> Result<(), String> {
-    unzip_file(&source, &destination)
+    mod_update::install_zip_archive(source, destination)
 }
 
 fn main() {
@@ -1181,6 +1193,34 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             unzip_handler,
             mod_update::update_native_mod,
+            mod_profile::read_mod_profile,
+            mod_profile::check_player_launch_ready,
+            mod_profile::write_mod_profile,
+            mod_profile::apply_mod_profile_package,
+            mod_profile::rollback_mod_profile,
+            mod_profile::discard_mod_profile_rollback,
+            mod_profile::native_local::inspect_native_package,
+            mod_profile::native_local::install_native_package,
+            mod_profile::native_pack::parse_native_pack,
+            mod_profile::native_pack::prepare_native_pack,
+            mod_profile::native_pack_install::inspect_native_pack_install,
+            mod_profile::native_pack_install::install_native_pack,
+            installation_profiles::read_installation_profiles,
+            installation_profiles::inspect_installation_target,
+            installation_profiles::write_installation_profiles,
+            native_inventory::read_native_mod_inventory,
+            server_requirements::parse_server_requirements,
+            client_admission::read_client_admission,
+            client_admission::write_client_admission,
+            server_launch::read_server_launch,
+            server_launch::write_server_launch,
+            server_launch::write_server_capacity,
+            server_launch::write_server_identity,
+            server_launch::launch_dedicated_server,
+            server_world::read_server_world,
+            server_world::create_server_world_backup,
+            server_world_restore::restore_server_world_backup,
+            server_world_restore::recover_server_world_restore,
             inspect_openacai_loader_zip,
             get_steam_path,
             is_dotnet10_installed,

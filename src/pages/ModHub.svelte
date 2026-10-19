@@ -2,16 +2,19 @@
     import { onDestroy, onMount, tick } from "svelte";
     import SOTFMods from "./Mods.svelte";
     import NexusVortex from "./NexusVortex.svelte";
+    import NativePackages from "../lib/NativePackages.svelte";
+    import { selectedInstallation } from "../lib/installationProfiles";
     import { gameExePath } from "../lib/store";
     import LucideCloudDownload from "~icons/lucide/cloud-download";
     import LucideLayoutGrid from "~icons/lucide/layout-grid";
     import LucideMaximize2 from "~icons/lucide/maximize-2";
     import LucideSearch from "~icons/lucide/search";
+    import LucidePackage from "~icons/lucide/package";
     import LucideSlidersHorizontal from "~icons/lucide/sliders-horizontal";
     import LucideStore from "~icons/lucide/store";
     import LucideX from "~icons/lucide/x";
 
-    type ModHubSource = "all" | "sotf" | "nexus";
+    type ModHubSource = "all" | "sotf" | "nexus" | "native";
     type SourceSummary = {
         visible: number;
         total: number;
@@ -41,7 +44,7 @@
     onMount(() => {
         localStorage.removeItem(MOD_HUB_SOURCE_KEY);
         const savedSource = sessionStorage.getItem(MOD_HUB_SOURCE_KEY);
-        if (savedSource === "all" || savedSource === "sotf" || savedSource === "nexus") {
+        if (savedSource === "all" || savedSource === "sotf" || savedSource === "nexus" || savedSource === "native") {
             activeSource = savedSource;
         }
 
@@ -99,7 +102,7 @@
         setSharedSearchTerm("");
     }
 
-    function updateSourceSummary(source: Exclude<ModHubSource, "all">, detail: SourceSummary) {
+    function updateSourceSummary(source: "sotf" | "nexus", detail: SourceSummary) {
         const summary = normalizeSourceSummary(detail);
         if (source === "sotf") {
             sotfSummary = summary;
@@ -259,8 +262,8 @@
     <header class="hub-header">
         <div class="hub-heading">
             <span class="hub-eyebrow">Your next playthrough</span>
-            <h1>Mod library</h1>
-            <p>Discover and manage mods for Sons of the Forest.</p>
+            <h1>Browse mods</h1>
+            <p>Discover mods across your connected sources.</p>
         </div>
         <label class="hub-search">
             <LucideSearch aria-hidden="true" />
@@ -321,6 +324,18 @@
                     <span>Nexus &amp; Vortex</span>
                 </span>
             </button>
+            <button
+                type="button"
+                class:source-selected={activeSource === "native"}
+                aria-pressed={activeSource === "native"}
+                on:click={() => selectSource("native")}
+                title="View native packages"
+            >
+                <LucidePackage aria-hidden="true" />
+                <span class="source-switch-copy">
+                    <span>Native packages</span>
+                </span>
+            </button>
         </div>
 
         {#if activeSource === "all"}
@@ -329,7 +344,7 @@
     </div>
 
     <div class="source-panel" class:all-source-panel={activeSource === "all"} bind:this={sourcePanelElement}>
-            <section class="source-section" class:focused-source={activeSource !== "all"} hidden={activeSource === "nexus"}>
+            <section class="source-section" class:focused-source={activeSource !== "all"} hidden={activeSource === "nexus" || activeSource === "native"}>
                 <div class="source-section-head" hidden={activeSource !== "all"}>
                     <span class="source-section-title">
                         <span class="source-section-name"><LucideStore aria-hidden="true" /> SOTF Mods</span>
@@ -366,7 +381,7 @@
                 </div>
             </section>
 
-            <section class="source-section" class:focused-source={activeSource !== "all"} hidden={activeSource === "sotf"}>
+            <section class="source-section" class:focused-source={activeSource !== "all"} hidden={activeSource === "sotf" || activeSource === "native"}>
                 <div class="source-section-head" hidden={activeSource !== "all"}>
                     <span class="source-section-title">
                         <span class="source-section-name"><LucideCloudDownload aria-hidden="true" /> Nexus &amp; Vortex</span>
@@ -403,6 +418,19 @@
                 </div>
             </section>
 
+            {#if activeSource === "native"}
+                <section class="source-section focused-source native-source">
+                    {#if $selectedInstallation?.available && $selectedInstallation.target.kind === "player" && $selectedInstallation.root}
+                        <NativePackages gameRoot={$selectedInstallation.root} searchTerm={sharedSearchTerm} />
+                    {:else}
+                        <div class="native-empty" role="status">
+                            <LucidePackage aria-hidden="true" />
+                            <h2>Choose a player installation</h2>
+                            <p>Select an available player installation to view its native packages.</p>
+                        </div>
+                    {/if}
+                </section>
+            {/if}
     </div>
 </div>
 
@@ -679,6 +707,24 @@
         padding: 0;
     }
     .focused-source .source-section-body { flex: 1 1 0; height: auto; }
+    .source-section.focused-source.native-source { overflow-y: auto; padding-bottom: var(--app-bottom-safe-area, 12px); }
+    .native-empty {
+        align-items: center;
+        background: var(--surface-panel, #171a21);
+        border: 1px dashed var(--border-subtle, #2b303a);
+        border-radius: 12px;
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 230px;
+        padding: 28px;
+        text-align: center;
+    }
+    .native-empty :global(svg) { color: var(--accent, #eeb66b); height: 28px; margin-bottom: 14px; width: 28px; }
+    .native-empty h2 { color: var(--text-primary, #eef0f4); font-size: 17px; font-weight: 600; margin: 0; }
+    .native-empty p { color: var(--text-secondary, #9da6b6); font-size: 13px; line-height: 1.6; margin: 8px 0 0; max-width: 370px; }
+
     @media (max-width: 1100px) {
         .hub-header { gap: 18px; }
         .hub-search { flex-basis: 290px; min-width: 220px; }

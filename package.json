@@ -38,5 +38,5 @@
     "unplugin-icons": "23.0.1",
     "vite": "8.0.16"
   },
-  "description": "Modstoke Manager by OpenACAI, an independent mod manager for Sons of the Forest."
+  "description": "Modstoke Manager by OpenACAI, an independent game and dedicated-server toolkit for Sons of the Forest."
 }

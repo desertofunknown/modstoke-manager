@@ -1,6 +1,12 @@
 <script lang="ts">
     import InstallFeature from "../lib/InstallationComponent.svelte";
     import PathSelector from "../lib/PathSelector.svelte";
+    import PackRecovery from "../lib/PackRecovery.svelte";
+    import ServerRequirements from "../lib/ServerRequirements.svelte";
+    import ClientAdmission from "../lib/ClientAdmission.svelte";
+    import { createEventDispatcher, onDestroy } from "svelte";
+    import { installationProfiles, selectedInstallation, type InspectedInstallation } from "../lib/installationProfiles";
+    import { invoke } from "@tauri-apps/api/core";
     import { openAcaiLoaderFeature, melonFeature } from "../lib/featureInstaller";
     import { gameExePath, isPathValid, isDotnetInstalled, getDirectoryPath, processName, processProgress, processing } from "../lib/store";
     import {
@@ -17,6 +23,22 @@
     import * as shell from "@tauri-apps/plugin-shell"
     import { Command } from "@tauri-apps/plugin-shell";
 
+    export let view: "overview" | "loaders" | "multiplayer" = "overview";
+    const dispatch = createEventDispatcher<{ navigate: { id: "installed" | "mods" | "loaders" | "servers" | "multiplayer" | "modding" } }>();
+    const workspaces = [
+        { id: "installed" as const, title: "Installed mods", description: "Search your loadout, inspect packages and enable or disable mods.", action: "Manage mods", number: "01" },
+        { id: "mods" as const, title: "Browse mods", description: "Find your next addition across SOTF Mod Hub and Nexus Mods.", action: "Explore the catalog", number: "02" },
+        { id: "servers" as const, title: "Dedicated servers", description: "Manage installations, launch settings, native packages and world backups.", action: "Manage servers", number: "03" },
+        { id: "loaders" as const, title: "Loaders", description: "Install, verify and repair the tools that run your mods.", action: "Manage loaders", number: "04" },
+        { id: "multiplayer" as const, title: "Multiplayer", description: "Check server requirements, client participation and package recovery.", action: "Open multiplayer tools", number: "05" },
+        { id: "modding" as const, title: "Creator tools", description: "Set up runtime inspection tools for your modding workflow.", action: "Open creator tools", number: "06" },
+    ];
+    $: title = view === "loaders" ? "Loaders" : view === "multiplayer" ? "Multiplayer" : "Sons of the Forest";
+    $: description = view === "loaders" ? "Install, verify and repair your mod loaders." : view === "multiplayer" ? "Requirements, client participation and package recovery." : "Your game, mods and dedicated servers in one place.";
+    $: playerCount = $installationProfiles?.registry.targets.filter(target => target.kind === "player").length ?? 0;
+    $: serverCount = $installationProfiles?.registry.targets.filter(target => target.kind === "server").length ?? 0;
+    let destroyed = false;
+    onDestroy(() => { destroyed = true; loaderStatusRequestId++; });
     let features = [melonFeature, openAcaiLoaderFeature];
     let loaderReport: LoaderIntegrityReport | null = null;
     let loaderStatus = "Not checked";
@@ -25,7 +47,7 @@
     let loaderStatusRequestId = 0;
     let loaderProgressRequestId = 0;
 
-    $: if ($isPathValid && $gameExePath && $gameExePath !== lastCheckedLoaderExePath) {
+    $: if (view === "loaders" && $isPathValid && $gameExePath && $gameExePath !== lastCheckedLoaderExePath) {
         loaderReport = null;
         loaderStatus = "Checking loader files...";
         loaderStatusClass = "manual";
@@ -44,18 +66,36 @@
     }
 
     async function startGame() {
-        if ($processing || !$isPathValid) return;
+        if ($processing || !$isPathValid || $selectedInstallation?.target.kind !== "player") return;
         const selectedExecutable = $gameExePath;
+        const selectedId = $selectedInstallation.target.id;
+        const selectedRoot = $selectedInstallation.root;
+        if (!$selectedInstallation.available || !selectedRoot) return;
         processing.set(true);
         processName.set("Preparing Sons of the Forest...");
         processProgress.set(0);
         try {
+            const steamExecutable = await invoke<string | null>("get_steam_path");
+            const steamInstallation = steamExecutable
+                ? await invoke<InspectedInstallation>("inspect_installation_target", { executable: steamExecutable }) : null;
+            if (!steamInstallation?.available || steamInstallation.target.id !== selectedId) {
+                await dialog.message("Steam does not point to this installation. Open its folder to launch this copy through your usual launcher.", {
+                    title: "Selected installation", kind: "info"
+                });
+                return;
+            }
+            await invoke("check_player_launch_ready", { gameRoot: selectedRoot });
             const installedVersion = await getInstalledLoaderVersion();
             if (installedVersion) {
                 loaderReport = await ensureLatestOpenAcaiLoader();
                 updateLoaderStatus(loaderReport);
             }
-            if ($isPathValid && $gameExePath === selectedExecutable) await launchGame();
+            if ($isPathValid && $gameExePath === selectedExecutable && $selectedInstallation?.target.id === selectedId
+                && $selectedInstallation.root === selectedRoot) {
+                await invoke("check_player_launch_ready", { gameRoot: selectedRoot });
+                if ($isPathValid && $gameExePath === selectedExecutable && $selectedInstallation?.target.id === selectedId
+                    && $selectedInstallation.root === selectedRoot) await launchGame();
+            }
         } catch (error) {
             await dialog.message(`The game could not be prepared or started:\n${error}`, { title: "Start failed", kind: "error" });
         } finally {
@@ -120,11 +160,11 @@
     }
 
     function isCurrentLoaderStatusRequest(requestId: number, expectedExePath: string) {
-        return requestId === loaderStatusRequestId && expectedExePath === $gameExePath;
+        return !destroyed && requestId === loaderStatusRequestId && expectedExePath === $gameExePath;
     }
 
     async function repairLoader() {
-        if ($processing || !$isPathValid) return;
+        if ($processing || !$isPathValid || $selectedInstallation?.target.kind !== "player") return;
         processing.set(true);
         processName.set("Preparing Modstoke Loader repair...");
         processProgress.set(0);
@@ -179,15 +219,14 @@
         return `Checked ${checkedAt} using ${source}. ${report.versionOutdated ? "Installed metadata is older, but files match the current manifest." : "No loader file drift detected."}`;
     }
 </script>
-
 <div class="main-page">
     <header class="page-heading">
         <div class="heading-copy">
-            <p class="eyebrow">Game workspace</p>
-            <h1>Sons of the Forest</h1>
-            <p class="page-description">Your installation and modding tools.</p>
+            <p class="eyebrow">{view === "overview" ? "Your workspace" : "Toolkit"}</p>
+            <h1>{title}</h1>
+            <p class="page-description">{description}</p>
         </div>
-        {#if $isPathValid}
+        {#if $isPathValid && view === "overview"}
             <div class="main-actions">
                 <button class="folder-button" disabled={$processing} on:click={openFolder} title="Open game folder" aria-label="Open game folder">
                     <LucideFolderOpen aria-hidden="true" />
@@ -200,9 +239,25 @@
         {/if}
     </header>
 
-    <PathSelector />
+    <PathSelector kind="player" />
+    {#if view === "overview"}
+        <div class="workspace-summary" aria-label="Saved installation summary">
+            <span><strong>{playerCount}</strong> player {playerCount === 1 ? "installation" : "installations"}</span>
+            <span><strong>{serverCount}</strong> dedicated {serverCount === 1 ? "server" : "servers"}</span>
+            <span class="runtime-state">.NET 11 <strong>{$isDotnetInstalled ? "available" : "not detected"}</strong></span>
+        </div>
+        <div class="workspace-grid">
+            {#each workspaces as workspace}
+                <button class="workspace-card" on:click={() => dispatch("navigate", { id: workspace.id })}>
+                    <span class="card-number">{workspace.number}</span>
+                    <strong>{workspace.title}</strong><span class="card-description">{workspace.description}</span>
+                    <span class="card-action">{workspace.action}<LucideArrowUpRight aria-hidden="true" /></span>
+                </button>
+            {/each}
+        </div>
+    {/if}
 
-    {#if $isPathValid}
+    {#if view === "loaders" && $isPathValid}
         <div class="loader-workspace">
             <section class="loader-setup" aria-labelledby="loader-setup-heading">
                 <div class="section-heading">
@@ -241,7 +296,29 @@
         </div>
     {/if}
 
-    {#if !$isDotnetInstalled}
+    {#if view === "multiplayer"}
+    <section class="workspace-tools" aria-labelledby="workspace-tools-heading">
+        <div class="section-heading tools-heading">
+            <div>
+                <h2 id="workspace-tools-heading">Connection & recovery</h2>
+                <p>Requirements, participation and package recovery.</p>
+            </div>
+            <span class="section-caption">Advanced setup</span>
+        </div>
+        <div class="tool-sections">
+            <ServerRequirements installation={$selectedInstallation?.target.kind === "player" ? $selectedInstallation : null} />
+            {#if $selectedInstallation?.target.kind === "player" && $selectedInstallation.available && $selectedInstallation.root}
+                <ClientAdmission installation={$selectedInstallation} />
+            {/if}
+            {#if $selectedInstallation?.target.kind === "player" && $selectedInstallation.available && $selectedInstallation.root}
+                <PackRecovery installation={$selectedInstallation} />
+            {/if}
+        </div>
+    </section>
+
+    {/if}
+
+    {#if !$isDotnetInstalled && view === "loaders"}
         <p class="runtime-note"><a href="https://dotnet.microsoft.com/en-us/download/dotnet/11.0" target="_blank" rel="noreferrer">.NET 11</a> is recommended for current Modstoke Loader builds.</p>
     {/if}
 
@@ -252,6 +329,18 @@
 </div>
 
 <style>
+    .workspace-summary { display: flex; flex-wrap: wrap; gap: 24px; align-items: center; color: var(--text-secondary); font-size: 12px; padding: 0 2px; }
+    .workspace-summary strong { color: var(--text-primary); font-weight: 600; }
+    .runtime-state { margin-left: auto; }
+    .workspace-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .workspace-card { position: relative; display: flex; flex-direction: column; gap: 9px; text-align: left; align-items: flex-start; padding: 20px; background: var(--surface-panel); border: 1px solid var(--border-subtle); min-width: 0; min-height: 190px; border-radius: 10px; }
+    .workspace-card:hover:enabled { border-color: #716044; background: #1d2129; }
+    .workspace-card > strong { font-size: 16px; font-weight: 600; }
+    .card-number { font-size: 11px; color: var(--accent); font-family: Consolas, monospace; }
+    .card-description { font-size: 12px; font-weight: 400; color: var(--text-secondary); line-height: 1.6; }
+    .card-action { display: flex; align-items: center; gap: 8px; color: var(--accent); font-size: 11px; padding-top: 12px; margin-top: auto; }
+    @media(max-width:1100px) { .workspace-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .workspace-card { min-height: 160px; padding: 16px; } }
+
     .main-page {
         display: flex;
         flex-direction: column;
@@ -340,6 +429,43 @@
     .tool-button:hover:not(:disabled) { border-color: #515967; background: #282e38; }
     .repair-button { color: var(--accent, #eeb66b); }
 
+    .workspace-tools { min-width: 0; }
+    .tools-heading { margin-bottom: 12px; }
+    .section-caption { color: var(--text-secondary, #9da6b6); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+    .tool-sections { display: flex; flex-direction: column; gap: 8px; }
+    .workspace-tools :global(.requirements),
+    .workspace-tools :global(.client-admission),
+    .workspace-tools :global(.pack-recovery),
+    .workspace-tools :global(.server-installation) {
+        width: 100%;
+        max-width: none;
+        min-width: 0;
+        margin: 0;
+        border: 1px solid var(--border-subtle, #30353f);
+        border-radius: 9px;
+        color: var(--text-primary, #eef0f4);
+        background: var(--surface-panel, #171a21);
+        box-sizing: border-box;
+    }
+    .workspace-tools :global(.server-installation) { padding: 18px; margin-bottom: 12px; }
+    .workspace-tools :global(.requirements > summary),
+    .workspace-tools :global(.client-admission > summary),
+    .workspace-tools :global(.pack-recovery > summary) { padding: 14px 17px; color: var(--text-primary, #eef0f4); font-size: 12px; line-height: 1.5; }
+    .workspace-tools :global(summary::marker) { color: #778394; }
+    .workspace-tools :global(summary strong) { font-weight: 600; }
+    .workspace-tools :global(summary span) { color: var(--text-secondary, #9da6b6); font-size: 11px; }
+    .workspace-tools :global(summary:hover) { background: var(--surface-raised, #20242c); border-radius: 8px; }
+    .workspace-tools :global(.content),
+    .workspace-tools :global(.recovery-content) { padding: 0 18px 18px; }
+    .workspace-tools :global(.note),
+    .workspace-tools :global(.installation) { color: var(--text-secondary, #9da6b6); }
+    .workspace-tools :global(.heading-row),
+    .workspace-tools :global(.installation-row),
+    .workspace-tools :global(.profile-state) { border-color: var(--border-subtle, #30353f); }
+    .workspace-tools :global(button) { border-radius: 7px; }
+    .workspace-tools :global(input:not([type="checkbox"])),
+    .workspace-tools :global(textarea) { border-color: #3c4350; border-radius: 7px; color: var(--text-primary, #eef0f4); background: var(--surface-base, #101217); }
+
     .runtime-note { margin: -5px 0 0; color: var(--text-secondary, #9da6b6); font-size: 12px; line-height: 1.5; }
     .runtime-note a { color: var(--accent, #eeb66b); }
     .workspace-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 17px; border-top: 1px solid var(--border-subtle, #30353f); color: #7d8797; font-size: 10px; line-height: 1.5; }
@@ -361,5 +487,6 @@
         .loader-workspace { grid-template-columns: minmax(0, 1fr); }
         .health-actions { justify-content: flex-start; }
         .tool-button { flex: 0 1 auto; }
+        .section-caption { display: none; }
     }
 </style>
