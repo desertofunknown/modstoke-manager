@@ -41,10 +41,13 @@ const NEXUS_GRAPHQL_ENDPOINT: &str = "https://api.nexusmods.com/v2/graphql";
 const NEXUS_GAME_DOMAIN: &str = "sonsoftheforest";
 const NEXUS_CREDENTIAL_SERVICE: &str = "OpenACAI Mod Manager";
 const NEXUS_CREDENTIAL_ACCOUNT: &str = "nexusmods-api-key";
-const NEXUS_USER_AGENT: &str =
-    "OpenACAI-Mod-Manager/0.2.0 (SonsOfTheForest; Windows; SignedPublisher=OpenACAI Inc)";
+const NEXUS_USER_AGENT: &str = concat!(
+    "OpenACAI-Mod-Manager/",
+    env!("CARGO_PKG_VERSION"),
+    " (SonsOfTheForest; Windows; Publisher=OpenACAI)"
+);
 const NEXUS_APPLICATION_NAME: &str = "OpenACAI Mod Manager";
-const NEXUS_APPLICATION_VERSION: &str = "0.2.0";
+const NEXUS_APPLICATION_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Serialize)]
 struct LoaderZipInspection {
@@ -251,7 +254,7 @@ async fn nexus_fetch_sotf_mods(view: String) -> Result<NexusModsResponse, String
             format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/trending.json")
         }
     };
-    let response = nexus_client(&key)
+    let response = nexus_client(&key)?
         .get(url)
         .send()
         .await
@@ -274,6 +277,8 @@ async fn nexus_fetch_sotf_mods_graphql(
     offset: u64,
     count: u64,
 ) -> Result<NexusGraphqlModsResponse, String> {
+    let key =
+        read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
     let query = r#"
         query OpenAcaiSotfMods($filter: ModsFilter, $sort: [ModsSort!], $offset: Int, $count: Int) {
             mods(filter: $filter, sort: $sort, offset: $offset, count: $count) {
@@ -330,7 +335,7 @@ async fn nexus_fetch_sotf_mods_graphql(
         }
     });
 
-    let response = nexus_public_client()
+    let response = nexus_client(&key)?
         .post(NEXUS_GRAPHQL_ENDPOINT)
         .json(&payload)
         .send()
@@ -350,8 +355,12 @@ async fn nexus_fetch_sotf_mods_graphql(
         .await
         .map_err(|e| e.to_string())?;
 
-    if let Some(errors) = value.get("errors") {
-        return Err(format!("Nexus catalog sync returned errors: {errors}"));
+    if value
+        .get("errors")
+        .and_then(|errors| errors.as_array())
+        .is_some_and(|errors| !errors.is_empty())
+    {
+        return Err("Nexus could not return the catalog for this account. Try again later or check your connection in Settings.".to_string());
     }
 
     let mods_page = value
@@ -360,8 +369,9 @@ async fn nexus_fetch_sotf_mods_graphql(
         .ok_or_else(|| "Nexus catalog sync did not return a mods page.".to_string())?;
     let mods = mods_page
         .get("nodes")
+        .filter(|nodes| nodes.is_array())
         .cloned()
-        .unwrap_or_else(|| serde_json::json!([]));
+        .ok_or_else(|| "Nexus catalog sync did not return a valid mods list.".to_string())?;
     let total_count = mods_page.get("totalCount").and_then(|count| count.as_u64());
     let nodes_count = mods_page.get("nodesCount").and_then(|count| count.as_u64());
 
@@ -378,7 +388,7 @@ async fn nexus_fetch_sotf_game_info() -> Result<NexusGameInfoResponse, String> {
     let key =
         read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
     let url = format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}.json");
-    let response = nexus_client(&key)
+    let response = nexus_client(&key)?
         .get(url)
         .send()
         .await
@@ -404,7 +414,7 @@ async fn nexus_fetch_mod_details(mod_id: u64) -> Result<NexusModDetailsResponse,
     let key =
         read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
     let url = format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/{mod_id}.json");
-    let response = nexus_client(&key)
+    let response = nexus_client(&key)?
         .get(url)
         .send()
         .await
@@ -433,7 +443,7 @@ async fn nexus_fetch_mod_files(mod_id: u64) -> Result<NexusModFilesResponse, Str
     let key =
         read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
     let url = format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/{mod_id}/files.json");
-    let response = nexus_client(&key)
+    let response = nexus_client(&key)?
         .get(url)
         .send()
         .await
@@ -462,7 +472,7 @@ async fn nexus_fetch_file_dependencies(
 ) -> Result<NexusModDependenciesResponse, String> {
     let key =
         read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
-    let client = nexus_client(&key);
+    let client = nexus_client(&key)?;
     let supplied_version_id = nexus_file_id
         .as_deref()
         .map(str::trim)
@@ -650,7 +660,7 @@ async fn nexus_fetch_mod_changelogs(mod_id: u64) -> Result<NexusModChangelogsRes
         read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
     let url =
         format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/{mod_id}/changelogs.json");
-    let response = nexus_client(&key)
+    let response = nexus_client(&key)?
         .get(url)
         .send()
         .await
@@ -678,7 +688,7 @@ async fn nexus_fetch_mod_changelogs(mod_id: u64) -> Result<NexusModChangelogsRes
 async fn nexus_fetch_user_endorsements() -> Result<NexusEndorsementsResponse, String> {
     let key =
         read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
-    let response = nexus_client(&key)
+    let response = nexus_client(&key)?
         .get(format!("{NEXUS_API_BASE}/v1/user/endorsements.json"))
         .send()
         .await
@@ -706,7 +716,7 @@ async fn nexus_fetch_user_endorsements() -> Result<NexusEndorsementsResponse, St
 async fn nexus_fetch_user_tracked_mods() -> Result<NexusTrackedModsResponse, String> {
     let key =
         read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
-    let response = nexus_client(&key)
+    let response = nexus_client(&key)?
         .get(format!("{NEXUS_API_BASE}/v1/user/tracked_mods.json"))
         .send()
         .await
@@ -746,7 +756,7 @@ async fn nexus_endorse_sotf_mod(
         form.push(("version", version));
     }
 
-    let response = nexus_client(&key)
+    let response = nexus_client(&key)?
         .post(url)
         .form(&form)
         .send()
@@ -782,7 +792,7 @@ async fn nexus_set_sotf_tracking(
     let key =
         read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())?;
     let form = vec![("mod_id", mod_id.to_string())];
-    let request = nexus_client(&key)
+    let request = nexus_client(&key)?
         .request(
             if should_track {
                 reqwest::Method::POST
@@ -809,7 +819,7 @@ async fn nexus_set_sotf_tracking(
 }
 
 async fn validate_nexus_key(api_key: &str) -> Result<(NexusUser, NexusRateLimit), String> {
-    let response = nexus_client(api_key)
+    let response = nexus_client(api_key)?
         .get(format!("{NEXUS_API_BASE}/v1/users/validate.json"))
         .send()
         .await
@@ -827,8 +837,13 @@ async fn validate_nexus_key(api_key: &str) -> Result<(NexusUser, NexusRateLimit)
         .json::<serde_json::Value>()
         .await
         .map_err(|e| e.to_string())?;
+    let user_id = value
+        .get("user_id")
+        .and_then(|value| value.as_u64())
+        .filter(|id| *id > 0 && *id <= 9_007_199_254_740_991)
+        .ok_or_else(|| "Nexus did not return a valid account identity.".to_string())?;
     let user = NexusUser {
-        user_id: value.get("user_id").and_then(|v| v.as_u64()),
+        user_id: Some(user_id),
         name: value
             .get("name")
             .and_then(|v| v.as_str())
@@ -850,12 +865,15 @@ async fn validate_nexus_key(api_key: &str) -> Result<(NexusUser, NexusRateLimit)
     Ok((user, rate_limit))
 }
 
-fn nexus_client(api_key: &str) -> reqwest::Client {
+fn nexus_client(api_key: &str) -> Result<reqwest::Client, String> {
     let mut headers = HeaderMap::new();
-    headers.insert(
-        "apikey",
-        HeaderValue::from_str(api_key).unwrap_or_else(|_| HeaderValue::from_static("")),
-    );
+    if api_key.trim().is_empty() {
+        return Err("The Nexus API key is empty. Reconnect your account.".to_string());
+    }
+    let mut key_header = HeaderValue::from_str(api_key)
+        .map_err(|_| "The Nexus API key contains invalid characters.".to_string())?;
+    key_header.set_sensitive(true);
+    headers.insert("apikey", key_header);
     headers.insert("User-Agent", HeaderValue::from_static(NEXUS_USER_AGENT));
     headers.insert(
         "Application-Name",
@@ -868,26 +886,11 @@ fn nexus_client(api_key: &str) -> reqwest::Client {
 
     reqwest::Client::builder()
         .default_headers(headers)
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
-        .expect("failed to build Nexus API client")
-}
-
-fn nexus_public_client() -> reqwest::Client {
-    let mut headers = HeaderMap::new();
-    headers.insert("User-Agent", HeaderValue::from_static(NEXUS_USER_AGENT));
-    headers.insert(
-        "Application-Name",
-        HeaderValue::from_static(NEXUS_APPLICATION_NAME),
-    );
-    headers.insert(
-        "Application-Version",
-        HeaderValue::from_static(NEXUS_APPLICATION_VERSION),
-    );
-
-    reqwest::Client::builder()
-        .default_headers(headers)
-        .build()
-        .expect("failed to build Nexus public API client")
+        .map_err(|_| "Could not initialize the Nexus API connection.".to_string())
 }
 
 fn read_rate_limit(headers: &HeaderMap) -> NexusRateLimit {

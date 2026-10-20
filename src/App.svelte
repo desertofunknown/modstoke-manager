@@ -319,7 +319,7 @@
       {#await modsPage}
         <div class="page-status" role="status">Loading mod library…</div>
       {:then module}
-        {#key displayedCatalogRevision}<module.default />{/key}
+        {#key displayedCatalogRevision}<module.default isActive={activeTab === "mods"} />{/key}
       {:catch error}
         <div class="page-status" role="alert">
           <strong>The mod library could not be loaded.</strong>

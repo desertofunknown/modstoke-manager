@@ -24,10 +24,13 @@
         attention: number;
     };
 
+    export let isActive = false;
+
     const MOD_HUB_SOURCE_KEY = "openacai-mod-hub-source";
     const MOD_HUB_SEARCH_KEY = "openacai-mod-hub-search";
 
     let activeSource: ModHubSource = "all";
+    let isMounted = false;
     let sharedSearchTerm = "";
     let searchInput: HTMLInputElement;
     let sharedSearchVersion = 0;
@@ -56,6 +59,7 @@
 
         setupHubLayoutObserver();
         void measureHubLayoutAfterTick();
+        isMounted = true;
     });
 
     onDestroy(() => {
@@ -406,6 +410,7 @@
                 <div class="source-section-body nexus-source-section-body">
                     {#key $gameExePath}
                     <NexusVortex
+                        isActive={isMounted && isActive && (activeSource === "all" || activeSource === "nexus")}
                         embeddedStorePreview={activeSource === "all"}
                         embeddedControlsExpanded={allStoresNexusControlsExpanded}
                         sharedSearchTerm={sharedSearchTerm}

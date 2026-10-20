@@ -26,7 +26,7 @@ These signed files still display **OpenACAI Mod Manager**. The Modstoke branding
 
 **Loader installation is currently blocked by its release feed.** The Manager's install and repair actions request `OpenACAILoader.manifest.json` from [the old loader release URL](https://github.com/desertofunknown/openacai-loader/releases/latest/download/OpenACAILoader.manifest.json), which is unavailable at present. The current UI does not offer a working local ZIP picker. These actions will need a compatible public loader release feed or a code update before they can install or repair Modstoke Loader. See [troubleshooting](docs/TROUBLESHOOTING.md) for the errors you may see.
 
-Nexus browser sign-in also depends on Nexus Mods approving the Manager application. The manual API key option is intended for development testing.
+Nexus account sign-in is awaiting application registration. Personal API keys are available only for development testing and review. See the [Nexus integration notes](docs/NEXUS_API_REVIEW.md) for account handling, review instructions and the proposed OAuth registration.
 
 ## Develop on Windows
 

@@ -197,7 +197,6 @@ export const NEXUS_CACHE_TTL_MINUTES = 10;
 const NEXUS_CACHE_TTL_MS = NEXUS_CACHE_TTL_MINUTES * 60 * 1000;
 const NEXUS_GRAPHQL_CATALOG_PAGE_SIZE = 80;
 const NEXUS_GRAPHQL_CATALOG_MAX_PAGES = 12;
-const ALL_NEXUS_FEEDS = ["trending", "latest_added", "latest_updated"] as const;
 const LOCAL_SOTF_NEXUS_CATEGORIES: NexusCategory[] = [
     { category_id: 4, name: "Gameplay", source: "local" },
     { category_id: 2, name: "Miscellaneous", source: "local" },
@@ -269,6 +268,8 @@ const DEPENDENCY_WRAPPER_KEYS = [
     "mod_file_dependency_materialized_response"
 ];
 
+let authGeneration = 0;
+let credentialTransitionPending = false;
 let sessionCache: { value: NexusSession; cachedAt: number } | null = null;
 let sessionRequest: Promise<NexusSession> | null = null;
 let categoriesCache: { value: NexusCategory[]; cachedAt: number } | null = null;
@@ -292,7 +293,21 @@ function cacheFresh(cachedAt: number): boolean {
     return Date.now() - cachedAt < NEXUS_CACHE_TTL_MS;
 }
 
+function currentNexusGeneration(): number {
+    if (credentialTransitionPending) {
+        throw new Error("Nexus credentials are changing. Please try again once the change finishes.");
+    }
+    return authGeneration;
+}
+
+function assertCurrentNexusRequest(generation: number, ownsRequest = true): void {
+    if (generation !== authGeneration || !ownsRequest) {
+        throw new Error("The Nexus request is no longer current. Please try again.");
+    }
+}
+
 export function clearNexusClientCache(): void {
+    authGeneration += 1;
     sessionCache = null;
     sessionRequest = null;
     categoriesCache = null;
@@ -314,49 +329,81 @@ export function clearNexusClientCache(): void {
 }
 
 export async function getNexusSession(options: { force?: boolean } = {}): Promise<NexusSession> {
+    const generation = currentNexusGeneration();
     if (!options.force && sessionCache && cacheFresh(sessionCache.cachedAt)) {
         return sessionCache.value;
     }
 
-    if (!options.force && sessionRequest) {
-        return await sessionRequest;
+    if (sessionRequest) {
+        const session = await sessionRequest;
+        assertCurrentNexusRequest(generation);
+        return session;
     }
 
-    sessionRequest = invoke<NexusSession>("nexus_get_session")
+    const request = invoke<NexusSession>("nexus_get_session")
         .then((session) => {
+            assertCurrentNexusRequest(generation, sessionRequest === request);
             sessionCache = { value: session, cachedAt: Date.now() };
             return session;
         })
         .finally(() => {
+            assertCurrentNexusRequest(generation, sessionRequest === request);
             sessionRequest = null;
         });
 
-    return await sessionRequest;
+    sessionRequest = request;
+    const session = await request;
+    assertCurrentNexusRequest(generation);
+    return session;
 }
 
 export async function saveNexusApiKey(apiKey: string): Promise<NexusSession> {
+    currentNexusGeneration();
     clearNexusClientCache();
-    const session = await invoke<NexusSession>("nexus_save_api_key", { apiKey });
+    const generation = authGeneration;
+    credentialTransitionPending = true;
+    let session: NexusSession;
+    try {
+        session = await invoke<NexusSession>("nexus_save_api_key", { apiKey });
+        assertCurrentNexusRequest(generation);
+    } finally {
+        // A failed save may retain the previous credential. Reload it on the next request.
+        credentialTransitionPending = false;
+        clearNexusClientCache();
+    }
     sessionCache = { value: session, cachedAt: Date.now() };
     return session;
 }
 
 export async function clearNexusApiKey(): Promise<void> {
+    currentNexusGeneration();
     clearNexusClientCache();
-    await invoke("nexus_clear_api_key");
+    const generation = authGeneration;
+    credentialTransitionPending = true;
+    try {
+        await invoke("nexus_clear_api_key");
+        assertCurrentNexusRequest(generation);
+    } finally {
+        credentialTransitionPending = false;
+        clearNexusClientCache();
+    }
 }
 
 export async function fetchNexusSotfCategories(options: { force?: boolean } = {}): Promise<NexusCategory[]> {
+    const generation = currentNexusGeneration();
     if (!options.force && categoriesCache && cacheFresh(categoriesCache.cachedAt)) {
         return categoriesCache.value;
     }
 
-    if (!options.force && categoriesRequest) {
-        return await categoriesRequest;
+    if (categoriesRequest) {
+        const categories = await categoriesRequest;
+        assertCurrentNexusRequest(generation);
+        return categories;
     }
 
-    categoriesRequest = invoke<RawNexusGameInfoResponse>("nexus_fetch_sotf_game_info")
+    const request = invoke<RawNexusGameInfoResponse>("nexus_fetch_sotf_game_info")
         .then((response) => {
+            assertCurrentNexusRequest(generation, categoriesRequest === request);
             const categories = mergeNexusCategories([
                 ...normalizeNexusCategories(response.game),
                 ...LOCAL_SOTF_NEXUS_CATEGORIES
@@ -365,58 +412,76 @@ export async function fetchNexusSotfCategories(options: { force?: boolean } = {}
             return categories;
         })
         .catch(() => {
+            assertCurrentNexusRequest(generation, categoriesRequest === request);
             const fallback = mergeNexusCategories(LOCAL_SOTF_NEXUS_CATEGORIES);
             categoriesCache = { value: fallback, cachedAt: Date.now() };
             return fallback;
         })
         .finally(() => {
+            assertCurrentNexusRequest(generation, categoriesRequest === request);
             categoriesRequest = null;
         });
 
-    return await categoriesRequest;
+    categoriesRequest = request;
+    const categories = await request;
+    assertCurrentNexusRequest(generation);
+    return categories;
 }
 
 export async function fetchNexusSotfMods(view: NexusView, options: { force?: boolean } = {}): Promise<NexusModsResponse> {
-    const categories = await fetchNexusSotfCategories(options);
-
-    if (view === "all") {
-        const cacheKey = "all";
-        const cached = modsCache.get(cacheKey);
-        if (!options.force && cached && cacheFresh(cached.cachedAt)) {
-            return cached.value;
-        }
-
-        const existingRequest = modsRequests.get(cacheKey);
-        if (!options.force && existingRequest) {
-            return await existingRequest;
-        }
-
-        const request = fetchGraphqlNexusSotfCatalog(categories)
-            .catch(async (error) => {
-                console.log("Falling back to legacy Nexus feeds after GraphQL catalog sync failed", error);
-                return await fetchLegacyNexusSotfFeeds(categories, options);
-            })
-            .then((merged) => {
-                modsCache.set(cacheKey, { value: merged, cachedAt: Date.now() });
-                return merged;
-            })
-            .finally(() => {
-                modsRequests.delete(cacheKey);
-            });
-
-        modsRequests.set(cacheKey, request);
-        return await request;
+    const generation = currentNexusGeneration();
+    const cached = modsCache.get(view);
+    if (!options.force && cached && cacheFresh(cached.cachedAt)) {
+        return cached.value;
     }
 
-    return await fetchSingleNexusSotfMods(view, categories, options);
+    const existingRequest = modsRequests.get(view);
+    if (existingRequest) {
+        const result = await existingRequest;
+        assertCurrentNexusRequest(generation);
+        return result;
+    }
+
+    const assertCurrent = () => assertCurrentNexusRequest(generation, modsRequests.get(view) === request);
+    const request: Promise<NexusModsResponse> = fetchNexusSotfCategories(options)
+        .then(async (categories) => {
+            assertCurrent();
+            if (view === "all") {
+                return await fetchGraphqlNexusSotfCatalog(categories, assertCurrent);
+            }
+
+            const response = await invoke<RawNexusModsResponse>("nexus_fetch_sotf_mods", { view });
+            assertCurrent();
+            const rawMods = Array.isArray(response.mods) ? response.mods : response.mods.data ?? [];
+            return {
+                ...response,
+                categories,
+                mods: mergeNexusMods(rawMods.map(mod => normalizeNexusMod(mod, categories)).filter(mod => mod.mod_id > 0))
+            };
+        })
+        .then((result) => {
+            assertCurrent();
+            modsCache.set(view, { value: result, cachedAt: Date.now() });
+            return result;
+        })
+        .finally(() => {
+            assertCurrent();
+            modsRequests.delete(view);
+        });
+
+    modsRequests.set(view, request);
+    const result = await request;
+    assertCurrentNexusRequest(generation);
+    return result;
 }
 
-async function fetchGraphqlNexusSotfCatalog(categories: NexusCategory[]): Promise<NexusModsResponse> {
+async function fetchGraphqlNexusSotfCatalog(categories: NexusCategory[], assertCurrent: () => void): Promise<NexusModsResponse> {
     const mods: NexusMod[] = [];
     let totalCount: number | undefined;
     let rateLimit: NexusRateLimit = {};
 
     for (let page = 0; page < NEXUS_GRAPHQL_CATALOG_MAX_PAGES; page += 1) {
+        assertCurrent();
         const offset = page * NEXUS_GRAPHQL_CATALOG_PAGE_SIZE;
         if (totalCount !== undefined && offset >= totalCount) {
             break;
@@ -426,6 +491,7 @@ async function fetchGraphqlNexusSotfCatalog(categories: NexusCategory[]): Promis
             offset,
             count: NEXUS_GRAPHQL_CATALOG_PAGE_SIZE
         });
+        assertCurrent();
         const rawMods = Array.isArray(response.mods)
             ? response.mods
             : response.mods.nodes ?? response.mods.data ?? [];
@@ -442,10 +508,6 @@ async function fetchGraphqlNexusSotfCatalog(categories: NexusCategory[]): Promis
         }
     }
 
-    if (mods.length === 0) {
-        throw new Error("Nexus GraphQL catalog sync did not return mods.");
-    }
-
     return {
         mods: mergeNexusMods(mods),
         categories,
@@ -453,63 +515,18 @@ async function fetchGraphqlNexusSotfCatalog(categories: NexusCategory[]): Promis
     };
 }
 
-async function fetchLegacyNexusSotfFeeds(categories: NexusCategory[], options: { force?: boolean } = {}): Promise<NexusModsResponse> {
-    const responses = await Promise.allSettled(ALL_NEXUS_FEEDS.map(feed => fetchSingleNexusSotfMods(feed, categories, options)));
-    const successful = responses
-        .filter((response): response is PromiseFulfilledResult<NexusModsResponse> => response.status === "fulfilled")
-        .map(response => response.value);
-
-    if (successful.length === 0) {
-        const firstError = responses.find((response): response is PromiseRejectedResult => response.status === "rejected");
-        throw new Error(firstError ? `${firstError.reason}` : "No Nexus feed returned mods.");
-    }
-
-    return {
-        mods: mergeNexusMods(successful.flatMap(response => response.mods)),
-        categories,
-        rate_limit: successful[successful.length - 1].rate_limit
-    };
-}
-
-async function fetchSingleNexusSotfMods(view: string, categories: NexusCategory[], options: { force?: boolean } = {}): Promise<NexusModsResponse> {
-    const cached = modsCache.get(view);
-    if (!options.force && cached && cacheFresh(cached.cachedAt)) {
-        return cached.value;
-    }
-
-    const existingRequest = modsRequests.get(view);
-    if (!options.force && existingRequest) {
-        return await existingRequest;
-    }
-
-    const request = invoke<RawNexusModsResponse>("nexus_fetch_sotf_mods", { view })
-        .then((response) => {
-            const rawMods = Array.isArray(response.mods) ? response.mods : response.mods.data ?? [];
-            const normalized = {
-                ...response,
-                categories,
-                mods: mergeNexusMods(rawMods.map(mod => normalizeNexusMod(mod, categories)).filter(mod => mod.mod_id > 0))
-            };
-            modsCache.set(view, { value: normalized, cachedAt: Date.now() });
-            return normalized;
-        })
-        .finally(() => {
-            modsRequests.delete(view);
-        });
-
-    modsRequests.set(view, request);
-    return await request;
-}
-
 export async function fetchNexusModDetails(modId: number, options: { force?: boolean } = {}): Promise<NexusMod> {
+    const generation = currentNexusGeneration();
     const cached = detailsCache.get(modId);
     if (!options.force && cached && cacheFresh(cached.cachedAt)) {
         return cached.value;
     }
 
     const existingRequest = detailsRequests.get(modId);
-    if (!options.force && existingRequest) {
-        return await existingRequest;
+    if (existingRequest) {
+        const result = await existingRequest;
+        assertCurrentNexusRequest(generation);
+        return result;
     }
 
     const request = Promise.all([
@@ -517,31 +534,39 @@ export async function fetchNexusModDetails(modId: number, options: { force?: boo
             fetchNexusSotfCategories(options)
         ])
         .then(([response, categories]) => {
+            assertCurrentNexusRequest(generation, detailsRequests.get(modId) === request);
             const details = normalizeNexusMod(response.details, categories);
             detailsCache.set(modId, { value: details, cachedAt: Date.now() });
             return details;
         })
         .finally(() => {
+            assertCurrentNexusRequest(generation, detailsRequests.get(modId) === request);
             detailsRequests.delete(modId);
         });
 
     detailsRequests.set(modId, request);
-    return await request;
+    const result = await request;
+    assertCurrentNexusRequest(generation);
+    return result;
 }
 
 export async function fetchNexusModFiles(modId: number, options: { force?: boolean } = {}): Promise<NexusModFilesResponse> {
+    const generation = currentNexusGeneration();
     const cached = filesCache.get(modId);
     if (!options.force && cached && cacheFresh(cached.cachedAt)) {
         return cached.value;
     }
 
     const existingRequest = filesRequests.get(modId);
-    if (!options.force && existingRequest) {
-        return await existingRequest;
+    if (existingRequest) {
+        const result = await existingRequest;
+        assertCurrentNexusRequest(generation);
+        return result;
     }
 
     const request = invoke<RawNexusModFilesResponse>("nexus_fetch_mod_files", { modId })
         .then((response) => {
+            assertCurrentNexusRequest(generation, filesRequests.get(modId) === request);
             const rawFiles = Array.isArray(response.files) ? response.files : response.files.data ?? [];
             const normalized = {
                 ...response,
@@ -551,14 +576,18 @@ export async function fetchNexusModFiles(modId: number, options: { force?: boole
             return normalized;
         })
         .finally(() => {
+            assertCurrentNexusRequest(generation, filesRequests.get(modId) === request);
             filesRequests.delete(modId);
         });
 
     filesRequests.set(modId, request);
-    return await request;
+    const result = await request;
+    assertCurrentNexusRequest(generation);
+    return result;
 }
 
 export async function fetchNexusFileDependencies(fileId: number, options: { force?: boolean; nexusFileId?: string } = {}): Promise<NexusModDependenciesResponse> {
+    const generation = currentNexusGeneration();
     const cacheKey = dependencyCacheKey(fileId, options.nexusFileId);
     const cached = dependencyCache.get(cacheKey);
     if (!options.force && cached && cacheFresh(cached.cachedAt)) {
@@ -566,8 +595,10 @@ export async function fetchNexusFileDependencies(fileId: number, options: { forc
     }
 
     const existingRequest = dependencyRequests.get(cacheKey);
-    if (!options.force && existingRequest) {
-        return await existingRequest;
+    if (existingRequest) {
+        const result = await existingRequest;
+        assertCurrentNexusRequest(generation);
+        return result;
     }
 
     const request = invoke<RawNexusModDependenciesResponse>("nexus_fetch_file_dependencies", {
@@ -575,6 +606,7 @@ export async function fetchNexusFileDependencies(fileId: number, options: { forc
         nexusFileId: options.nexusFileId
     })
         .then((response) => {
+            assertCurrentNexusRequest(generation, dependencyRequests.get(cacheKey) === request);
             const normalized = {
                 ...response,
                 dependencies: normalizeDependencies(response.dependencies)
@@ -583,26 +615,33 @@ export async function fetchNexusFileDependencies(fileId: number, options: { forc
             return normalized;
         })
         .finally(() => {
+            assertCurrentNexusRequest(generation, dependencyRequests.get(cacheKey) === request);
             dependencyRequests.delete(cacheKey);
         });
 
     dependencyRequests.set(cacheKey, request);
-    return await request;
+    const result = await request;
+    assertCurrentNexusRequest(generation);
+    return result;
 }
 
 export async function fetchNexusModChangelogs(modId: number, options: { force?: boolean } = {}): Promise<NexusModChangelogsResponse> {
+    const generation = currentNexusGeneration();
     const cached = changelogCache.get(modId);
     if (!options.force && cached && cacheFresh(cached.cachedAt)) {
         return cached.value;
     }
 
     const existingRequest = changelogRequests.get(modId);
-    if (!options.force && existingRequest) {
-        return await existingRequest;
+    if (existingRequest) {
+        const result = await existingRequest;
+        assertCurrentNexusRequest(generation);
+        return result;
     }
 
     const request = invoke<RawNexusModChangelogsResponse>("nexus_fetch_mod_changelogs", { modId })
         .then((response) => {
+            assertCurrentNexusRequest(generation, changelogRequests.get(modId) === request);
             const normalized = {
                 changelogs: normalizeChangelogs(response.changelogs),
                 rate_limit: response.rate_limit
@@ -611,24 +650,31 @@ export async function fetchNexusModChangelogs(modId: number, options: { force?: 
             return normalized;
         })
         .finally(() => {
+            assertCurrentNexusRequest(generation, changelogRequests.get(modId) === request);
             changelogRequests.delete(modId);
         });
 
     changelogRequests.set(modId, request);
-    return await request;
+    const result = await request;
+    assertCurrentNexusRequest(generation);
+    return result;
 }
 
 export async function fetchNexusUserEndorsements(options: { force?: boolean } = {}): Promise<NexusEndorsementsResponse> {
+    const generation = currentNexusGeneration();
     if (!options.force && endorsementCache && cacheFresh(endorsementCache.cachedAt)) {
         return endorsementCache.value;
     }
 
-    if (!options.force && endorsementRequest) {
-        return await endorsementRequest;
+    if (endorsementRequest) {
+        const result = await endorsementRequest;
+        assertCurrentNexusRequest(generation);
+        return result;
     }
 
-    endorsementRequest = invoke<RawNexusEndorsementsResponse>("nexus_fetch_user_endorsements")
+    const request = invoke<RawNexusEndorsementsResponse>("nexus_fetch_user_endorsements")
         .then((response) => {
+            assertCurrentNexusRequest(generation, endorsementRequest === request);
             const normalized = {
                 endorsements: normalizeEndorsements(response.endorsements),
                 rate_limit: response.rate_limit
@@ -637,23 +683,31 @@ export async function fetchNexusUserEndorsements(options: { force?: boolean } = 
             return normalized;
         })
         .finally(() => {
+            assertCurrentNexusRequest(generation, endorsementRequest === request);
             endorsementRequest = null;
         });
 
-    return await endorsementRequest;
+    endorsementRequest = request;
+    const result = await request;
+    assertCurrentNexusRequest(generation);
+    return result;
 }
 
 export async function fetchNexusUserTrackedMods(options: { force?: boolean } = {}): Promise<NexusTrackedModsResponse> {
+    const generation = currentNexusGeneration();
     if (!options.force && trackedModsCache && cacheFresh(trackedModsCache.cachedAt)) {
         return trackedModsCache.value;
     }
 
-    if (!options.force && trackedModsRequest) {
-        return await trackedModsRequest;
+    if (trackedModsRequest) {
+        const result = await trackedModsRequest;
+        assertCurrentNexusRequest(generation);
+        return result;
     }
 
-    trackedModsRequest = invoke<RawNexusTrackedModsResponse>("nexus_fetch_user_tracked_mods")
+    const request = invoke<RawNexusTrackedModsResponse>("nexus_fetch_user_tracked_mods")
         .then((response) => {
+            assertCurrentNexusRequest(generation, trackedModsRequest === request);
             const normalized = {
                 tracked_mods: normalizeTrackedMods(response.tracked_mods),
                 rate_limit: response.rate_limit
@@ -662,31 +716,41 @@ export async function fetchNexusUserTrackedMods(options: { force?: boolean } = {
             return normalized;
         })
         .finally(() => {
+            assertCurrentNexusRequest(generation, trackedModsRequest === request);
             trackedModsRequest = null;
         });
 
-    return await trackedModsRequest;
+    trackedModsRequest = request;
+    const result = await request;
+    assertCurrentNexusRequest(generation);
+    return result;
 }
 
 export async function endorseNexusSotfMod(modId: number, version?: string): Promise<NexusActionResponse> {
+    const generation = currentNexusGeneration();
     const response = await invoke<NexusActionResponse>("nexus_endorse_sotf_mod", {
         modId,
         version: version?.trim() || undefined
     });
+    assertCurrentNexusRequest(generation);
     endorsementCache = null;
     endorsementRequest = null;
     return response;
 }
 
 export async function trackNexusSotfMod(modId: number): Promise<NexusActionResponse> {
+    const generation = currentNexusGeneration();
     const response = await invoke<NexusActionResponse>("nexus_track_sotf_mod", { modId });
+    assertCurrentNexusRequest(generation);
     trackedModsCache = null;
     trackedModsRequest = null;
     return response;
 }
 
 export async function untrackNexusSotfMod(modId: number): Promise<NexusActionResponse> {
+    const generation = currentNexusGeneration();
     const response = await invoke<NexusActionResponse>("nexus_untrack_sotf_mod", { modId });
+    assertCurrentNexusRequest(generation);
     trackedModsCache = null;
     trackedModsRequest = null;
     return response;

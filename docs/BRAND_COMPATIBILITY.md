@@ -20,7 +20,7 @@ These values stay unchanged so existing installations and integrations remain re
 
 The NSIS installer displays **Modstoke Manager**, with **OpenACAI** as publisher. Its custom template keeps the old install directory, registry keys and shortcut filenames. It still reads a previously selected installation directory. Existing shortcuts keep their names; newly created shortcuts have a Modstoke description. The executable target and AppUserModelID stay the same.
 
-WebView's HTTPS origin, `openacai-mod-hub-*` and `openacai-nexus-*` preferences, credential account, Nexus request headers and user agent also stay unchanged. No settings migration is required.
+WebView's HTTPS origin, `openacai-mod-hub-*` and `openacai-nexus-*` preferences, credential account and Nexus application name stay unchanged. The Nexus version header and user agent follow the package version; the user agent identifies OpenACAI as publisher without claiming that a local build is signed. No settings migration is required. Ownerless Nexus catalog caches are discarded and rebuilt for the connected account.
 
 The source-built installer is named `Modstoke Manager_<version>_x64-setup.exe`. Published download aliases and the existing signed 0.2.0 files keep their old names. Those signed files still contain the earlier branding; they have not been rebuilt or re-signed as part of this rename.
 
@@ -33,7 +33,7 @@ Upstream projects keep their own names: BepInEx, RedLoader, SonsSdk and `RedLoad
 ## Coordination with other projects
 
 - Apply the same display names and **by OpenACAI** credit in the loader, admin and SDK repositories. Their releases and assembly identities are outside this manager change. Keep existing runtime paths and package contracts, or provide explicit migrations and aliases before replacing them.
-- Coordinate the manager's display name with Nexus Mods while retaining the registered integration identifiers until replacement identifiers are approved.
+- Coordinate the manager's display name with Nexus Mods while retaining the existing integration identifiers until registration and any replacements are approved. See the [Nexus integration notes](NEXUS_API_REVIEW.md).
 - Set up **modstoke.com**, HTTPS and the replacement website/catalog services separately. Verify manifest schemas, download integrity and support for older clients before changing any endpoint. Keep old endpoints or redirects available for released clients.
 - Publish newly signed manager builds separately. A GitHub repository rename, download filename change or release relocation also needs stable redirects or aliases for existing links.
 

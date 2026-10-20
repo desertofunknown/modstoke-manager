@@ -27,7 +27,6 @@
         getNexusModDownloadUrl,
         getNexusModPageUrl,
         getNexusSession,
-        mergeNexusMods,
         NEXUS_CACHE_TTL_MINUTES,
         pickRecommendedNexusFile,
         saveNexusApiKey,
@@ -66,6 +65,7 @@
     import * as shell from "@tauri-apps/plugin-shell"
     import { Command } from "@tauri-apps/plugin-shell";
 
+    export let isActive = false;
     export let sharedSearchTerm = "";
     export let sharedSearchVersion = 0;
     export let showEmbeddedSearch = true;
@@ -131,6 +131,7 @@
     type NexusLocalCatalogCache = {
         schema: number;
         updatedAt: number;
+        ownerId: number;
         mods: NexusMod[];
     };
     type ResolvedDependency = NexusModDependency & {
@@ -211,6 +212,8 @@
     let inventory: InstalledInventoryEntry[] = [];
     let inventoryRequestId = 0;
     let isDestroyed = false;
+    let isMounted = false;
+    let nexusInitialized = false;
     let catalogScroller: HTMLDivElement | null = null;
     let selectedView: NexusView = "all";
     let catalogMode: CatalogMode = "online";
@@ -309,18 +312,10 @@
     let activeNexusTrackId: number | null = null;
     let activeConflictEntryKey: string | null = null;
     let isRefreshingInventory = false;
-    let autoEndorseDownloadedMods = false;
-    let autoEndorseAttemptedIds: number[] = [];
-    let autoEndorseEligibleCount = 0;
-    let autoEndorsePendingCount = 0;
-    let autoEndorseAttemptedInstalledCount = 0;
-    let autoEndorseQueueLabel = "Loading endorsement state";
     let ssoSocket: WebSocket | null = null;
     let ssoTimeout: number | null = null;
     let refreshCooldownSeconds = 0;
     let refreshCooldownTimer: number | null = null;
-    let nexusCatalogAutoRefreshTimer: number | null = null;
-    let nexusCatalogAutoRefreshInFlight = false;
     let nexusUiPreferencesLoaded = false;
     let nexusPageElement: HTMLDivElement | null = null;
     let nexusLayoutObserver: ResizeObserver | null = null;
@@ -342,12 +337,11 @@
     const NEXUS_SSO_TOKEN_KEY = "openacai-nexus-sso-connection-token";
     const NEXUS_UI_PREFERENCES_KEY = "openacai-nexus-ui-preferences";
     const NEXUS_LOCAL_CATALOG_KEY = "openacai-nexus-sotf-catalog-v1";
-    const NEXUS_LOCAL_CATALOG_SCHEMA = 1;
+    const NEXUS_LOCAL_CATALOG_SCHEMA = 2;
     const NEXUS_LOCAL_CATALOG_MAX_MODS = 5000;
-    const NEXUS_CATALOG_AUTO_REFRESH_MS = NEXUS_CACHE_TTL_MINUTES * 60 * 1000;
-    const NEXUS_AUTO_ENDORSE_KEY = "openacai-nexus-auto-endorse-downloaded";
-    const NEXUS_AUTO_ENDORSE_ATTEMPTED_KEY = "openacai-nexus-auto-endorse-attempted";
-    const MAX_AUTO_ENDORSE_PER_REFRESH = 3;
+    const NEXUS_LOCAL_CATALOG_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+    // The retained legacy SSO implementation is not the pending OAuth integration.
+    const NEXUS_BROWSER_SIGN_IN_AVAILABLE = false;
     const MAX_AUTHOR_REQUIREMENT_LINKS = 6;
     const MAX_AUTHOR_REQUIREMENT_HINTS = 8;
     const MAX_AUTHOR_INSTRUCTION_HINTS = 5;
@@ -590,21 +584,6 @@
             dependency: resolveDependencyStatus(source.dependency)
         }));
     }
-    $: {
-        endorsements;
-        endorsementsLoaded;
-        autoEndorseAttemptedIds;
-        const autoEndorseCandidates = inventory
-            .map(entry => ({ entry, modId: numericNexusId(entry.nexusModId) }))
-            .filter((candidate): candidate is { entry: InstalledInventoryEntry; modId: number } =>
-                candidate.entry.installSource === "vortex" && !!candidate.modId
-            );
-        const unendorsedCandidates = autoEndorseCandidates.filter(candidate => !isNexusModEndorsed(candidate.modId));
-        autoEndorseEligibleCount = autoEndorseCandidates.length;
-        autoEndorsePendingCount = unendorsedCandidates.filter(candidate => !autoEndorseAttemptedIds.includes(candidate.modId)).length;
-        autoEndorseAttemptedInstalledCount = unendorsedCandidates.filter(candidate => autoEndorseAttemptedIds.includes(candidate.modId)).length;
-        autoEndorseQueueLabel = autoEndorseQueueSummary();
-    }
     $: dependencyIssueCount = resolvedDependencies.filter(dependency =>
         dependency.status === "missing" || dependency.status === "version-mismatch"
     ).length;
@@ -800,23 +779,20 @@
         if (catalogScroller) catalogScroller.scrollTop = 0;
     }
 
+    $: if (isMounted && isActive && !nexusInitialized) {
+        void initializeNexusAccount();
+    }
+
     onMount(async () => {
         setupNexusLayoutObserver();
-        setupNexusCatalogAutoRefresh();
         loadNexusUiPreferences();
         if (sharedSearchVersion > 0) {
             applySharedSearch(sharedSearchTerm);
             lastAppliedSharedSearchVersion = sharedSearchVersion;
         }
-        loadEndorsementPreferences();
+        isMounted = true;
         await refreshInventory();
         if (isDestroyed) return;
-        await refreshSession();
-        if (isDestroyed) return;
-
-        if (session.is_connected) {
-            await loadMods();
-        }
 
         await measureNexusLayoutAfterTick();
     });
@@ -830,7 +806,6 @@
         clearNestedDependencyCheck();
         cleanupSso();
         cleanupManualRefreshCooldown();
-        cleanupNexusCatalogAutoRefresh();
         clearNxmCopyFeedback();
         cleanupNexusLayoutObserver();
     });
@@ -938,15 +913,36 @@
     }
 
 
+    async function initializeNexusAccount() {
+        nexusInitialized = true;
+        isLoading = true;
+        const generation = nexusSessionGeneration;
+        try {
+            await refreshSession();
+            if (!isCurrentNexusSession(generation) || !isActive) return;
+            await loadMods();
+        } finally {
+            if (!isDestroyed && generation === nexusSessionGeneration) {
+                isLoading = false;
+                if (!isActive && nexusCatalogLoadedAt === null) nexusInitialized = false;
+            }
+        }
+    }
+
     async function refreshSession() {
         const generation = nexusSessionGeneration;
         try {
             const nextSession = await getNexusSession();
             if (isDestroyed || generation !== nexusSessionGeneration) return;
+            if (nextSession.is_connected && !nexusAccountId(nextSession)) throw new Error("Nexus did not return a valid account identity. Reconnect to continue.");
+            if (nexusAccountId(session) !== nexusAccountId(nextSession) && session.is_connected) clearNexusAccountState();
             session = nextSession;
+            if (!nexusAccountId()) clearNexusAccountState();
+            else readNexusLocalCatalog();
         } catch (error) {
             if (isDestroyed || generation !== nexusSessionGeneration) return;
             const message = `${error}`;
+            clearNexusAccountState();
             session = {
                 is_connected: false,
                 error: isTauriBridgeError(message) ? undefined : message
@@ -959,7 +955,7 @@
     }
 
     function isCurrentNexusSession(generation: number): boolean {
-        return !isDestroyed && !isDisconnecting && session.is_connected && generation === nexusSessionGeneration;
+        return !isDestroyed && !isDisconnecting && nexusAccountId() !== null && generation === nexusSessionGeneration;
     }
 
     function nexusRequestError(error: unknown): string {
@@ -1003,69 +999,102 @@
         return typeof value === "string" && options.includes(value as T) ? value as T : fallback;
     }
 
+    function nexusAccountId(account = session): number | null {
+        const id = account.is_connected ? account.user?.user_id : undefined;
+        return typeof id === "number" && Number.isSafeInteger(id) && id > 0 ? id : null;
+    }
+
+    function discardNexusLocalCatalog() {
+        localStorage.removeItem(NEXUS_LOCAL_CATALOG_KEY);
+        nexusLocalCatalogLoadedAt = null;
+        nexusLocalCatalogCount = 0;
+    }
+
     function readNexusLocalCatalog(): NexusLocalCatalogCache | null {
         try {
             const parsed = JSON.parse(localStorage.getItem(NEXUS_LOCAL_CATALOG_KEY) ?? "null") as Partial<NexusLocalCatalogCache> | null;
-            if (!parsed || parsed.schema !== NEXUS_LOCAL_CATALOG_SCHEMA || !Array.isArray(parsed.mods)) {
+            const ownerId = nexusAccountId();
+            const now = Date.now();
+            if (!ownerId || !parsed || parsed.schema !== NEXUS_LOCAL_CATALOG_SCHEMA || parsed.ownerId !== ownerId
+                || typeof parsed.updatedAt !== "number" || !Number.isFinite(parsed.updatedAt)
+                || parsed.updatedAt > now || now - parsed.updatedAt >= NEXUS_LOCAL_CATALOG_MAX_AGE_MS
+                || !Array.isArray(parsed.mods) || parsed.mods.length > NEXUS_LOCAL_CATALOG_MAX_MODS
+                || parsed.mods.some(mod => !mod || !Number.isSafeInteger(mod.mod_id) || mod.mod_id <= 0 || typeof mod.name !== "string")
+                || new Set(parsed.mods.map(mod => mod.mod_id)).size !== parsed.mods.length) {
+                discardNexusLocalCatalog();
                 return null;
             }
 
-            const cachedMods = mergeNexusMods(parsed.mods
-                .map(mod => cacheableNexusCatalogMod(mod))
-                .filter(mod => mod.mod_id > 0))
-                .slice(0, NEXUS_LOCAL_CATALOG_MAX_MODS);
             return {
                 schema: NEXUS_LOCAL_CATALOG_SCHEMA,
-                updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
-                mods: cachedMods
+                ownerId,
+                updatedAt: parsed.updatedAt,
+                mods: parsed.mods.map(cacheableNexusCatalogMod)
             };
         } catch {
-            localStorage.removeItem(NEXUS_LOCAL_CATALOG_KEY);
+            discardNexusLocalCatalog();
             return null;
         }
     }
 
-    function applyNexusLocalCatalogCache(): NexusMod[] {
+    function applyNexusLocalCatalogCache(): NexusLocalCatalogCache | null {
         const cache = readNexusLocalCatalog();
-        if (!cache) {
-            nexusLocalCatalogLoadedAt = null;
-            nexusLocalCatalogCount = 0;
-            return [];
-        }
-
-        nexusLocalCatalogLoadedAt = cache.updatedAt || null;
-        nexusLocalCatalogCount = cache.mods.length;
-        if (cache.mods.length > 0) {
-            mods = mergeNexusMods([...mods, ...cache.mods]);
-            catalogPreviewCacheVersion += 1;
-        }
-
-        return cache.mods;
+        nexusLocalCatalogLoadedAt = cache?.updatedAt ?? null;
+        nexusLocalCatalogCount = cache?.mods.length ?? 0;
+        mods = cache?.mods ?? [];
+        catalogPreviewCacheVersion += 1;
+        return cache;
     }
 
-    function persistNexusLocalCatalog(rows: NexusMod[]): NexusMod[] {
-        const cachedRows = readNexusLocalCatalog()?.mods ?? [];
-        const mergedRows = mergeNexusMods([
-            ...rows.map(mod => cacheableNexusCatalogMod(mod)),
-            ...cachedRows
-        ])
-            .filter(mod => mod.mod_id > 0)
-            .slice(0, NEXUS_LOCAL_CATALOG_MAX_MODS);
+    function persistNexusLocalCatalog(rows: NexusMod[]) {
+        const ownerId = nexusAccountId();
+        if (!ownerId || rows.length > NEXUS_LOCAL_CATALOG_MAX_MODS) {
+            discardNexusLocalCatalog();
+            return;
+        }
         const cache: NexusLocalCatalogCache = {
             schema: NEXUS_LOCAL_CATALOG_SCHEMA,
+            ownerId,
             updatedAt: Date.now(),
-            mods: mergedRows
+            mods: rows.map(cacheableNexusCatalogMod)
         };
 
         try {
             localStorage.setItem(NEXUS_LOCAL_CATALOG_KEY, JSON.stringify(cache));
+            nexusLocalCatalogLoadedAt = cache.updatedAt;
+            nexusLocalCatalogCount = cache.mods.length;
         } catch (error) {
+            discardNexusLocalCatalog();
             console.log("Failed to persist Nexus catalog cache", error);
         }
+    }
 
-        nexusLocalCatalogLoadedAt = cache.updatedAt;
-        nexusLocalCatalogCount = mergedRows.length;
-        return mergedRows;
+    function clearNexusAccountState() {
+        discardNexusLocalCatalog();
+        catalogRequestId += 1;
+        isCatalogLoading = false;
+        catalogLoadingMessage = "";
+        activeCatalogPreviewLoadId = null;
+        catalogPreviewLoadNotices = {};
+        catalogPreviewIndexes = {};
+        closeModDetails();
+        mods = [];
+        knownNexusDetails = {};
+        knownNexusPreviewUrls = {};
+        catalogPreviewCacheVersion += 1;
+        nexusCategories = [];
+        nexusCatalogLoadedAt = null;
+        nexusLatestApiRowCount = 0;
+        nexusCatalogUsedLocalFallback = false;
+        catalogError = "";
+        endorsements = [];
+        endorsementsLoaded = false;
+        trackedMods = [];
+        trackedModsLoaded = false;
+        activeNexusEndorseId = null;
+        activeNexusTrackId = null;
+        activeNexusActionId = null;
+        clearNxmCopyFeedback();
     }
 
     function cacheableNexusCatalogMod(mod: NexusMod): NexusMod {
@@ -1175,6 +1204,7 @@
     }
 
     async function connectWithNexus() {
+        if (!NEXUS_BROWSER_SIGN_IN_AVAILABLE) return;
         cleanupSso();
         isLoading = true;
         status = "Opening Nexus login...";
@@ -1200,7 +1230,7 @@
             };
 
             ssoSocket.onerror = async () => {
-                await finishSsoWithError("Nexus login failed before approval. The Modstoke Manager app slug must be registered with Nexus Mods before browser SSO can complete. Use Advanced manual token until Nexus approves the slug.");
+                await finishSsoWithError("Nexus login failed before approval. The Modstoke Manager app slug must be registered with Nexus Mods before browser SSO can complete. Browser OAuth registration is pending; this legacy SSO flow is not OAuth.");
             };
 
             ssoSocket.onclose = () => {
@@ -1219,8 +1249,9 @@
     }
 
     async function connectWithManualKey() {
+        if (isLoading || isDisconnecting) return;
         if (!apiKey.trim()) {
-            await dialog.message("Paste a Nexus Mods API key before using the advanced manual connection.", {
+            await dialog.message("Paste your personal Nexus Mods API key for development review or testing.", {
                 title: "Nexus account",
                 kind: "info"
             });
@@ -1229,11 +1260,13 @@
 
         isLoading = true;
         status = "Validating Nexus account...";
-        const generation = nexusSessionGeneration;
+        const generation = ++nexusSessionGeneration;
 
         try {
             const nextSession = await saveNexusApiKey(apiKey);
             if (isDestroyed || generation !== nexusSessionGeneration) return;
+            if (!nexusAccountId(nextSession)) throw new Error("Nexus did not return a valid account identity.");
+            clearNexusAccountState();
             session = nextSession;
             apiKey = "";
             await loadMods();
@@ -1284,6 +1317,8 @@
         try {
             const nextSession = await saveNexusApiKey(payload.data.api_key);
             if (isDestroyed || generation !== nexusSessionGeneration) return;
+            if (!nexusAccountId(nextSession)) throw new Error("Nexus did not return a valid account identity.");
+            clearNexusAccountState();
             session = nextSession;
             await loadMods();
         } catch (error) {
@@ -1378,68 +1413,6 @@
         refreshCooldownSeconds = 0;
     }
 
-    function setupNexusCatalogAutoRefresh() {
-        if (nexusCatalogAutoRefreshTimer !== null) {
-            return;
-        }
-
-        nexusCatalogAutoRefreshTimer = window.setInterval(() => {
-            void maybeAutoRefreshNexusCatalog();
-        }, NEXUS_CATALOG_AUTO_REFRESH_MS);
-    }
-
-    function cleanupNexusCatalogAutoRefresh() {
-        if (nexusCatalogAutoRefreshTimer !== null) {
-            window.clearInterval(nexusCatalogAutoRefreshTimer);
-            nexusCatalogAutoRefreshTimer = null;
-        }
-
-        nexusCatalogAutoRefreshInFlight = false;
-    }
-
-    async function maybeAutoRefreshNexusCatalog() {
-        if (!isCurrentNexusSession(nexusSessionGeneration) || isLoading || isCatalogLoading || nexusCatalogAutoRefreshInFlight) {
-            return;
-        }
-
-        const cacheAge = nexusLocalCatalogLoadedAt ? Date.now() - nexusLocalCatalogLoadedAt : NEXUS_CATALOG_AUTO_REFRESH_MS;
-        if (cacheAge < NEXUS_CATALOG_AUTO_REFRESH_MS) {
-            return;
-        }
-
-        const requestId = ++catalogRequestId;
-        const generation = nexusSessionGeneration;
-        const view = selectedView;
-        const isCurrent = () => isCurrentNexusSession(generation) && requestId === catalogRequestId && view === selectedView;
-        nexusCatalogAutoRefreshInFlight = true;
-        try {
-            const response = await fetchNexusSotfMods("all");
-            if (!isCurrent()) return;
-            const rememberedRows = persistNexusLocalCatalog(response.mods);
-            if (view === "all") {
-                mods = mergeNexusMods([...rememberedRows, ...mods]);
-                nexusLatestApiRowCount = response.mods.length;
-                nexusCatalogLoadedAt = Date.now();
-                nexusCatalogUsedLocalFallback = false;
-                catalogError = "";
-            }
-            nexusCategories = response.categories;
-            session = {
-                ...session,
-                rate_limit: response.rate_limit
-            };
-        } catch (error) {
-            if (!isCurrent()) return;
-            console.log("Background Nexus catalog sync failed", error);
-            if (view === "all") {
-                catalogError = nexusRequestError(error);
-                nexusCatalogUsedLocalFallback = mods.length > 0;
-            }
-        } finally {
-            if (isCurrent()) nexusCatalogAutoRefreshInFlight = false;
-        }
-    }
-
     async function disconnect() {
         if (isDisconnecting) return;
         isDisconnecting = true;
@@ -1449,7 +1422,6 @@
         status = "";
         isCatalogLoading = false;
         catalogLoadingMessage = "";
-        nexusCatalogAutoRefreshInFlight = false;
         activeCatalogPreviewLoadId = null;
         catalogPreviewLoadNotices = {};
         closeModDetails();
@@ -1460,19 +1432,7 @@
             await clearNexusApiKey();
             if (isDestroyed) return;
             session = { is_connected: false };
-            mods = [];
-            knownNexusDetails = {};
-            knownNexusPreviewUrls = {};
-            catalogPreviewCacheVersion += 1;
-            nexusCategories = [];
-            nexusCatalogLoadedAt = null;
-            nexusLatestApiRowCount = 0;
-            nexusCatalogUsedLocalFallback = false;
-            catalogError = "";
-            endorsements = [];
-            endorsementsLoaded = false;
-            trackedMods = [];
-            trackedModsLoaded = false;
+            clearNexusAccountState();
         } catch (error) {
             if (!isDestroyed) {
                 await dialog.message(nexusRequestError(error), { title: "Nexus disconnect", kind: "error" });
@@ -1483,7 +1443,7 @@
     }
 
     async function loadMods(view: NexusView = selectedView, forceRefresh = false) {
-        if (!isCurrentNexusSession(nexusSessionGeneration) || (isCatalogLoading && view === selectedView)) {
+        if (!isActive || !isCurrentNexusSession(nexusSessionGeneration) || (isCatalogLoading && view === selectedView)) {
             return;
         }
 
@@ -1512,23 +1472,22 @@
         }
         selectedView = view;
         const isAllCatalog = view === "all";
-        const localRows = isAllCatalog ? applyNexusLocalCatalogCache() : [];
-        nexusCatalogAutoRefreshInFlight = false;
+        const localCache = isAllCatalog ? applyNexusLocalCatalogCache() : null;
         isCatalogLoading = true;
         catalogLoadingMessage = forceRefresh
             ? "Refreshing Nexus catalog..."
-            : localRows.length > 0
+            : localCache !== null
                 ? "Syncing Nexus catalog..."
                 : "Loading Nexus catalog...";
 
         try {
             await refreshInventory();
-            if (!isCurrent()) return;
+            if (!isCurrent() || !isActive) return;
             const response = await fetchNexusSotfMods(view, { force: forceRefresh });
             if (!isCurrent()) return;
             nexusLatestApiRowCount = response.mods.length;
-            const rememberedRows = persistNexusLocalCatalog(response.mods);
-            mods = isAllCatalog ? rememberedRows : response.mods;
+            if (isAllCatalog) persistNexusLocalCatalog(response.mods);
+            mods = response.mods;
             nexusCategories = response.categories;
             nexusCatalogLoadedAt = Date.now();
             nexusCatalogUsedLocalFallback = false;
@@ -1540,8 +1499,8 @@
         } catch (error) {
             if (!isCurrent()) return;
             catalogError = nexusRequestError(error);
-            const cachedRows = isAllCatalog ? applyNexusLocalCatalogCache() : [];
-            nexusCatalogUsedLocalFallback = cachedRows.length > 0;
+            const cachedSnapshot = isAllCatalog ? applyNexusLocalCatalogCache() : null;
+            nexusCatalogUsedLocalFallback = cachedSnapshot !== null;
         } finally {
             if (isCurrent()) {
                 catalogLoadingMessage = "";
@@ -1549,12 +1508,10 @@
             }
         }
 
-        if (!isCurrent() || catalogError) return;
+        if (!isCurrent() || !isActive || catalogError) return;
         await refreshEndorsements(forceRefresh);
-        if (!isCurrent()) return;
+        if (!isCurrent() || !isActive) return;
         await refreshTrackedMods(forceRefresh);
-        if (!isCurrent()) return;
-        await maybeAutoEndorseInstalledVortexMods();
     }
 
     async function refreshEndorsements(forceRefresh = false) {
@@ -1629,13 +1586,15 @@
     }
 
     async function setNexusTracking(modId: number, shouldTrack: boolean, label: string) {
+        const generation = nexusSessionGeneration;
+        if (!isCurrentNexusSession(generation)) return;
         const confirmed = await confirmNexusWrite({
             action: shouldTrack ? "Track" : "Stop tracking",
             label,
             detail: "This updates your Nexus tracked mod list for Sons Of The Forest.",
             okLabel: shouldTrack ? "Track" : "Untrack"
         });
-        if (!confirmed) {
+        if (!confirmed || !isCurrentNexusSession(generation)) {
             return;
         }
 
@@ -1647,6 +1606,7 @@
             const response = shouldTrack
                 ? await trackNexusSotfMod(modId)
                 : await untrackNexusSotfMod(modId);
+            if (!isCurrentNexusSession(generation)) return;
             session = {
                 ...session,
                 rate_limit: response.rate_limit
@@ -1655,19 +1615,20 @@
             status = `${shouldTrack ? "Tracking" : "Stopped tracking"} ${label}.`;
             keepStatus = true;
             window.setTimeout(() => {
-                if (status === `${shouldTrack ? "Tracking" : "Stopped tracking"} ${label}.`) {
+                if (isCurrentNexusSession(generation) && status === `${shouldTrack ? "Tracking" : "Stopped tracking"} ${label}.`) {
                     status = "";
                 }
             }, 4500);
         } catch (error) {
+            if (!isCurrentNexusSession(generation)) return;
             await dialog.message(`${error}`, {
                 title: "Nexus tracking",
                 kind: "error"
             });
         } finally {
-            activeNexusTrackId = null;
-            if (!keepStatus) {
-                status = "";
+            if (isCurrentNexusSession(generation)) {
+                activeNexusTrackId = null;
+                if (!keepStatus) status = "";
             }
         }
     }
@@ -1701,13 +1662,15 @@
     }
 
     async function endorseKnownNexusMod(modId: number, version: string | undefined, label: string) {
+        const generation = nexusSessionGeneration;
+        if (!isCurrentNexusSession(generation)) return;
         const confirmed = await confirmNexusWrite({
             action: "Endorse",
             label,
             detail: "Nexus may require that this account downloaded the mod and may enforce its normal endorsement waiting period.",
             okLabel: "Endorse"
         });
-        if (!confirmed) {
+        if (!confirmed || !isCurrentNexusSession(generation)) {
             return;
         }
 
@@ -1717,6 +1680,7 @@
 
         try {
             const response = await endorseNexusSotfMod(modId, version);
+            if (!isCurrentNexusSession(generation)) return;
             session = {
                 ...session,
                 rate_limit: response.rate_limit
@@ -1725,124 +1689,22 @@
             status = `Endorsed ${label}.`;
             keepStatus = true;
             window.setTimeout(() => {
-                if (status === `Endorsed ${label}.`) {
+                if (isCurrentNexusSession(generation) && status === `Endorsed ${label}.`) {
                     status = "";
                 }
             }, 4500);
         } catch (error) {
+            if (!isCurrentNexusSession(generation)) return;
             await dialog.message(`Nexus did not accept this endorsement yet. Nexus may require the mod to be downloaded through your account, may enforce a waiting period, or may reject already-endorsed mods.\n\n${error}`, {
                 title: "Nexus endorsement",
                 kind: "error"
             });
         } finally {
-            activeNexusEndorseId = null;
-            if (!keepStatus) {
-                status = "";
+            if (isCurrentNexusSession(generation)) {
+                activeNexusEndorseId = null;
+                if (!keepStatus) status = "";
             }
         }
-    }
-
-    async function maybeAutoEndorseInstalledVortexMods() {
-        if (!autoEndorseDownloadedMods || !session.is_connected || !endorsementsLoaded) {
-            return;
-        }
-
-        const candidates = inventory
-            .map(entry => ({ entry, modId: numericNexusId(entry.nexusModId) }))
-            .filter((candidate): candidate is { entry: InstalledInventoryEntry; modId: number } =>
-                candidate.entry.installSource === "vortex"
-                && !!candidate.modId
-                && !isNexusModEndorsed(candidate.modId)
-                && !autoEndorseAttemptedIds.includes(candidate.modId)
-            )
-            .slice(0, MAX_AUTO_ENDORSE_PER_REFRESH);
-
-        for (const candidate of candidates) {
-            markAutoEndorseAttempted(candidate.modId);
-            try {
-                const response = await endorseNexusSotfMod(candidate.modId, candidate.entry.version);
-                session = {
-                    ...session,
-                    rate_limit: response.rate_limit
-                };
-                markNexusModEndorsed(candidate.modId);
-            } catch (error) {
-                console.log(`Auto-endorse skipped for Nexus mod ${candidate.modId}`, error);
-            }
-        }
-    }
-
-    function loadEndorsementPreferences() {
-        autoEndorseDownloadedMods = localStorage.getItem(NEXUS_AUTO_ENDORSE_KEY) === "true";
-        autoEndorseAttemptedIds = readAutoEndorseAttemptedIds();
-    }
-
-    async function toggleAutoEndorse(event: Event) {
-        const input = event.currentTarget as HTMLInputElement;
-        const requestedState = input.checked;
-
-        if (requestedState && !autoEndorseDownloadedMods) {
-            const confirmed = await confirmNexusWrite({
-                action: "Enable auto-endorse",
-                label: "Vortex-managed downloads",
-                detail: `The manager will attempt at most ${MAX_AUTO_ENDORSE_PER_REFRESH} eligible endorsements per refresh and remembers attempted Nexus mod IDs locally.`,
-                okLabel: "Enable"
-            });
-            if (!confirmed) {
-                input.checked = false;
-                autoEndorseDownloadedMods = false;
-                return;
-            }
-        }
-
-        autoEndorseDownloadedMods = requestedState;
-        localStorage.setItem(NEXUS_AUTO_ENDORSE_KEY, autoEndorseDownloadedMods ? "true" : "false");
-
-        if (autoEndorseDownloadedMods) {
-            void maybeAutoEndorseInstalledVortexMods();
-        }
-    }
-
-    function readAutoEndorseAttemptedIds(): number[] {
-        try {
-            const parsed = JSON.parse(localStorage.getItem(NEXUS_AUTO_ENDORSE_ATTEMPTED_KEY) ?? "[]");
-            if (!Array.isArray(parsed)) {
-                return [];
-            }
-
-            return parsed
-                .map(numericNexusId)
-                .filter((value): value is number => !!value);
-        } catch {
-            return [];
-        }
-    }
-
-    function saveAutoEndorseAttemptedIds() {
-        localStorage.setItem(NEXUS_AUTO_ENDORSE_ATTEMPTED_KEY, JSON.stringify(autoEndorseAttemptedIds));
-    }
-
-    function markAutoEndorseAttempted(modId: number) {
-        if (!autoEndorseAttemptedIds.includes(modId)) {
-            autoEndorseAttemptedIds = [...autoEndorseAttemptedIds, modId].slice(-500);
-            saveAutoEndorseAttemptedIds();
-        }
-    }
-
-    function autoEndorseQueueSummary(): string {
-        if (!endorsementsLoaded) {
-            return "Loading endorsement state";
-        }
-
-        if (autoEndorseEligibleCount === 0) {
-            return "No Vortex Nexus installs";
-        }
-
-        if (autoEndorsePendingCount === 0 && autoEndorseAttemptedInstalledCount === 0) {
-            return "No pending endorsements";
-        }
-
-        return `${autoEndorsePendingCount} pending · ${autoEndorseAttemptedInstalledCount} attempted`;
     }
 
     async function confirmNexusWrite(options: { action: string; label: string; detail: string; okLabel: string }): Promise<boolean> {
@@ -2883,7 +2745,7 @@
                     selectedChangelogs
                 )
             );
-            if (dependencyFileId !== null) {
+            if (dependencyFileId !== null && isActive) {
                 void loadDependenciesForFile(dependencyFileId);
             }
         } catch (error) {
@@ -2963,10 +2825,7 @@
             [details.mod_id]: mergedDetails
         };
 
-        const rememberedRows = persistNexusLocalCatalog([mergedDetails]);
-        if (selectedView === "all") {
-            mods = mergeNexusMods([mergedDetails, ...mods, ...rememberedRows]);
-        }
+        mods = mods.map(mod => mod.mod_id === details.mod_id ? { ...mod, ...mergedDetails } : mod);
     }
 
     function rememberNexusPreviewUrls(modId: number | undefined, urls: string[]) {
@@ -3070,6 +2929,7 @@
     }
 
     async function loadDependenciesForFile(fileId: number) {
+        if (!isActive || !isCurrentNexusSession(nexusSessionGeneration)) return;
         const generation = detailGeneration;
         const requestId = ++dependencyRequestId;
         const mod = selectedMod;
@@ -3157,7 +3017,7 @@
     }
 
     async function resolveNestedDependencies() {
-        if (isResolvingNestedDependencies || !nestedDependencyCheckAvailable()
+        if (!isActive || !isCurrentNexusSession(nexusSessionGeneration) || isResolvingNestedDependencies || !nestedDependencyCheckAvailable()
             || nestedDependencyTraversal?.status === "complete") {
             return;
         }
@@ -3168,7 +3028,7 @@
         try {
             const result = await advanceNestedDependencyTraversal(
                 traversal,
-                () => requestId === nestedDependencyRequestId,
+                () => isActive && requestId === nestedDependencyRequestId,
                 dependencyForNestedCheck
             );
             if (!result || requestId !== nestedDependencyRequestId) {
@@ -3327,11 +3187,14 @@
     }
 
     async function installRecommendedWithVortex(mod: NexusMod) {
+        const generation = nexusSessionGeneration;
+        if (!isActive || !isCurrentNexusSession(generation)) return;
         activeNexusActionId = mod.mod_id;
         status = `Preparing ${mod.name} for Vortex...`;
 
         try {
             const response = await fetchNexusModFiles(mod.mod_id);
+            if (!isActive || !isCurrentNexusSession(generation)) return;
             session = {
                 ...session,
                 rate_limit: response.rate_limit
@@ -3347,13 +3210,16 @@
 
             await sendFileToVortex(mod, file);
         } catch (error) {
+            if (!isCurrentNexusSession(generation)) return;
             await dialog.message(`${error}`, {
                 title: "Vortex install",
                 kind: "error"
             });
         } finally {
-            status = "";
-            activeNexusActionId = null;
+            if (isCurrentNexusSession(generation)) {
+                status = "";
+                activeNexusActionId = null;
+            }
         }
     }
 
@@ -4772,10 +4638,10 @@
     }
 
     function nexusCatalogCacheSummary(): string {
-        const parts = [`Official metadata sync cached for ${NEXUS_CACHE_TTL_MINUTES} minutes.`];
+        const parts = [`Official metadata cached for ${NEXUS_CACHE_TTL_MINUTES} minutes. Account snapshots expire after 24 hours; use Refresh to sync.`];
 
         if (nexusLocalCatalogCount > 0) {
-            parts.push(`${formatNumber(nexusLocalCatalogCount)} remembered locally.`);
+            parts.push(`${formatNumber(nexusLocalCatalogCount)} saved for this account.`);
         }
 
         if (nexusLatestApiRowCount > 0) {
@@ -8039,8 +7905,10 @@
             <span class="panel-title nexus-heading"><LucideCompass aria-hidden="true" /> Nexus Mods</span>
             {#if session.is_connected}
                 <span class="panel-subtitle">Connected as {session.user?.name ?? "Nexus user"} · {nexusMembershipLabel()}</span>
+                <span class="panel-subtitle">Development connection · Catalog requests use this account.</span>
             {:else}
                 <span class="panel-subtitle">Discover Sons Of The Forest mods and manage your Vortex deployments.</span>
+                <span class="panel-subtitle">Public Nexus website results without sign-in do not apply your blocked categories or authors.</span>
             {/if}
         </div>
 
@@ -8049,13 +7917,6 @@
                 <summary><LucideUserRound aria-hidden="true" /> Account & deployment <LucideChevronDown aria-hidden="true" /></summary>
                 <div class="account-menu-content">
                     <div class="account-actions">
-                        <label class="auto-endorse-control" title={autoEndorseQueueLabel}>
-                            <input type="checkbox" checked={autoEndorseDownloadedMods} on:change={toggleAutoEndorse} />
-                            <span class="auto-endorse-label">
-                                <span>Auto-endorse Vortex downloads</span>
-                                <small>{autoEndorseQueueLabel}</small>
-                            </span>
-                        </label>
                         <button on:click={openNexusGame}>Open Nexus</button>
                         {#if vortexStagingPath}
                             <button on:click={openVortexStaging}>Open Vortex Staging</button>
@@ -8132,16 +7993,18 @@
         {:else}
             <div class="connect-column">
                 <div class="connect-row">
-                    <button class="install login-button" disabled={isLoading} on:click={connectWithNexus}>Connect Nexus account</button>
-                    <button on:click={openApiKeys}>API access <LucideExternalLink aria-hidden="true" /></button>
+                    <button class="install login-button" disabled={!NEXUS_BROWSER_SIGN_IN_AVAILABLE || isLoading} on:click={connectWithNexus}>Sign in with Nexus</button>
+                    <button on:click={openNexusGame}>Open Nexus <LucideExternalLink aria-hidden="true" /></button>
                 </div>
+                <span class="manual-warning">Browser OAuth sign-in is unavailable while app registration is pending.</span>
                 <details class="manual-key">
-                    <summary>Advanced connection options</summary>
+                    <summary>Development testing</summary>
+                    <button on:click={openApiKeys}>Personal API keys <LucideExternalLink aria-hidden="true" /></button>
                     <div class="connect-row manual-row">
-                        <input class="generic-input key-input" bind:value={apiKey} type="password" placeholder="Nexus API key" />
-                        <button on:click={connectWithManualKey}>Save Token</button>
+                        <input class="generic-input key-input" bind:value={apiKey} type="password" aria-label="Personal Nexus API key" autocomplete="off" spellcheck={false} placeholder="Nexus API key" />
+                        <button disabled={isLoading || isDisconnecting} on:click={connectWithManualKey}>Use personal key</button>
                     </div>
-                    <span class="manual-warning">Browser sign-in requires Nexus app approval. Manual tokens are for development testing.</span>
+                    <span class="manual-warning">Personal API keys are for development review and testing only, not production app sign-in.</span>
                 </details>
             </div>
         {/if}
@@ -8175,7 +8038,7 @@
                 <div class="notice request-error catalog-request-error" role="status">
                     <div class="request-error-copy">
                         <strong>{mods.length > 0 ? "Nexus refresh failed" : "Nexus catalog unavailable"}</strong>
-                        <span>{mods.length > 0 ? `${formatNumber(mods.length)} previously loaded mods remain available below. Current filters still apply.` : "No results are available for this feed yet."}</span>
+                        <span>{mods.length > 0 ? `${formatNumber(mods.length)} cached mods remain available. These results may predate changes to your Nexus preferences.` : "No results are available for this feed yet."}</span>
                         <small>{catalogError}</small>
                     </div>
                     <button type="button" disabled={isCatalogLoading || isDisconnecting || refreshCooldownSeconds > 0} title={manualRefreshButtonTitle} on:click={() => loadMods(selectedView, true)}>
@@ -9448,8 +9311,7 @@
         z-index: 5;
     }
 
-    .account-copy,
-    .auto-endorse-label {
+    .account-copy {
         display: flex;
         flex-direction: column;
         gap: 3px;
@@ -9573,24 +9435,6 @@
         margin-left: auto;
     }
 
-    .auto-endorse-control {
-        align-items: center;
-        color: #d8dde6;
-        display: flex;
-        flex: 1 1 100%;
-        font-size: 12px;
-        gap: 10px;
-        padding-bottom: 10px;
-        text-align: left;
-    }
-
-    .auto-endorse-label small {
-        color: #9da6b6;
-        font-size: 11px;
-        line-height: 1.4;
-    }
-
-    .auto-endorse-control input[type="checkbox"],
     .nexus-enable input[type="checkbox"] {
         accent-color: #eeb66b;
         appearance: auto;
@@ -9603,7 +9447,6 @@
         width: 14px;
     }
 
-    .auto-endorse-control input[type="checkbox"]::before,
     .nexus-enable input[type="checkbox"]::before {
         display: none;
     }
