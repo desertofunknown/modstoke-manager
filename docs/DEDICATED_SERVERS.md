@@ -33,7 +33,9 @@ checks as a player-limit change. Read status again after saving.
 Close the player game and stop the dedicated server, then read status. Under
 **Player limit**, choose 8, 16 or 32, select **Review limit**,
 and confirm the change. Limits above 8 require an explicit acknowledgement:
-they need compatible Modstoke Loader support on the server and remain experimental.
+the unmodified server checks `MaxPlayers` at startup, accepts 1 to 8, and will
+not start with 16 or 32. Those limits need a Modstoke Loader build that supports
+them on dedicated servers and remain experimental.
 Saving a number does not install Loader, start the server or establish that the
 chosen population works in multiplayer. Qualification proceeds at 8, 16 and 32
 players, including admission, rosters, reconnects, saves and replication cost.

@@ -519,7 +519,7 @@
                 </div>
                 <p id="server-capacity-help" class="note">The maximum configured player count. Other settings and world saves are preserved.</p>
                 {#if capacityChoice > 8}
-                    <p class="experimental-note">16 and 32 players require compatible Modstoke Loader support and have not been qualified in multiplayer. Saving a limit does not install Loader or confirm that this many players can join.</p>
+                    <p class="experimental-note">The unmodified dedicated server accepts 1 to 8 players and will not start with 16 or 32. Use these limits only with a Modstoke Loader build that supports them on dedicated servers. Saving a limit does not install Loader or confirm that this many players can join.</p>
                 {/if}
                 {#if capacityReview}
                     <div class="change-review" role="region" aria-label="Review player limit">
@@ -528,7 +528,7 @@
                         <p>The original configuration will be backed up before saving. The server stays stopped.</p>
                         {#if capacityReview.to > 8}
                             <label class="acknowledgement"><input type="checkbox" bind:checked={experimentalAccepted} disabled={busy || $processing} />
-                                I understand that {capacityReview.to} players is experimental and still needs multiplayer qualification.</label>
+                                I understand that the unmodified server will not start with {capacityReview.to} players, and that this limit is experimental.</label>
                         {/if}
                         <div class="actions">
                             <button class="primary-button" type="button" disabled={busy || $processing || !canEditConfiguration || (capacityReview.to > 8 && !experimentalAccepted)} on:click={saveCapacity}>Save player limit</button>
