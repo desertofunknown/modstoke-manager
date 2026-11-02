@@ -8,9 +8,9 @@ Choose the game's `SonsOfTheForest.exe`, not the Steam shortcut or the install f
 
 ## Loader install says the manifest is unavailable
 
-The current install, Check, and Update / Repair flows use a [hard-coded GitHub release manifest](https://github.com/desertofunknown/openacai-loader/releases/latest/download/OpenACAILoader.manifest.json). That old loader repository is unavailable at present, so the Manager cannot fetch a new loader package from it. If a manifest was cached from an earlier successful check, the Manager may show cached status, but it still needs an available package URL to download a repair.
+The current install, Check, and Update / Repair flows use a [fixed release manifest on modstoke.com](https://modstoke.com/releases/loader/latest/OpenACAILoader.manifest.json). No loader release has been published there yet, so the Manager cannot fetch a new loader package. The signed 0.2.0 downloads still request the old GitHub release address, which is no longer available. If a manifest was cached from an earlier successful check, the Manager may show cached status, but it still needs an available package URL to download a repair.
 
-The source contains a local ZIP installer class, but the current UI does not connect it to an install button. Selecting a local `OpenACAILoader.zip` is therefore not a supported workaround in this build. Loader install and repair require a compatible public release feed or a Manager code change.
+The source contains a local ZIP installer class, but the current UI does not connect it to an install button. Selecting a local `OpenACAILoader.zip` is therefore not a supported workaround in this build. Loader install and repair need a compatible loader release published to that address.
 
 ## Start Game stops after a loader update error
 

@@ -26,7 +26,7 @@ The source-built installer is named `Modstoke Manager_<version>_x64-setup.exe`. 
 
 ## Loader and SDK
 
-The manager displays **Modstoke Loader**, **Modstoke Admin** and **Modstoke SDK**, but retains loader namespaces, assembly names, manifests, configuration keys and command APIs. In particular, it still uses `BepInEx/plugins/OpenACAILoader`, `OpenACAI.Endnight.Loader.Core.dll`, and the existing `openacai-loader*.json` files. Loader requirement hints accept both the OpenACAI and Modstoke names.
+The manager displays **Modstoke Loader**, **Modstoke Admin** and **Modstoke SDK**, but retains loader namespaces, assembly names, manifests, configuration keys and command APIs. In particular, it still uses `BepInEx/plugins/OpenACAILoader` and the existing `openacai-loader*.json` files. Its loader package check accepts the core as `Modstoke.Loader.dll`, as current Loader builds ship it, or as `OpenACAI.Endnight.Loader.Core.dll` from older packages. Loader requirement hints accept both the OpenACAI and Modstoke names.
 
 Upstream projects keep their own names: BepInEx, RedLoader, SonsSdk and `RedLoader.Templates` are not renamed. SOTF Mods and Nexus Mods remain third-party catalogs.
 
@@ -34,7 +34,7 @@ Upstream projects keep their own names: BepInEx, RedLoader, SonsSdk and `RedLoad
 
 - Apply the same display names and **by OpenACAI** credit in the loader, admin and SDK repositories. Their releases and assembly identities are outside this manager change. Keep existing runtime paths and package contracts, or provide explicit migrations and aliases before replacing them.
 - Coordinate the manager's display name with Nexus Mods while retaining the existing integration identifiers until registration and any replacements are approved. See the [Nexus integration notes](NEXUS_API_REVIEW.md).
-- Set up **modstoke.com**, HTTPS and the replacement website/catalog services separately. Verify manifest schemas, download integrity and support for older clients before changing any endpoint. Keep old endpoints or redirects available for released clients.
+- Set up **modstoke.com**, HTTPS and the replacement website/catalog services separately. Verify manifest schemas, download integrity and support for older clients before changing any endpoint. Keep old endpoints or redirects available for released clients. The loader release feed is the exception: its old GitHub address is no longer available, so the Manager now requests it from modstoke.com.
 - Publish newly signed manager builds separately. A GitHub repository rename, download filename change or release relocation also needs stable redirects or aliases for existing links.
 
 ## Installer template

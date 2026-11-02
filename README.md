@@ -1,11 +1,11 @@
 # Modstoke Manager
 
-Modstoke Manager is a Windows toolkit for **Sons of the Forest**, maintained by OpenACAI. It is based on [RedManager](https://github.com/ToniMacaroni/RedManager) by Toni Macaroni. Manage installed mods and loaders, browse SOTF Mods and Nexus Mods, and look after local dedicated servers from one app.
+Modstoke Manager is a Windows toolkit for **Sons of the Forest**, maintained by OpenACAI. It is based on [RedManager](https://github.com/ToniMacaroni/RedManager) by Toni Macaroni. Manage installed mods and loaders, browse SOTF Mods and Nexus Mods, find community servers, and look after local dedicated servers from one app.
 
 ![Modstoke Manager](docs/screenshots/openacai-mod-manager-main.png)
 
 The current Manager source is on the [`openacai-tauri2-svelte5-shell` branch](https://github.com/desertofunknown/openacai-mod-manager/tree/openacai-tauri2-svelte5-shell). The repository name and some installed paths still use OpenACAI names for compatibility.
-The website and its catalog are separate work; the Manager still uses its existing catalog and update addresses. See the [rename compatibility notes](docs/BRAND_COMPATIBILITY.md) and [changelog](CHANGELOG.md).
+The website and its catalog are separate work. The Manager reads the community server list and the loader release feed from modstoke.com; its mod catalog addresses are unchanged. See the [rename compatibility notes](docs/BRAND_COMPATIBILITY.md) and [changelog](CHANGELOG.md).
 
 ## Download the Windows app
 
@@ -23,8 +23,9 @@ These signed files still display **OpenACAI Mod Manager**. The Modstoke branding
 2. Select `SonsOfTheForest.exe` in your game installation folder.
 3. Use **Installed mods** for your loadout, **Browse mods** for the catalogs, and **Loaders** for installation and repair. Nexus file installation is handed to Vortex; manage Vortex deployments there.
 4. Open **Dedicated servers** to add an existing server installation, choose its data folder, edit its name or player limit, start it, and manage world backups. See the [server setup guide](docs/DEDICATED_SERVERS.md).
+5. Open **Server browser** to find community servers. Before joining through Steam, the Manager checks the server's current details and compares its required mods with the files in your selected game installation.
 
-**Loader installation is currently blocked by its release feed.** The Manager's install and repair actions request `OpenACAILoader.manifest.json` from [the old loader release URL](https://github.com/desertofunknown/openacai-loader/releases/latest/download/OpenACAILoader.manifest.json), which is unavailable at present. The current UI does not offer a working local ZIP picker. These actions will need a compatible public loader release feed or a code update before they can install or repair Modstoke Loader. See [troubleshooting](docs/TROUBLESHOOTING.md) for the errors you may see.
+**Loader installation is currently blocked by its release feed.** The Manager's install and repair actions request `OpenACAILoader.manifest.json` from [modstoke.com](https://modstoke.com/releases/loader/latest/OpenACAILoader.manifest.json), where no loader release has been published yet. The current UI does not offer a working local ZIP picker. Install and repair will work once a compatible loader release is published there. See [troubleshooting](docs/TROUBLESHOOTING.md) for the errors you may see.
 
 Nexus account sign-in is awaiting application registration. Personal API keys are available only for development testing and review. See the [Nexus integration notes](docs/NEXUS_API_REVIEW.md) for account handling, review instructions and the proposed OAuth registration.
 

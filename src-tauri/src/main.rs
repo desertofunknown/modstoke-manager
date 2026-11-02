@@ -19,6 +19,7 @@ mod server_launch;
 mod server_capacity;
 mod server_world;
 mod server_world_restore;
+mod server_directory;
 
 use regex::Regex;
 use serde::Serialize;
@@ -28,6 +29,7 @@ use winreg::{enums::*, RegKey};
 use reqwest::header::{HeaderMap, HeaderValue};
 use sha2::{Digest, Sha256};
 use std::{error::Error, path::Path, path::PathBuf, ptr::null_mut};
+use tauri::Manager;
 use windows::{
     core,
     Win32::Storage::FileSystem::{
@@ -1141,8 +1143,9 @@ fn inspect_openacai_loader_zip(source: String) -> Result<LoaderZipInspection, St
         let entry = normalize_zip_entry(file.name());
         inspection.has_manifest |=
             entry == "bepinex/plugins/openacailoader/openacai-loader.manifest.json";
-        inspection.has_bridge |=
-            entry == "bepinex/plugins/openacailoader/openacai.endnight.loader.core.dll";
+        // Packages built before the Modstoke rename ship the core under its old assembly name.
+        inspection.has_bridge |= entry == "bepinex/plugins/openacailoader/modstoke.loader.dll"
+            || entry == "bepinex/plugins/openacailoader/openacai.endnight.loader.core.dll";
         inspection.has_bepinex_core |= entry == "bepinex/core/bepinex.core.dll";
         inspection.has_doorstop |= entry == "winhttp.dll" || entry == "doorstop_config.ini";
         inspection.has_private_admin_tool |= entry.contains("openacaiadmintool")
@@ -1158,7 +1161,7 @@ fn inspect_openacai_loader_zip(source: String) -> Result<LoaderZipInspection, St
 
     if !inspection.has_bridge {
         inspection.errors.push(
-            "Missing Modstoke Loader core assembly at BepInEx/plugins/OpenACAILoader/OpenACAI.Endnight.Loader.Core.dll".to_string(),
+            "Missing Modstoke Loader core assembly at BepInEx/plugins/OpenACAILoader/Modstoke.Loader.dll".to_string(),
         );
     }
 
@@ -1189,11 +1192,30 @@ fn unzip_handler(source: String, destination: String) -> Result<(), String> {
 
 fn main() {
     tauri::Builder::default()
+        .manage(server_directory::PendingJoin::default())
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+            server_directory::receive_arguments(app, &args);
+        }))
+        .plugin(tauri_plugin_deep_link::init())
+        .setup(|app| {
+            let args: Vec<String> = std::env::args_os().map(|arg| arg.to_string_lossy().into_owned()).collect();
+            server_directory::receive_arguments(app.handle(), &args);
+            Ok(())
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
+            server_directory::list_community_servers,
+            server_directory::get_community_server,
+            server_directory::get_community_server_history,
+            server_directory::take_pending_community_join,
+            server_directory::join_community_server,
             unzip_handler,
             mod_update::update_native_mod,
             mod_profile::read_mod_profile,

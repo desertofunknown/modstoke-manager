@@ -59,7 +59,7 @@ export type LoaderIntegrityReport = {
     issues: LoaderIntegrityIssue[];
 };
 
-const LOADER_MANIFEST_URL = "https://github.com/desertofunknown/openacai-loader/releases/latest/download/OpenACAILoader.manifest.json";
+const LOADER_MANIFEST_URL = "https://modstoke.com/releases/loader/latest/OpenACAILoader.manifest.json";
 const INSTALLED_MANIFEST_PATH = "BepInEx/plugins/OpenACAILoader/openacai-loader.manifest.json";
 const CACHED_LATEST_MANIFEST_PATH = "BepInEx/plugins/OpenACAILoader/openacai-manager-latest-loader-manifest.json";
 
@@ -254,8 +254,26 @@ async function hashFile(filePath: string): Promise<string> {
 }
 
 function validateLoaderManifest(manifest: LoaderUpdateManifest, source: LoaderManifestSource): LoaderUpdateManifest {
-    if (!manifest.version || !manifest.package?.downloadUrl || !manifest.package?.sha256 || !Array.isArray(manifest.files)) {
+    if (manifest.schema !== 1 || !manifest.version || !manifest.package?.downloadUrl || !manifest.package?.sha256
+        || !Array.isArray(manifest.files) || manifest.files.length === 0) {
         throw new Error("Modstoke Loader manifest is missing required update metadata.");
+    }
+
+    // Verification joins these paths onto the game folder, so nothing may point outside it.
+    const paths = new Set<string>();
+    for (const file of manifest.files) {
+        const parts = typeof file?.path === "string" ? file.path.split("/") : [];
+        if (!parts.length || parts.some(part => !part || part === "." || part === ".." || /[\\:\u0000]/.test(part))
+            || typeof file.sha256 !== "string" || !/^[a-f0-9]{64}$/i.test(file.sha256)
+            || !Number.isSafeInteger(file.size) || file.size < 0) {
+            throw new Error("Modstoke Loader manifest contains an invalid file record.");
+        }
+
+        const key = file.path.toLowerCase();
+        if (paths.has(key)) {
+            throw new Error("Modstoke Loader manifest contains duplicate file paths.");
+        }
+        paths.add(key);
     }
 
     return {

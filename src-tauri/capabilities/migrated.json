@@ -108,6 +108,9 @@
         },
         {
           "url": "https://api.nexusmods.com/*"
+        },
+        {
+          "url": "https://modstoke.com/*"
         }
       ]
     },

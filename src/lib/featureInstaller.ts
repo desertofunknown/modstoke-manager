@@ -291,6 +291,7 @@ let openAcaiLoaderUninstaller = new BaseUninstaller([
 openAcaiLoaderUninstaller.overrideCheckFiles = [
     "BepInEx\\plugins\\OpenACAILoader\\openacai-loader-state.json",
     "BepInEx\\plugins\\OpenACAILoader\\openacai-loader.manifest.json",
+    "BepInEx\\plugins\\OpenACAILoader\\Modstoke.Loader.dll",
     "BepInEx\\plugins\\OpenACAILoader\\OpenACAI.Endnight.Loader.Core.dll"
 ];
 

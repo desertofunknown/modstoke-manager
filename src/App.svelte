@@ -7,6 +7,8 @@
   } from "./lib/store";
   import Page1 from "./pages/MainPage.svelte";
   import OperationStatus from "./lib/OperationStatus.svelte";
+  import ServerDirectory from "./lib/ServerDirectory.svelte";
+  import { receiveCommunityLinks } from "./lib/serverDirectory";
   import LucideMinus from "~icons/lucide/minus";
   import LucideSquare from "~icons/lucide/square";
   import LucideCopy from "~icons/lucide/copy";
@@ -24,12 +26,13 @@
   import { invoke } from "@tauri-apps/api/core";
   import { currentMonitor, getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 
-  type TabId = "main" | "installed" | "mods" | "loaders" | "servers" | "multiplayer" | "modding";
+  type TabId = "main" | "installed" | "mods" | "loaders" | "servers" | "multiplayer" | "modding" | "directory";
   type Tab = { id: TabId; label: string; group: string };
   const tabs: Tab[] = [
     { id: "main", label: "Overview", group: "Game" },
     { id: "installed", label: "Installed mods", group: "Game" },
     { id: "mods", label: "Browse mods", group: "Game" },
+    { id: "directory", label: "Server browser", group: "Game" },
     { id: "loaders", label: "Loaders", group: "Toolkit" },
     { id: "servers", label: "Dedicated servers", group: "Toolkit" },
     { id: "multiplayer", label: "Multiplayer", group: "Toolkit" },
@@ -37,6 +40,8 @@
   ];
   $: serverSelected = $selectedInstallation?.target.kind === "server";
   let activeTab: TabId = "main";
+  let requestedServerId: string | null = null;
+  let requestRevision = 0;
   let catalogRevision = 0;
   let displayedCatalogRevision = 0;
   let tabButtons: Partial<Record<TabId, HTMLButtonElement>> = {};
@@ -191,6 +196,17 @@
   }
 
   onMount(() => {
+    let destroyed = false;
+    let stopCommunityLinks: (() => void) | undefined;
+    void receiveCommunityLinks(id => {
+      if (destroyed) return;
+      requestedServerId = id;
+      requestRevision++;
+      selectTab("directory");
+    }).then(stop => {
+      if (destroyed) stop();
+      else stopCommunityLinks = stop;
+    }).catch(error => console.error("Could not receive community join links", error));
     const onResize = () => {
       void refreshMaximizedState();
     };
@@ -226,6 +242,8 @@
 
     void initialize();
     return () => {
+      destroyed = true;
+      stopCommunityLinks?.();
       window.removeEventListener("resize", onResize);
       document.removeEventListener("contextmenu", onContextMenu);
     };
@@ -277,7 +295,7 @@
         on:click={() => selectTab(tab.id)}
         on:keydown={(event) => handleTabKeyDown(event, tab.id)}
       >
-        {#if tab.id === "main"}<LucideLayoutDashboard aria-hidden="true" />{:else if tab.id === "mods"}<LucideLibrary aria-hidden="true" />{:else if tab.id === "installed"}<LucidePackage aria-hidden="true" />{:else if tab.id === "servers"}<LucideServer aria-hidden="true" />{:else if tab.id === "loaders"}<LucideLayers aria-hidden="true" />{:else if tab.id === "multiplayer"}<LucideUsers aria-hidden="true" />{:else}<LucideCode aria-hidden="true" />{/if}
+        {#if tab.id === "main"}<LucideLayoutDashboard aria-hidden="true" />{:else if tab.id === "mods"}<LucideLibrary aria-hidden="true" />{:else if tab.id === "installed"}<LucidePackage aria-hidden="true" />{:else if tab.id === "servers" || tab.id === "directory"}<LucideServer aria-hidden="true" />{:else if tab.id === "loaders"}<LucideLayers aria-hidden="true" />{:else if tab.id === "multiplayer"}<LucideUsers aria-hidden="true" />{:else}<LucideCode aria-hidden="true" />{/if}
         <span>{tab.label}</span>
       </button>
     {/each}
@@ -313,6 +331,9 @@
       {:then module}<module.default />
       {:catch error}<div class="page-status" role="alert"><p>{pageLoadError(error)}</p><button on:click={() => serversPage = import("./pages/Servers.svelte")}>Retry</button></div>{/await}
     {/if}
+  </div>
+  <div class="container" id="panel-directory" role="tabpanel" aria-labelledby="tab-directory" hidden={activeTab !== "directory"} tabindex="0">
+    {#if activeTab === "directory"}<ServerDirectory {requestedServerId} {requestRevision} />{/if}
   </div>
   <div class="container" id="panel-mods" role="tabpanel" aria-labelledby="tab-mods" hidden={activeTab !== "mods"} tabindex="0">
     {#if modsPage}
