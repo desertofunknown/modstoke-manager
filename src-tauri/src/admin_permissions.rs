@@ -404,9 +404,9 @@ fn valid_timestamp(value: &str) -> bool {
     year >= 1 && (1..=days).contains(&day) && hour < 24 && minute < 60 && second < 60
 }
 
-// Text limits count UTF-16 units, as Admin does.
+// Text limits count code points, as Admin does.
 fn printable(value: &str, max: usize) -> bool {
-    !value.trim().is_empty() && value.encode_utf16().count() <= max && !value.chars().any(char::is_control)
+    !value.trim().is_empty() && value.chars().count() <= max && !value.chars().any(char::is_control)
 }
 
 fn check(policy: &Policy, nodes: Option<&[PermissionNode]>) -> (Vec<String>, Vec<String>) {
@@ -475,8 +475,8 @@ fn check(policy: &Policy, nodes: Option<&[PermissionNode]>) -> (Vec<String>, Vec
         if !seen.insert(id) {
             problems.push(format!("Role id \"{id}\" is used by more than one role."));
         }
-        if !printable(&role.name, 48) {
-            problems.push(format!("Role {id}: the name must be 1 to 48 printable characters."));
+        if !printable(&role.name, 48) || role.name.trim() != role.name {
+            problems.push(format!("Role {id}: the name must be 1 to 48 printable characters, without spaces at either end."));
         }
         if role.rank > MAX_RANK {
             problems.push(format!("Role {id}: the rank must be from 0 to 999."));
@@ -516,6 +516,25 @@ fn check(policy: &Policy, nodes: Option<&[PermissionNode]>) -> (Vec<String>, Vec
             }
         }
     }
+    // Game roles map from the top down, and a lower game role never gets a higher-ranked role.
+    let order = [
+        ("Owner", &policy.game_role_map.owner),
+        ("Admin", &policy.game_role_map.admin),
+        ("Trusted", &policy.game_role_map.trusted),
+        ("Guest", &policy.game_role_map.guest),
+    ];
+    for pair in order.windows(2) {
+        let [(above_label, above), (label, role)] = pair else { continue };
+        let Some(role) = role else { continue };
+        match above {
+            None => problems.push(format!("The game's {label} role can only be mapped when the game's {above_label} role is mapped too.")),
+            Some(above) => if let (Some(lower), Some(upper)) = (roles.get(role.as_str()), roles.get(above.as_str())) {
+                if lower.rank > upper.rank {
+                    problems.push(format!("The game's {label} role maps to {role} (rank {}), which ranks above {above} (rank {}) for the game's {above_label} role.", lower.rank, upper.rank));
+                }
+            },
+        }
+    }
 
     if policy.assignments.len() > 512 {
         problems.push(format!("There are {} assignments; the limit is 512.", policy.assignments.len()));
@@ -536,8 +555,8 @@ fn check(policy: &Policy, nodes: Option<&[PermissionNode]>) -> (Vec<String>, Vec
             _ => {}
         }
         check_rules(steam_id, &assignment.allow, &assignment.deny, true, 16, &mut problems);
-        if assignment.note.as_deref().is_some_and(|note| !note.is_empty() && !printable(note, 120)) {
-            problems.push(format!("{steam_id}: the note must be up to 120 printable characters."));
+        if assignment.note.as_deref().is_some_and(|note| note.chars().count() > 120) {
+            problems.push(format!("{steam_id}: the note must be up to 120 characters."));
         }
         if assignment.added_by.as_deref().is_some_and(|added_by| !added_by.is_empty() && !printable(added_by, 64)) {
             problems.push(format!("{steam_id}: addedBy must be up to 64 printable characters."));

@@ -511,7 +511,7 @@
                 </div>
             </div>
             <h4>The game's own roles</h4>
-            <p class="note section-note">A player's role is the highest-ranked of their assignment below, their game role mapped here, and the role for every player.</p>
+            <p class="note section-note">A player's role is the highest-ranked of their assignment below, their game role mapped here, and the role for every player. Map from the top down: a game role can have a role only when the game roles above it do, and never one that ranks above theirs.</p>
             <div class="role-map">
                 {#each GAME_ROLES as [key, label]}
                     <label class="map-field">
