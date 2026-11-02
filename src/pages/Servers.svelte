@@ -2,14 +2,16 @@
     import LucideServer from "~icons/lucide/server";
     import LucidePackage from "~icons/lucide/package";
     import LucideArchive from "~icons/lucide/archive";
+    import LucideTerminal from "~icons/lucide/terminal";
     import PathSelector from "../lib/PathSelector.svelte";
     import ServerLaunch from "../lib/ServerLaunch.svelte";
+    import ServerConsole from "../lib/ServerConsole.svelte";
     import ServerInstallation from "../lib/ServerInstallation.svelte";
     import ServerWorldRecovery from "../lib/ServerWorldRecovery.svelte";
     import { installationProfiles, selectedInstallation, profilesReady } from "../lib/installationProfiles";
     import { processing } from "../lib/store";
 
-    type Section = "server" | "packages" | "backups";
+    type Section = "server" | "console" | "packages" | "backups";
     let section: Section = "server";
     let activeInstallationKey = "";
 
@@ -32,7 +34,7 @@
         <div>
             <p class="eyebrow">Dedicated hosting</p>
             <h1>Servers</h1>
-            <p class="page-description">Manage your server settings, packages and world backups.</p>
+            <p class="page-description">Run your server, follow its console, and manage its packages and world backups.</p>
         </div>
         <span class="workspace-mark" aria-hidden="true"><LucideServer /></span>
     </header>
@@ -66,6 +68,8 @@
         <nav class="server-navigation" aria-label="Server workspace">
             <button type="button" class:active={section === "server"} aria-current={section === "server" ? "page" : undefined}
                 disabled={$processing} on:click={() => selectSection("server")}><LucideServer aria-hidden="true" /> Server</button>
+            <button type="button" class:active={section === "console"} aria-current={section === "console" ? "page" : undefined}
+                disabled={$processing} on:click={() => selectSection("console")}><LucideTerminal aria-hidden="true" /> Console</button>
             <button type="button" class:active={section === "packages"} aria-current={section === "packages" ? "page" : undefined}
                 disabled={$processing} on:click={() => selectSection("packages")}><LucidePackage aria-hidden="true" /> Packages</button>
             <button type="button" class:active={section === "backups"} aria-current={section === "backups" ? "page" : undefined}
@@ -75,6 +79,8 @@
             {#key installationKey}
                 {#if section === "server"}
                     <ServerLaunch {installation} />
+                {:else if section === "console"}
+                    <ServerConsole {installation} />
                 {:else if section === "packages"}
                     <ServerInstallation {installation} />
                 {:else}

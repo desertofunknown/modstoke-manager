@@ -4,11 +4,16 @@
     import { open as chooseFolder } from "@tauri-apps/plugin-dialog";
     import { open } from "@tauri-apps/plugin-shell";
     import LucidePlay from "~icons/lucide/play";
+    import LucideSquare from "~icons/lucide/square";
+    import LucideRotateCw from "~icons/lucide/rotate-cw";
     import LucideRefreshCw from "~icons/lucide/refresh-cw";
     import LucideFolderOpen from "~icons/lucide/folder-open";
     import { processing, processName } from "./store";
     import { selectedInstallation, type InspectedInstallation } from "./installationProfiles";
-    import { readServerLaunch, writeServerLaunch, writeServerCapacity, writeServerIdentity, launchDedicatedServer, type ServerLaunchState } from "./serverLaunch";
+    import {
+        readServerLaunch, writeServerLaunch, writeServerCapacity, writeServerIdentity, writeServerLogFiles,
+        launchDedicatedServer, stopDedicatedServer, type ServerLaunchState,
+    } from "./serverLaunch";
 
     export let installation: InspectedInstallation;
 
@@ -26,8 +31,14 @@
     let experimentalAccepted = false;
     let capacityReview: { key: string; revision: string; configRevision: string; dataDirectory: string; from: number; to: number } | null = null;
     let nameReview: { key: string; revision: string; configRevision: string; configPath: string; from: string; to: string } | null = null;
+    let logChoice = false;
+    let logReview: { key: string; revision: string; configRevision: string; configPath: string; to: boolean } | null = null;
+    let forceReview = false;
+    let stopRequestedAt = "";
+    let watchTimer: number | undefined;
 
     function clearNameReview() { nameReview = null; }
+    function clearLogReview() { logReview = null; }
 
     function clearCapacityReview() {
         capacityReview = null;
@@ -37,6 +48,12 @@
     function clearReviews() {
         clearNameReview();
         clearCapacityReview();
+        clearLogReview();
+    }
+
+    // Windows reports STATUS_CONTROL_C_EXIT when the server leaves through the default Ctrl+C handler.
+    function exitLabel(exit: { success: boolean; code: number | null }): string {
+        return exit.success ? "successful" : exit.code === -1073741510 ? "ended by Ctrl+C" : "unsuccessful";
     }
 
     function nameProblem(value: string): string {
@@ -52,7 +69,13 @@
         observedAt = new Date().toLocaleTimeString();
         nameChoice = result.config?.serverName ?? "";
         capacityChoice = result.config && [8, 16, 32].includes(result.config.maxPlayers) ? result.config.maxPlayers : 0;
+        logChoice = result.config?.logFilesEnabled ?? false;
         clearReviews();
+        // A pending force-stop confirmation stays open while the stop is still being watched.
+        if (result.processState !== "running" && result.processState !== "stopping") forceReview = false;
+        window.clearTimeout(watchTimer);
+        // Keep observing a requested stop until Manager sees its process exit.
+        if (result.processState === "stopping") watchTimer = window.setTimeout(watchStop, 2000);
     }
 
     function keyOf(value: InspectedInstallation | null): string {
@@ -63,6 +86,8 @@
         if (key === activeKey) return;
         activeKey = key;
         generation++;
+        window.clearTimeout(watchTimer);
+        forceReview = false;
         state = null;
         observedAt = "";
         nameChoice = "";
@@ -75,6 +100,8 @@
     const unsubscribe = processing.subscribe(value => {
         if (!value || ownsOperation) return;
         generation++;
+        window.clearTimeout(watchTimer);
+        forceReview = false;
         state = null;
         observedAt = "";
         clearReviews();
@@ -84,6 +111,8 @@
     const unsubscribeSelection = selectedInstallation.subscribe(value => {
         if (keyOf(value) === activeKey) return;
         generation++;
+        window.clearTimeout(watchTimer);
+        forceReview = false;
         state = null;
         observedAt = "";
         clearReviews();
@@ -96,7 +125,9 @@
         && state.revision !== null && state.configRevision !== null && state.canSave && state.processState === "stopped";
     $: nameError = nameProblem(nameChoice);
     $: processLabel = !state ? "Not checked" : state.processState === "running" ? "Running"
+        : state.processState === "stopping" ? "Stopping"
         : state.processState === "stopped" ? "Stopped" : state.processState === "other" ? "Another process observed" : "Unknown";
+    $: ownsProcess = state?.processState === "running" || state?.processState === "stopping";
     $: problems = state ? [...new Set([state.configProblem, state.processProblem, state.saveProblem, state.launchProblem]
         .filter((problem): problem is string => !!problem))] : [];
 
@@ -196,6 +227,48 @@
         } finally { endOperation(); }
     }
 
+    async function stopServer(force: boolean, restart = false) {
+        if (!canStart() || !state || (force ? !ownsProcess : state.processState !== "running")) return;
+        const target = installation.target;
+        const key = keyOf(installation);
+        const request = ++generation;
+        window.clearTimeout(watchTimer);
+        forceReview = false;
+        beginOperation(force ? "Ending the dedicated-server process..." : "Asking the dedicated server to save and stop...");
+        try {
+            const result = await stopDedicatedServer(target.executable, target.id, force, restart);
+            if (current(request, key)) {
+                stopRequestedAt = force ? "" : new Date().toLocaleTimeString();
+                observe(result);
+                notice = force ? "The server process was ended without saving. Progress since its last save is lost."
+                    : restart ? "Ctrl+C sent. Manager starts the server again once it has exited."
+                    : "Ctrl+C sent. The server should save and exit; status refreshes until it does.";
+            }
+        } catch (failure) {
+            if (current(request, key)) {
+                state = null;
+                error = `Stop could not be confirmed: ${failure}. Read status again before continuing.`;
+            }
+        } finally { endOperation(); }
+    }
+
+    // Refreshes in place, without clearing the panel the way Read status does.
+    async function watchStop() {
+        if (destroyed || state?.processState !== "stopping") return;
+        if (busy || get(processing)) {
+            watchTimer = window.setTimeout(watchStop, 2000);
+            return;
+        }
+        const key = keyOf(installation);
+        const request = ++generation;
+        try {
+            const result = await readServerLaunch(installation.target.executable, installation.target.id);
+            if (current(request, key)) observe(result);
+        } catch (failure) {
+            if (current(request, key)) error = `Could not read server status: ${failure}`;
+        }
+    }
+
     async function openDataFolder() {
         if (!canStart() || !state?.dataDirectory) return;
         const folder = state.dataDirectory;
@@ -287,7 +360,44 @@
         } finally { endOperation(); }
     }
 
-    onDestroy(() => { destroyed = true; generation++; unsubscribe(); unsubscribeSelection(); });
+    function reviewLogFiles() {
+        if (!canStart() || !canEditConfiguration || !state?.config || !state.dataDirectory
+            || state.revision === null || state.configRevision === null || logChoice === state.config.logFilesEnabled) return;
+        clearReviews();
+        error = "";
+        notice = "";
+        logReview = {
+            key: keyOf(installation), revision: state.revision, configRevision: state.configRevision,
+            configPath: state.configPath ?? `${state.dataDirectory}\\dedicatedserver.cfg`, to: logChoice
+        };
+    }
+
+    async function saveLogFiles() {
+        const review = logReview;
+        if (!canStart() || !canEditConfiguration || !review || review.key !== keyOf(installation)
+            || review.revision !== state?.revision || review.configRevision !== state?.configRevision
+            || review.to !== logChoice) return;
+        const target = installation.target;
+        const key = keyOf(installation);
+        const request = ++generation;
+        beginOperation("Saving dedicated-server log setting...");
+        state = null;
+        try {
+            const result = await writeServerLogFiles(target.executable, target.id, review.revision,
+                review.configRevision, review.to);
+            if (current(request, key)) {
+                notice = `${result.changed ? "Turned" : "Log files are already"} ${review.to ? "on" : "off"}.`
+                    + (result.backupPath ? ` Original configuration backup: ${result.backupPath}.` : "")
+                    + " It applies the next time the server starts. Read status again before continuing.";
+            }
+        } catch (failure) {
+            if (current(request, key)) {
+                error = `Log setting save could not be confirmed: ${failure}. Read status again before continuing; the configuration may already have changed.`;
+            }
+        } finally { endOperation(); }
+    }
+
+    onDestroy(() => { destroyed = true; generation++; window.clearTimeout(watchTimer); unsubscribe(); unsubscribeSelection(); });
 </script>
 
 <div class="server-launch">
@@ -297,12 +407,13 @@
                 <p class="eyebrow">Server control</p>
                 <h2 id="server-launch-heading">{state?.config?.serverName || installation.target.name}</h2>
             </div>
-            <span class="process-state" class:observed={!!state} class:running={state?.processState === "running"}>{processLabel}</span>
+            <span class="process-state" class:observed={!!state} class:running={ownsProcess}>{processLabel}</span>
         </div>
         <p class="status-description">
             {#if !available}Choose an available dedicated-server installation to read status.
             {:else if !state}Read status to load the configuration and observe the server process.
             {:else if state.processState === "running"}Manager-owned process observed{state.processId !== null ? ` · PID ${state.processId}` : ""}.
+            {:else if state.processState === "stopping"}Stop requested{stopRequestedAt ? ` at ${stopRequestedAt}` : ""}. Waiting for the server to save and exit{state.restartPending ? ", then Manager starts it again" : ""}.
             {:else if state.processState === "stopped"}No dedicated-server process was observed at the last check.
             {:else if state.processState === "other"}Another or external server process was observed. Manager ownership is not established.
             {:else}The process state could not be established.{/if}
@@ -320,17 +431,40 @@
                     || state.revision === null || state.configRevision === null} on:click={startServer}>
                     <LucidePlay aria-hidden="true" /> Start server
                 </button>
+                {#if ownsProcess}
+                    <button type="button" disabled={busy || $processing || !available || state?.processState !== "running"} on:click={() => stopServer(false)}>
+                        <LucideSquare aria-hidden="true" /> Stop
+                    </button>
+                    <button type="button" disabled={busy || $processing || !available || state?.processState !== "running"} on:click={() => stopServer(false, true)}>
+                        <LucideRotateCw aria-hidden="true" /> Restart
+                    </button>
+                    <button class="danger-button" type="button" disabled={busy || $processing || !available || forceReview}
+                        on:click={() => { clearReviews(); forceReview = true; }}>Force stop…</button>
+                {/if}
                 <button type="button" disabled={busy || $processing || !available} on:click={readStatus}>
                     <LucideRefreshCw aria-hidden="true" /> {busy ? "Working…" : state ? "Refresh status" : "Read status"}
                 </button>
             </div>
             {#if state && observedAt}<span class="observed-time">Observed {observedAt}</span>{/if}
         </div>
+        {#if forceReview && ownsProcess}
+            <div class="change-review" role="region" aria-label="Force stop">
+                <h3>Force the server to stop?</h3>
+                <p>This ends the process immediately. The server cannot save, so progress since its last save is lost. Use it only when Stop does not work.</p>
+                <div class="actions">
+                    <button class="danger-button" type="button" disabled={busy || $processing} on:click={() => stopServer(true)}>Force stop</button>
+                    <button type="button" disabled={busy || $processing} on:click={() => forceReview = false}>Cancel</button>
+                </div>
+            </div>
+        {/if}
         {#if problems.length}
             <div class="status-notes" role="status">{#each problems as problem}<p>{problem}</p>{/each}</div>
         {/if}
         {#if state?.lastExit}
-            <p class="note last-exit">Last owned process exit: {state.lastExit.success ? "successful" : "unsuccessful"} · Code {state.lastExit.code ?? "unavailable"}.</p>
+            <p class="note last-exit">Last owned process exit: {exitLabel(state.lastExit)} · Code {state.lastExit.code ?? "unavailable"}.</p>
+        {/if}
+        {#if state?.restartProblem}
+            <p class="note restart-problem" role="alert">The server stopped, but the restart did not start it again: {state.restartProblem}</p>
         {/if}
     </section>
 
@@ -406,6 +540,33 @@
         </div>
 
         <div class="setting-row">
+            <label class="setting-label" for="server-log-files">Log files</label>
+            <div class="setting-content">
+                <div class="field-controls capacity-controls">
+                    <select id="server-log-files" bind:value={logChoice} on:change={clearLogReview}
+                        disabled={busy || $processing || !canEditConfiguration} aria-describedby="server-log-files-help">
+                        <option value={false}>Off</option>
+                        <option value={true}>On</option>
+                    </select>
+                    <button type="button" disabled={busy || $processing || !canEditConfiguration
+                        || logChoice === state?.config?.logFilesEnabled} on:click={reviewLogFiles}>Review setting</button>
+                </div>
+                <p id="server-log-files-help" class="note">Writes the server's output to a logs folder in its data folder, which the Console tab shows. Applies the next time the server starts.</p>
+                {#if logReview}
+                    <div class="change-review" role="region" aria-label="Review log files">
+                        <h3>Turn log files {logReview.to ? "on" : "off"}</h3>
+                        <p class="path">{logReview.configPath}</p>
+                        <p>The original configuration will be backed up before saving. The server stays stopped.</p>
+                        <div class="actions">
+                            <button class="primary-button" type="button" disabled={busy || $processing || !canEditConfiguration} on:click={saveLogFiles}>Save log setting</button>
+                            <button type="button" disabled={busy || $processing} on:click={clearLogReview}>Cancel</button>
+                        </div>
+                    </div>
+                {/if}
+            </div>
+        </div>
+
+        <div class="setting-row">
             <span class="setting-label" id="server-data-label">Data folder</span>
             <div class="setting-content" aria-labelledby="server-data-label">
                 <p class="data-path path">{state?.dataDirectory ?? (state ? "No data folder selected" : "Read status to load the saved folder")}</p>
@@ -418,7 +579,7 @@
             </div>
         </div>
     </section>
-    <p class="snapshot-note">Process status is a snapshot, not a multiplayer readiness check. Refresh to observe changes. Stop the server through its own controls; exiting Manager leaves it running. Starting here requires SaveMode to be Continue.</p>
+    <p class="snapshot-note">Process status is a snapshot, not a multiplayer readiness check. Stop sends Ctrl+C to the server's console so it can save and exit; Force stop skips that. Manager can stop only a server it started, and exiting Manager leaves the server running. Starting here requires SaveMode to be Continue.</p>
 </div>
 
 <style>
@@ -445,11 +606,14 @@
     button :global(svg) { width: 15px; height: 15px; }
     .primary-button { color: #251c10; background: var(--accent); border-color: var(--accent); }
     .primary-button:enabled:hover { color: #251c10; background: #ffd296; border-color: #ffd296; }
+    .danger-button { color: #ffb4ac; border-color: #693b44; }
+    .danger-button:enabled:hover { color: #ffd0ca; background: rgba(168, 61, 51, .18); border-color: #8a4a54; }
     .observed-time { color: var(--text-secondary); font-size: 11px; }
     .status-notes { margin-top: 18px; padding: 12px 14px; background: var(--accent-soft); border-left: 2px solid var(--accent); border-radius: 3px; }
     .status-notes p { margin: 4px 0; color: #e6c89e; font-size: 12px; line-height: 1.6; }
     .note, .snapshot-note, .config-path { color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
     .last-exit { margin: 14px 0 0; }
+    .restart-problem { margin: 10px 0 0; color: #ffb4ac; }
     .message { margin: 0; padding: 14px 16px; font-size: 13px; line-height: 1.6; border: 1px solid var(--border-subtle); border-radius: 8px; }
     .message.error { color: #ffb4ac; background: rgba(168, 61, 51, .1); max-height: 14em; overflow: auto; }
     .message.notice { color: var(--text-primary); background: var(--surface-raised); }

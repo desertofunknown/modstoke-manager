@@ -1,8 +1,9 @@
 # Dedicated servers
 
 Modstoke Manager, by OpenACAI, can remember a local Sons of the Forest dedicated
-server's installation and data folder, inspect its save settings and start its
-executable. It does not install the dedicated server or configure its network.
+server's installation and data folder, inspect its save settings, start, stop
+and restart it, and follow its logs. It does not install the dedicated server or
+configure its network.
 
 ## Prepare the server
 
@@ -81,10 +82,40 @@ not establish that startup checks passed, clients can join, mods loaded or the
 world is ready. Manager records the exit code of the process it started; this
 is not confirmation that a save completed. Refresh status to observe changes.
 
-Manager does not stop or automatically restart the server. Use the server's
-supported shutdown controls before maintenance. Closing Manager leaves the
-server running. After Manager restarts, an existing process is reported as
-external; ownership is not inferred from its process ID.
+## Stop and restart
+
+**Stop** sends Ctrl+C to the server's own console window, the shutdown the
+native server expects, and status shows **Stopping** until the process exits.
+Endnight's patch notes say the dedicated server saves before it shuts down;
+Manager does not confirm that a save happened.
+
+**Restart** stops the server the same way and starts it again once it has
+exited, using the data folder and configuration in place when you chose
+Restart. If they changed or another launch check fails, the server stays
+stopped and status shows why. The restart continues if you leave the page.
+
+**Force stop** ends the process immediately after you confirm it. The server
+cannot save, so progress since its last save is lost. A forced stop cancels a
+pending restart.
+
+Manager can stop only a server it started. Closing Manager leaves the server
+running. After Manager restarts, an existing process is reported as external;
+ownership is not inferred from its process ID. Stop an external server with
+Ctrl+C in its own console window.
+
+## Console
+
+The **Console** tab follows the server's log files. **Game log** reads the
+newest `sotf_log*.txt` in the data folder's `logs` folder. The native server
+writes it only while **Log files** is on under Server settings. That setting
+changes `LogFilesEnabled` in `dedicatedserver.cfg` with the same backup and
+checks as the other settings, and applies the next time the server starts.
+**Loader log** reads `BepInEx\LogOutput.log` in the server installation when
+Modstoke Loader is installed there.
+
+Lines can trail the server's own window by a few seconds, and the view keeps
+the latest 2,000 lines. The console only reads; it does not send commands to
+the server.
 
 ## World backup and recovery
 
@@ -165,4 +196,5 @@ Data-folder preferences use separate schema-1 files under `server-launch` in
 Manager's existing app configuration folder. Installation registry and package
 lockfile formats remain unchanged. Re-adding a forgotten installation reuses
 its saved data-folder choice; forgetting an installation never deletes data.
-Remote server control and graceful shutdown integration remain separate work.
+Sending commands such as save or broadcast to a running server needs Modstoke
+Loader support and remains separate work.

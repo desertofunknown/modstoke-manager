@@ -7,12 +7,14 @@ export type ServerLaunchState = {
     revision: string | null;
     configPath: string | null;
     configRevision: string | null;
-    config: { serverName: string; saveMode: string; saveSlot: number; maxPlayers: number } | null;
+    config: { serverName: string; saveMode: string; saveSlot: number; maxPlayers: number; logFilesEnabled: boolean } | null;
     configProblem: string | null;
-    processState: "stopped" | "running" | "other" | "unknown";
+    processState: "stopped" | "running" | "stopping" | "other" | "unknown";
     processId: number | null;
     lastExit: { success: boolean; code: number | null } | null;
     processProblem: string | null;
+    restartPending: boolean;
+    restartProblem: string | null;
     canSave: boolean;
     saveProblem: string | null;
     canLaunch: boolean;
@@ -45,7 +47,7 @@ export function writeServerCapacity(
     });
 }
 
-export type ServerIdentityChange = {
+export type ServerConfigChange = {
     changed: boolean;
     configRevision: string;
     backupPath: string | null;
@@ -54,9 +56,18 @@ export type ServerIdentityChange = {
 export function writeServerIdentity(
     executable: string, installationId: string, expectedRevision: string, expectedConfigRevision: string,
     serverName: string
-): Promise<ServerIdentityChange> {
+): Promise<ServerConfigChange> {
     return invoke("write_server_identity", {
         executable, installationId, expectedRevision, expectedConfigRevision, serverName
+    });
+}
+
+export function writeServerLogFiles(
+    executable: string, installationId: string, expectedRevision: string, expectedConfigRevision: string,
+    enabled: boolean
+): Promise<ServerConfigChange> {
+    return invoke("write_server_log_files", {
+        executable, installationId, expectedRevision, expectedConfigRevision, enabled
     });
 }
 
@@ -64,4 +75,10 @@ export function launchDedicatedServer(
     executable: string, installationId: string, expectedRevision: string, expectedConfigRevision: string
 ): Promise<ServerLaunchState> {
     return invoke("launch_dedicated_server", { executable, installationId, expectedRevision, expectedConfigRevision });
+}
+
+export function stopDedicatedServer(
+    executable: string, installationId: string, force: boolean, restart: boolean
+): Promise<ServerLaunchState> {
+    return invoke("stop_dedicated_server", { executable, installationId, force, restart });
 }

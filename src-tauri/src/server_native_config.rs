@@ -40,6 +40,14 @@ impl NativeConfig {
         Ok(changed)
     }
 
+    pub(crate) fn with_log_files(&self, enabled: bool) -> Result<Self, String> {
+        let changed = self.with_property("LogFilesEnabled", if enabled { "true" } else { "false" })?;
+        if changed.summary.log_files_enabled != enabled {
+            return Err("The updated native log setting could not be verified.".into());
+        }
+        Ok(changed)
+    }
+
     // The strict native parser has already validated the complete document. Borrowed
     // RawValues locate its original value bytes without normalizing other JSON content.
     fn with_property(&self, name: &str, value: &str) -> Result<Self, String> {
@@ -90,6 +98,7 @@ pub(crate) struct ConfigSummary {
     pub(crate) save_mode: String,
     pub(crate) save_slot: u32,
     pub(crate) max_players: u32,
+    pub(crate) log_files_enabled: bool,
 }
 
 struct ConfigProperties(HashMap<String, Value>);
@@ -168,6 +177,11 @@ pub(crate) fn parse(bytes: Vec<u8>) -> Result<NativeConfig, String> {
             if value.chars().count() <= 256 && !value.chars().any(char::is_control) => value,
         _ => return Err("dedicatedserver.cfg ServerName must be a string of at most 256 characters without control characters.".into()),
     };
+    let log_files_enabled = match properties.get("logfilesenabled") {
+        None => false,
+        Some(Value::Bool(value)) => *value,
+        _ => return Err("dedicatedserver.cfg LogFilesEnabled must be true or false.".into()),
+    };
 
     Ok(NativeConfig {
         // Hash the original bytes, including any BOM and formatting.
@@ -177,6 +191,7 @@ pub(crate) fn parse(bytes: Vec<u8>) -> Result<NativeConfig, String> {
             save_mode: save_mode.to_owned(),
             save_slot: positive_integer(&properties, "saveslot", "SaveSlot", 1)?,
             max_players: positive_integer(&properties, "maxplayers", "MaxPlayers", 8)?,
+            log_files_enabled,
         },
         original_bytes: bytes,
     })

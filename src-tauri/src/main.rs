@@ -19,6 +19,7 @@ mod server_launch;
 mod server_capacity;
 mod server_world;
 mod server_world_restore;
+mod server_console;
 mod server_directory;
 
 use regex::Regex;
@@ -1241,7 +1242,10 @@ fn main() {
             server_launch::write_server_launch,
             server_launch::write_server_capacity,
             server_launch::write_server_identity,
+            server_launch::write_server_log_files,
             server_launch::launch_dedicated_server,
+            server_launch::stop_dedicated_server,
+            server_console::read_server_console,
             server_world::read_server_world,
             server_world::create_server_world_backup,
             server_world_restore::restore_server_world_backup,

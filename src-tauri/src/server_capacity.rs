@@ -138,6 +138,14 @@ pub(crate) fn write_identity(access: &server_launch::ServerWorldAccess,
     })
 }
 
+pub(crate) fn write_log_files(access: &server_launch::ServerWorldAccess,
+    expected_config_revision: &str, enabled: bool) -> Result<ConfigChange, String> {
+    write_config(access, expected_config_revision, |original| {
+        if original.summary.log_files_enabled == enabled { return Ok(None); }
+        original.with_log_files(enabled).map(Some)
+    })
+}
+
 fn write_config(access: &server_launch::ServerWorldAccess, expected_config_revision: &str,
     change: impl FnOnce(&NativeConfig) -> Result<Option<NativeConfig>, String>) -> Result<ConfigChange, String> {
     let data = Path::new(&access.data_directory);

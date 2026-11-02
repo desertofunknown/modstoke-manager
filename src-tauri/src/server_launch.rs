@@ -29,6 +29,8 @@ pub struct ProcessExit {
 struct OwnedServer {
     installation_id: String,
     child: Child,
+    stop_requested: bool,
+    restart: bool,
     _installation_lock: File,
     _data_lock: File,
 }
@@ -36,9 +38,12 @@ struct OwnedServer {
 struct Processes {
     running: Option<OwnedServer>,
     last_exit: Option<(String, ProcessExit)>,
+    // Set when a server stopped for a restart exits; its watcher thread takes it and starts the server again.
+    restart_due: Option<String>,
+    restart_problem: Option<(String, String)>,
 }
 
-static PROCESSES: Mutex<Processes> = Mutex::new(Processes { running: None, last_exit: None });
+static PROCESSES: Mutex<Processes> = Mutex::new(Processes { running: None, last_exit: None, restart_due: None, restart_problem: None });
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,6 +60,8 @@ pub struct ServerLaunchState {
     process_id: Option<u32>,
     last_exit: Option<ProcessExit>,
     process_problem: Option<String>,
+    restart_pending: bool,
+    restart_problem: Option<String>,
     can_save: bool,
     save_problem: Option<String>,
     can_launch: bool,
@@ -178,6 +185,7 @@ fn reap(processes: &mut Processes) -> Result<(), String> {
     let Some(server) = processes.running.as_mut() else { return Ok(()); };
     if let Some(exit) = server.child.try_wait().map_err(|error| format!("Could not read the launched server's process status: {error}"))? {
         processes.last_exit = Some((server.installation_id.clone(), ProcessExit { success: exit.success(), code: exit.code() }));
+        if server.restart { processes.restart_due = Some(server.installation_id.clone()); }
         // Releasing these handles permits Manager recovery only after this child has exited.
         processes.running = None;
     }
@@ -279,15 +287,21 @@ fn snapshot(folder: &Path, root: &str, executable: &str, installation_id: &str) 
         let mut processes = PROCESSES.lock().map_err(|_| "The server process record is unavailable. Restart Manager before trying again.")?;
         reap(&mut processes)?;
         let last_exit = processes.last_exit.as_ref().filter(|(id, _)| id == installation_id).map(|(_, exit)| exit.clone());
+        let restart_problem = processes.restart_problem.as_ref().filter(|(id, _)| id == installation_id).map(|(_, problem)| problem.clone());
+        let mut restart_pending = processes.restart_due.as_deref() == Some(installation_id);
         if let Some(server) = &processes.running {
-            return Ok::<_, String>((if server.installation_id == installation_id { "running" } else { "other" },
-                (server.installation_id == installation_id).then_some(server.child.id()), last_exit));
+            let owned = server.installation_id == installation_id;
+            restart_pending |= owned && server.restart;
+            let state = if !owned { "other" } else if server.stop_requested { "stopping" } else { "running" };
+            return Ok::<_, String>((state, owned.then_some(server.child.id()), last_exit, restart_pending, restart_problem));
         }
-        Ok((if server_process::is_running()? { "other" } else { "stopped" }, None, last_exit))
+        // Between the exit and the watcher's new start, report the restart as still stopping.
+        let state = if restart_pending { "stopping" } else if server_process::is_running()? { "other" } else { "stopped" };
+        Ok((state, None, last_exit, restart_pending, restart_problem))
     })();
-    let (process_state, process_id, last_exit, process_problem) = match observed {
-        Ok((state, pid, exit)) => (state, pid, exit, None),
-        Err(problem) => ("unknown", None, None, Some(problem)),
+    let (process_state, process_id, last_exit, restart_pending, restart_problem, process_problem) = match observed {
+        Ok((state, pid, exit, restart_pending, restart_problem)) => (state, pid, exit, restart_pending, restart_problem, None),
+        Err(problem) => ("unknown", None, None, false, None, Some(problem)),
     };
     let save_problem = process_problem.clone().or_else(|| (process_state != "stopped")
         .then(|| "Stop all Sons of the Forest dedicated-server processes before changing the data folder or starting another server.".into()))
@@ -299,7 +313,7 @@ fn snapshot(folder: &Path, root: &str, executable: &str, installation_id: &str) 
     Ok(ServerLaunchState {
         installation_id: installation_id.into(), root: root.into(), data_directory, revision,
         config_path, config_revision, config, config_problem,
-        process_state: process_state.into(), process_id, last_exit, process_problem,
+        process_state: process_state.into(), process_id, last_exit, process_problem, restart_pending, restart_problem,
         can_save: save_problem.is_none(), save_problem, can_launch: launch_problem.is_none(), launch_problem,
     })
 }
@@ -337,6 +351,16 @@ pub async fn write_server_identity(app: tauri::AppHandle, executable: String, in
     tauri::async_runtime::spawn_blocking(move || {
         let access = acquire_world_access(&app, &executable, &installation_id, &expected_revision, &expected_config_revision)?;
         crate::server_capacity::write_identity(&access, &expected_config_revision, &server_name)
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn write_server_log_files(app: tauri::AppHandle, executable: String, installation_id: String,
+    expected_revision: String, expected_config_revision: String, enabled: bool,
+) -> Result<crate::server_capacity::ConfigChange, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let access = acquire_world_access(&app, &executable, &installation_id, &expected_revision, &expected_config_revision)?;
+        crate::server_capacity::write_log_files(&access, &expected_config_revision, enabled)
     }).await.map_err(|error| error.to_string())?
 }
 
@@ -382,50 +406,123 @@ pub async fn write_server_launch(app: tauri::AppHandle, executable: String, inst
     }).await.map_err(|error| error.to_string())?
 }
 
+fn launch(folder: &Path, executable: &str, installation_id: &str, expected_revision: &str,
+    expected_config_revision: &str) -> Result<ServerLaunchState, String> {
+    let (root, executable) = require_installation(executable, installation_id)?;
+    let installation_lock = mod_update::acquire_update_lock(Path::new(&root))?;
+    let _launch_lock = exclusive_lock(folder, ".launch.lock")?;
+    let mut processes = PROCESSES.lock().map_err(|_| "The server process record is unavailable. Restart Manager before trying again.")?;
+    reap(&mut processes)?;
+    if processes.running.is_some() { return Err("A server launched by this Manager is still running.".into()); }
+    server_process::require_stopped()?;
+    let (settings, revision) = read_settings(folder, installation_id, &executable)?;
+    if revision.as_deref() != Some(expected_revision) { return Err("Server launch settings changed. Read them again before starting.".into()); }
+    let settings = settings.ok_or("Choose the server data folder before starting.")?;
+    let data_directory = canonical_data_directory(&settings.data_directory)?;
+    if data_directory != settings.data_directory { return Err("The server data folder changed. Choose it again before starting.".into()); }
+    let data_lock = exclusive_lock(Path::new(&data_directory), ".modstoke-server.lock")?;
+    mod_profile::require_launch_ready(Path::new(&root))?;
+    crate::server_world::require_no_pending(Path::new(&data_directory))?;
+    let config = server_native_config::read(Path::new(&data_directory))?;
+    if config.revision != expected_config_revision { return Err("dedicatedserver.cfg changed. Read its current save settings before starting.".into()); }
+    if config.summary.save_mode != "Continue" {
+        return Err("SaveMode must be Continue to launch through Manager. New would overwrite the selected save slot.".into());
+    }
+    if require_installation(&executable, installation_id)?.0 != root {
+        return Err("The dedicated-server installation changed before launch.".into());
+    }
+    server_process::require_stopped()?;
+    crate::server_world::require_no_pending(Path::new(&data_directory))?;
+    // Arguments go straight to the selected executable. There is no shell or inherited Steam player launch.
+    let mut command = Command::new(&executable);
+    command.current_dir(&root).arg("-userdatapath").arg(&data_directory);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x00000010); // CREATE_NEW_CONSOLE: allow a native operator console.
+    }
+    let child = command.spawn().map_err(|error| format!("Could not start the dedicated server: {error}"))?;
+    processes.last_exit = None;
+    processes.restart_problem = None;
+    processes.running = Some(OwnedServer { installation_id: installation_id.into(), child, stop_requested: false,
+        restart: false, _installation_lock: installation_lock, _data_lock: data_lock });
+    drop(processes);
+    // If this observation fails, keep the owned child and its locks. Never kill or retry a possibly successful launch.
+    snapshot(folder, &root, &executable, installation_id)
+}
+
 #[tauri::command]
 pub async fn launch_dedicated_server(app: tauri::AppHandle, executable: String, installation_id: String,
     expected_revision: String, expected_config_revision: String) -> Result<ServerLaunchState, String> {
     let folder = settings_folder(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
+        launch(&folder, &executable, &installation_id, &expected_revision, &expected_config_revision)
+    }).await.map_err(|error| error.to_string())?
+}
+
+// Runs on its own thread so a restart survives the page that requested it.
+fn restart_after_exit(folder: PathBuf, executable: String, installation_id: String, revision: String, config_revision: String) {
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        let Ok(mut processes) = PROCESSES.lock() else { return; };
+        if reap(&mut processes).is_err() { return; }
+        if processes.restart_due.as_deref() == Some(installation_id.as_str()) {
+            processes.restart_due = None;
+            break;
+        }
+        // A forced stop cancels the restart.
+        if !processes.running.as_ref().is_some_and(|server| server.installation_id == installation_id && server.restart) { return; }
+    }
+    if let Err(problem) = launch(&folder, &executable, &installation_id, &revision, &config_revision) {
+        if let Ok(mut processes) = PROCESSES.lock() {
+            processes.restart_problem = Some((installation_id, problem));
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn stop_dedicated_server(app: tauri::AppHandle, executable: String, installation_id: String,
+    force: bool, restart: bool) -> Result<ServerLaunchState, String> {
+    let folder = settings_folder(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
         let (root, executable) = require_installation(&executable, &installation_id)?;
-        let installation_lock = mod_update::acquire_update_lock(Path::new(&root))?;
-        let _launch_lock = exclusive_lock(&folder, ".launch.lock")?;
+        // A restart starts again only with the settings in place now, under the usual launch checks.
+        let relaunch = if restart && !force {
+            let (settings, revision) = read_settings(&folder, &installation_id, &executable)?;
+            let data = settings.ok_or("Choose the server data folder before restarting.")?.data_directory;
+            let config = server_native_config::read(Path::new(&data))?;
+            Some((revision.ok_or("Server launch settings are unavailable.")?, config.revision))
+        } else { None };
         let mut processes = PROCESSES.lock().map_err(|_| "The server process record is unavailable. Restart Manager before trying again.")?;
         reap(&mut processes)?;
-        if processes.running.is_some() { return Err("A server launched by this Manager is still running.".into()); }
-        server_process::require_stopped()?;
-        let (settings, revision) = read_settings(&folder, &installation_id, &executable)?;
-        if revision.as_deref() != Some(expected_revision.as_str()) { return Err("Server launch settings changed. Read them again before starting.".into()); }
-        let settings = settings.ok_or("Choose the server data folder before starting.")?;
-        let data_directory = canonical_data_directory(&settings.data_directory)?;
-        if data_directory != settings.data_directory { return Err("The server data folder changed. Choose it again before starting.".into()); }
-        let data_lock = exclusive_lock(Path::new(&data_directory), ".modstoke-server.lock")?;
-        mod_profile::require_launch_ready(Path::new(&root))?;
-        crate::server_world::require_no_pending(Path::new(&data_directory))?;
-        let config = server_native_config::read(Path::new(&data_directory))?;
-        if config.revision != expected_config_revision { return Err("dedicatedserver.cfg changed. Read its current save settings before starting.".into()); }
-        if config.summary.save_mode != "Continue" {
-            return Err("SaveMode must be Continue to launch through Manager. New would overwrite the selected save slot.".into());
+        processes.restart_problem = None;
+        let server = processes.running.as_mut().filter(|server| server.installation_id == installation_id)
+            .ok_or("Manager did not start the running server, so it cannot stop it. Use the server's own console window.")?;
+        if force {
+            server.restart = false;
+            // TerminateProcess skips the server's own shutdown, including any save it makes on exit.
+            server.child.kill().map_err(|error| format!("Could not end the server process: {error}"))?;
+            server.child.wait().map_err(|error| format!("Could not confirm that the server process ended: {error}"))?;
+        } else {
+            // A second Ctrl+C could cut short a save that the first one started.
+            if server.stop_requested { return Err("A stop is already in progress. Wait for the server to exit, or force it to stop.".into()); }
+            server_process::interrupt(server.child.id())?;
+            server.stop_requested = true;
+            server.restart = relaunch.is_some();
         }
-        if require_installation(&executable, &installation_id)?.0 != root {
-            return Err("The dedicated-server installation changed before launch.".into());
-        }
-        server_process::require_stopped()?;
-        crate::server_world::require_no_pending(Path::new(&data_directory))?;
-        // Arguments go straight to the selected executable. There is no shell or inherited Steam player launch.
-        let mut command = Command::new(&executable);
-        command.current_dir(&root).arg("-userdatapath").arg(&data_directory);
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x00000010); // CREATE_NEW_CONSOLE: allow a native operator console.
-        }
-        let child = command.spawn().map_err(|error| format!("Could not start the dedicated server: {error}"))?;
-        processes.last_exit = None;
-        processes.running = Some(OwnedServer { installation_id: installation_id.clone(), child,
-            _installation_lock: installation_lock, _data_lock: data_lock });
+        reap(&mut processes)?;
         drop(processes);
-        // If this observation fails, keep the owned child and its locks. Never kill or retry a possibly successful launch.
+        if let Some((revision, config_revision)) = relaunch {
+            let (folder, executable, installation_id) = (folder.clone(), executable.clone(), installation_id.clone());
+            std::thread::spawn(move || restart_after_exit(folder, executable, installation_id, revision, config_revision));
+        }
         snapshot(&folder, &root, &executable, &installation_id)
     }).await.map_err(|error| error.to_string())?
+}
+
+/// The installation folder and, when one is saved and present, the data folder.
+pub(crate) fn server_folders(app: &tauri::AppHandle, executable: &str, installation_id: &str) -> Result<(String, Option<String>), String> {
+    let (root, executable) = require_installation(executable, installation_id)?;
+    let (settings, _) = read_settings(&settings_folder(app)?, installation_id, &executable)?;
+    Ok((root, settings.and_then(|settings| canonical_data_directory(&settings.data_directory).ok())))
 }
