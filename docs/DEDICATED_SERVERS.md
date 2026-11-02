@@ -82,6 +82,22 @@ not establish that startup checks passed, clients can join, mods loaded or the
 world is ready. Manager records the exit code of the process it started; this
 is not confirmation that a save completed. Refresh status to observe changes.
 
+## Game settings
+
+The **Game settings** tab edits the server's game mode, autosave interval,
+world settings, custom-game settings, frame rates and network options in
+`dedicatedserver.cfg`. It offers only the settings and values the dedicated
+server reads, and **Game default** removes a setting so the game's own value
+applies. Review the list of changes, then save. Saving uses the same backup and
+checks as the other settings, needs the server and game closed, and applies the
+next time the server starts.
+
+Game mode and the custom-game settings shape a new world only. They are used
+when SaveMode is New, or when SaveMode is Continue and the save slot is still
+empty. An existing world keeps its own settings. Tree regrowth and structure
+damage apply on every start. Entries the server does not read, and values
+Manager does not recognize, are kept unless you choose a new value.
+
 ## Stop and restart
 
 **Stop** sends Ctrl+C to the server's own console window, the shutdown the

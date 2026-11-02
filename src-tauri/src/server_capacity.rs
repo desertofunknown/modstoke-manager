@@ -146,6 +146,11 @@ pub(crate) fn write_log_files(access: &server_launch::ServerWorldAccess,
     })
 }
 
+pub(crate) fn write_game_settings(access: &server_launch::ServerWorldAccess, expected_config_revision: &str,
+    change: &crate::server_game_settings::GameSettingsChange) -> Result<ConfigChange, String> {
+    write_config(access, expected_config_revision, |original| crate::server_game_settings::apply(original, change))
+}
+
 fn write_config(access: &server_launch::ServerWorldAccess, expected_config_revision: &str,
     change: impl FnOnce(&NativeConfig) -> Result<Option<NativeConfig>, String>) -> Result<ConfigChange, String> {
     let data = Path::new(&access.data_directory);

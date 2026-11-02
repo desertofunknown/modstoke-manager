@@ -365,6 +365,16 @@ pub async fn write_server_log_files(app: tauri::AppHandle, executable: String, i
 }
 
 #[tauri::command]
+pub async fn write_server_game_settings(app: tauri::AppHandle, executable: String, installation_id: String,
+    expected_revision: String, expected_config_revision: String, change: crate::server_game_settings::GameSettingsChange,
+) -> Result<crate::server_capacity::ConfigChange, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let access = acquire_world_access(&app, &executable, &installation_id, &expected_revision, &expected_config_revision)?;
+        crate::server_capacity::write_game_settings(&access, &expected_config_revision, &change)
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub async fn write_server_launch(app: tauri::AppHandle, executable: String, installation_id: String,
     expected_revision: Option<String>, data_directory: String) -> Result<ServerLaunchState, String> {
     let folder = settings_folder(&app)?;

@@ -48,36 +48,69 @@ impl NativeConfig {
         Ok(changed)
     }
 
+    /// A top-level value's original JSON text. Names match without case, as the server reads them.
+    pub(crate) fn raw_property(&self, name: &str) -> Result<Option<&str>, String> {
+        let Some(range) = self.locate(name)?.0 else { return Ok(None); };
+        std::str::from_utf8(&self.original_bytes[range])
+            .map(Some).map_err(|_| "Could not locate the native configuration value.".into())
+    }
+
+    /// Leading whitespace of the line where a top-level value starts, for laying out nested objects.
+    pub(crate) fn property_indent(&self, name: &str) -> Result<Option<&str>, String> {
+        let Some(range) = self.locate(name)?.0 else { return Ok(None); };
+        let line = self.original_bytes[..range.start].iter().rposition(|byte| *byte == b'\n').map_or(0, |index| index + 1);
+        let width = self.original_bytes[line..range.start].iter().take_while(|byte| matches!(byte, b' ' | b'\t')).count();
+        std::str::from_utf8(&self.original_bytes[line..line + width])
+            .map(Some).map_err(|_| "Could not locate the native configuration value.".into())
+    }
+
+    pub(crate) fn newline(&self) -> &'static str {
+        if self.original_bytes.windows(2).any(|pair| pair == b"\r\n") { "\r\n" } else { "\n" }
+    }
+
     // The strict native parser has already validated the complete document. Borrowed
     // RawValues locate its original value bytes without normalizing other JSON content.
-    fn with_property(&self, name: &str, value: &str) -> Result<Self, String> {
+    // Returns the value's byte range when present, and whether the root has any properties.
+    fn locate(&self, name: &str) -> Result<(Option<std::ops::Range<usize>>, bool), String> {
         let bytes = self.original_bytes();
         let text = std::str::from_utf8(bytes)
             .map_err(|_| "Could not locate the native configuration value.")?;
         let body = text.strip_prefix('\u{feff}').unwrap_or(text);
         let properties: HashMap<String, &RawValue> = serde_json::from_str(body)
             .map_err(|_| "Could not locate the native configuration value.")?;
-        let (range, replacement) = if let Some(original) = properties.iter()
-            .find_map(|(key, original)| key.eq_ignore_ascii_case(name).then_some(*original)) {
-            let raw = original.get().as_bytes();
-            let start = (raw.as_ptr() as usize).checked_sub(bytes.as_ptr() as usize)
-                .ok_or("Could not locate the native configuration value.")?;
-            let end = start.checked_add(raw.len())
-                .ok_or("Could not locate the native configuration value.")?;
-            if bytes.get(start..end) != Some(raw) {
-                return Err("Could not locate the native configuration value.".into());
+        let Some(original) = properties.iter()
+            .find_map(|(key, original)| key.eq_ignore_ascii_case(name).then_some(*original)) else {
+            return Ok((None, !properties.is_empty()));
+        };
+        let raw = original.get().as_bytes();
+        let start = (raw.as_ptr() as usize).checked_sub(bytes.as_ptr() as usize)
+            .ok_or("Could not locate the native configuration value.")?;
+        let end = start.checked_add(raw.len())
+            .ok_or("Could not locate the native configuration value.")?;
+        if bytes.get(start..end) != Some(raw) {
+            return Err("Could not locate the native configuration value.".into());
+        }
+        Ok((Some(start..end), true))
+    }
+
+    pub(crate) fn with_property(&self, name: &str, value: &str) -> Result<Self, String> {
+        let bytes = self.original_bytes();
+        let (range, replacement) = match self.locate(name)? {
+            (Some(range), _) => (range, value.to_owned()),
+            (None, has_properties) => {
+                // Only a validated root object's closing delimiter and JSON whitespace
+                // are inspected here. All original whitespace remains in the output.
+                let text = std::str::from_utf8(bytes)
+                    .map_err(|_| "Could not locate the native configuration value.")?;
+                let body = text.strip_prefix('\u{feff}').unwrap_or(text);
+                let object = body.trim_end_matches([' ', '\t', '\r', '\n']);
+                let before_close = object.strip_suffix('}')
+                    .ok_or("Could not locate the end of the native configuration.")?;
+                let insertion = text.len() - body.len()
+                    + before_close.trim_end_matches([' ', '\t', '\r', '\n']).len();
+                let separator = if has_properties { "," } else { "" };
+                (insertion..insertion, format!("{separator}\"{name}\":{value}"))
             }
-            (start..end, value.to_owned())
-        } else {
-            // Only a validated root object's closing delimiter and JSON whitespace
-            // are inspected here. All original whitespace remains in the output.
-            let object = body.trim_end_matches([' ', '\t', '\r', '\n']);
-            let before_close = object.strip_suffix('}')
-                .ok_or("Could not locate the end of the native configuration.")?;
-            let insertion = text.len() - body.len()
-                + before_close.trim_end_matches([' ', '\t', '\r', '\n']).len();
-            let separator = if properties.is_empty() { "" } else { "," };
-            (insertion..insertion, format!("{separator}\"{name}\":{value}"))
         };
         let length = bytes.len() - range.len() + replacement.len();
         if length > MAX_CONFIG_BYTES {

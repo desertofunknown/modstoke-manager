@@ -22,7 +22,7 @@ These signed files still display **OpenACAI Mod Manager**. The Modstoke branding
 1. Run the portable app or installer on Windows 10 or 11. WebView2 is required; the installer is configured to bootstrap it if needed.
 2. Select `SonsOfTheForest.exe` in your game installation folder.
 3. Use **Installed mods** for your loadout, **Browse mods** for the catalogs, and **Loaders** for installation and repair. Nexus file installation is handed to Vortex; manage Vortex deployments there.
-4. Open **Dedicated servers** to add an existing server installation, choose its data folder, edit its name or player limit, start, stop or restart it, follow its console, and manage world backups. See the [server setup guide](docs/DEDICATED_SERVERS.md).
+4. Open **Dedicated servers** to add an existing server installation, choose its data folder, edit its name, player limit and game settings, start, stop or restart it, follow its console, and manage world backups. See the [server setup guide](docs/DEDICATED_SERVERS.md).
 5. Open **Server browser** to find community servers. Before joining through Steam, the Manager checks the server's current details and compares its required mods with the files in your selected game installation.
 
 **Loader installation is currently blocked by its release feed.** The Manager's install and repair actions request `OpenACAILoader.manifest.json` from [modstoke.com](https://modstoke.com/releases/loader/latest/OpenACAILoader.manifest.json), where no loader release has been published yet. The current UI does not offer a working local ZIP picker. Install and repair will work once a compatible loader release is published there. See [troubleshooting](docs/TROUBLESHOOTING.md) for the errors you may see.

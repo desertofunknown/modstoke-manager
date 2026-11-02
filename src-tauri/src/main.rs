@@ -21,6 +21,7 @@ mod server_world;
 mod server_world_restore;
 mod server_console;
 mod server_directory;
+mod server_game_settings;
 
 use regex::Regex;
 use serde::Serialize;
@@ -1243,6 +1244,8 @@ fn main() {
             server_launch::write_server_capacity,
             server_launch::write_server_identity,
             server_launch::write_server_log_files,
+            server_launch::write_server_game_settings,
+            server_game_settings::read_server_game_settings,
             server_launch::launch_dedicated_server,
             server_launch::stop_dedicated_server,
             server_console::read_server_console,

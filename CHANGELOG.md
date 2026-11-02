@@ -1,4 +1,5 @@
 - Unreleased
+  - Add a Game settings tab for dedicated servers: game mode, autosave interval, tree regrowth and structure damage, every custom-game setting the server reads, frame rates, LAN only and the network check. Changes are reviewed first and saved with the usual configuration backup; unrecognized values and unread entries are kept.
   - Stop a dedicated server Manager started by sending Ctrl+C to its console, restart it once it has exited, or force it to stop after a confirmation. Add a Console tab that follows the server's game log and Modstoke Loader log, and a Log files setting for the native game log.
   - Add a community server browser backed by modstoke.com. It shows server status, settings and recent activity, compares required mods with the selected installation, and joins through Steam after rechecking the server. `modstoke://join/` links open that server, and launching the Manager again focuses the running window.
   - Request loader releases from modstoke.com, reject manifest file records that could point outside the game folder, and accept loader packages that ship the core as `Modstoke.Loader.dll`.

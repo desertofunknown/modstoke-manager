@@ -3,15 +3,17 @@
     import LucidePackage from "~icons/lucide/package";
     import LucideArchive from "~icons/lucide/archive";
     import LucideTerminal from "~icons/lucide/terminal";
+    import LucideSlidersHorizontal from "~icons/lucide/sliders-horizontal";
     import PathSelector from "../lib/PathSelector.svelte";
     import ServerLaunch from "../lib/ServerLaunch.svelte";
     import ServerConsole from "../lib/ServerConsole.svelte";
+    import ServerGameSettings from "../lib/ServerGameSettings.svelte";
     import ServerInstallation from "../lib/ServerInstallation.svelte";
     import ServerWorldRecovery from "../lib/ServerWorldRecovery.svelte";
     import { installationProfiles, selectedInstallation, profilesReady } from "../lib/installationProfiles";
     import { processing } from "../lib/store";
 
-    type Section = "server" | "console" | "packages" | "backups";
+    type Section = "server" | "game" | "console" | "packages" | "backups";
     let section: Section = "server";
     let activeInstallationKey = "";
 
@@ -68,6 +70,8 @@
         <nav class="server-navigation" aria-label="Server workspace">
             <button type="button" class:active={section === "server"} aria-current={section === "server" ? "page" : undefined}
                 disabled={$processing} on:click={() => selectSection("server")}><LucideServer aria-hidden="true" /> Server</button>
+            <button type="button" class:active={section === "game"} aria-current={section === "game" ? "page" : undefined}
+                disabled={$processing} on:click={() => selectSection("game")}><LucideSlidersHorizontal aria-hidden="true" /> Game settings</button>
             <button type="button" class:active={section === "console"} aria-current={section === "console" ? "page" : undefined}
                 disabled={$processing} on:click={() => selectSection("console")}><LucideTerminal aria-hidden="true" /> Console</button>
             <button type="button" class:active={section === "packages"} aria-current={section === "packages" ? "page" : undefined}
@@ -79,6 +83,8 @@
             {#key installationKey}
                 {#if section === "server"}
                     <ServerLaunch {installation} />
+                {:else if section === "game"}
+                    <ServerGameSettings {installation} />
                 {:else if section === "console"}
                     <ServerConsole {installation} />
                 {:else if section === "packages"}
