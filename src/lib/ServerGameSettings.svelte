@@ -107,6 +107,12 @@
             : value === KEEP ? "Current value" : GAME_MODES.find(([name]) => name === value)?.[1] ?? value;
     }
 
+    // Settings in each-blocks update the draft here rather than through bind:, which in legacy
+    // mode would put the block's own variable into every other draft binding's update.
+    function choose(part: "game" | "custom", key: string, value: string) {
+        if (draft) draft = { ...draft, [part]: { ...draft[part], [key]: value } };
+    }
+
     function differences(from: Draft, to: Draft, state: GameSettingsState) {
         const change: GameSettingsChange = {};
         const rows: Row[] = [];
@@ -298,7 +304,8 @@
                 <div class="setting-row">
                     <label class="setting-label" for={setting.key}>{LABELS[setting.key]?.[1] ?? setting.key}</label>
                     <div class="setting-content">
-                        <select id={setting.key} bind:value={draft.game[setting.key]} disabled={busy || $processing || !canEdit}>
+                        <select id={setting.key} value={draft.game[setting.key]} disabled={busy || $processing || !canEdit}
+                            on:change={event => choose("game", setting.key, event.currentTarget.value)}>
                             {#if original?.game[setting.key] === KEEP}<option value={KEEP}>Current value (not recognized)</option>{/if}
                             <option value="">Game default</option><option value="true">On</option><option value="false">Off</option>
                         </select>
@@ -319,7 +326,8 @@
                     {#each settings.customSettings.filter(setting => LABELS[setting.key]?.[0] === group) as setting (setting.key)}
                         <label class="custom-field">
                             <span>{LABELS[setting.key]?.[1] ?? setting.key}</span>
-                            <select bind:value={draft.custom[setting.key]} disabled={busy || $processing || !canEdit}>
+                            <select value={draft.custom[setting.key]} disabled={busy || $processing || !canEdit}
+                                on:change={event => choose("custom", setting.key, event.currentTarget.value)}>
                                 {#if original?.custom[setting.key] === KEEP}<option value={KEEP}>Current value (not recognized)</option>{/if}
                                 <option value="">Game default</option>
                                 {#if setting.choices}

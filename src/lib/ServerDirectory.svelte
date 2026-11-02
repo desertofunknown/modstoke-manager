@@ -223,6 +223,7 @@
     .search { flex: 1; max-width: 460px; display: grid; gap: 6px; color: var(--text-secondary); font-size: 11px; }
     .search input { width: 100%; box-sizing: border-box; }
     .online-filter { display: flex; align-items: center; gap: 8px; margin-top: 20px; font-size: 12px; }
+    .online-filter input { float: none; flex-shrink: 0; margin: 0; }
     .directory-layout { display: grid; grid-template-columns: minmax(220px, 0.8fr) minmax(330px, 1.5fr); gap: 20px; align-items: start; }
     .server-list { display: grid; gap: 8px; max-height: 72vh; overflow-y: auto; padding: 3px; }
     .server-row { display: grid; gap: 9px; width: 100%; text-align: left; padding: 16px; border: 1px solid var(--border-subtle); background: var(--surface-panel); box-shadow: none; }
