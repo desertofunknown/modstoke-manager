@@ -95,7 +95,7 @@ fn require_installation(executable: &str, installation_id: &str) -> Result<Strin
     inspected.root.ok_or_else(|| "The player installation has no resolved folder.".into())
 }
 
-fn read_bounded(root: &Path, relative: &Path, limit: usize) -> Result<Option<Vec<u8>>, String> {
+pub(crate) fn read_bounded(root: &Path, relative: &Path, limit: usize) -> Result<Option<Vec<u8>>, String> {
     if !mod_update::validate_target(root, relative)? {
         return Ok(None);
     }

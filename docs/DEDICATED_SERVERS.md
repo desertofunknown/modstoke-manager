@@ -135,6 +135,33 @@ Lines can trail the server's own window by a few seconds, and the view keeps
 the latest 2,000 lines. The console only reads; it does not send commands to
 the server.
 
+## Staff permissions
+
+The **Staff** tab edits Modstoke Admin's `permissions.json` in the server
+installation's `BepInEx\plugins\OpenACAIAdminTool` folder. A player
+installation has the same editor under **Multiplayer**, for games you host.
+Admin 0.5.216 or later creates the file on its first start and moves any
+operators from `settings.ini` into it; until then there is nothing to edit.
+
+- **Access** turns remote F7 staff tools on or off, sets the lowest rank that
+  may use them, and can give every player a floor role. The game's own Owner,
+  Admin, Trusted and Guest roles map onto Admin roles here.
+- **Roles** have a name, an id, a rank from 0 to 999, the lower-ranked roles
+  they inherit, and allow and deny lists. A pattern like `moderate.*` or `*`
+  also covers nodes a later Admin version adds, but never the sensitive nodes,
+  which have to be named exactly. Deny always beats allow, and staff can only
+  act on players ranked below them.
+- **Staff** gives a SteamID64 a role, with optional extra nodes, a note and an
+  expiry time.
+
+Manager checks the file against Admin's rules and suggests node names from the
+`permission-nodes.json` list Admin writes. Review the changes, then save.
+Saving works while the game or server runs: Admin picks up the file within
+about 5 seconds, and Manager then shows whether Admin is using it or rejected
+it. If the file changed since it was read, for example in F7, nothing is saved
+and you read it again. Each save first keeps a copy of the previous file in
+Manager's settings folder.
+
 ## World backup and recovery
 
 Close the player game and stop the dedicated server through its normal controls

@@ -4,6 +4,7 @@
     import PackRecovery from "../lib/PackRecovery.svelte";
     import ServerRequirements from "../lib/ServerRequirements.svelte";
     import ClientAdmission from "../lib/ClientAdmission.svelte";
+    import AdminPermissions from "../lib/AdminPermissions.svelte";
     import { createEventDispatcher, onDestroy } from "svelte";
     import { installationProfiles, selectedInstallation, type InspectedInstallation } from "../lib/installationProfiles";
     import { invoke } from "@tauri-apps/api/core";
@@ -40,6 +41,10 @@
     let destroyed = false;
     onDestroy(() => { destroyed = true; loaderStatusRequestId++; });
     let features = [melonFeature, openAcaiLoaderFeature];
+    let staffOpen = false;
+    // Once opened, the editor stays mounted so collapsing it keeps unsaved changes.
+    let staffMounted = false;
+    $: if (staffOpen) staffMounted = true;
     let loaderReport: LoaderIntegrityReport | null = null;
     let loaderStatus = "Not checked";
     let loaderStatusClass = "manual";
@@ -301,7 +306,7 @@
         <div class="section-heading tools-heading">
             <div>
                 <h2 id="workspace-tools-heading">Connection & recovery</h2>
-                <p>Requirements, participation and package recovery.</p>
+                <p>Requirements, participation, package recovery and Admin staff.</p>
             </div>
             <span class="section-caption">Advanced setup</span>
         </div>
@@ -312,6 +317,14 @@
             {/if}
             {#if $selectedInstallation?.target.kind === "player" && $selectedInstallation.available && $selectedInstallation.root}
                 <PackRecovery installation={$selectedInstallation} />
+                <details class="admin-staff" bind:open={staffOpen}>
+                    <summary><strong>Admin staff permissions</strong><span>Roles and staff for games you host with Modstoke Admin</span></summary>
+                    {#if staffMounted}
+                        <div class="content">
+                            {#key $selectedInstallation.target.id + $selectedInstallation.root}<AdminPermissions installation={$selectedInstallation} />{/key}
+                        </div>
+                    {/if}
+                </details>
             {/if}
         </div>
     </section>
@@ -436,6 +449,7 @@
     .workspace-tools :global(.requirements),
     .workspace-tools :global(.client-admission),
     .workspace-tools :global(.pack-recovery),
+    .workspace-tools :global(.admin-staff),
     .workspace-tools :global(.server-installation) {
         width: 100%;
         max-width: none;
@@ -450,7 +464,8 @@
     .workspace-tools :global(.server-installation) { padding: 18px; margin-bottom: 12px; }
     .workspace-tools :global(.requirements > summary),
     .workspace-tools :global(.client-admission > summary),
-    .workspace-tools :global(.pack-recovery > summary) { padding: 14px 17px; color: var(--text-primary, #eef0f4); font-size: 12px; line-height: 1.5; }
+    .workspace-tools :global(.pack-recovery > summary),
+    .workspace-tools :global(.admin-staff > summary) { padding: 14px 17px; color: var(--text-primary, #eef0f4); font-size: 12px; line-height: 1.5; }
     .workspace-tools :global(summary::marker) { color: #778394; }
     .workspace-tools :global(summary strong) { font-weight: 600; }
     .workspace-tools :global(summary span) { color: var(--text-secondary, #9da6b6); font-size: 11px; }

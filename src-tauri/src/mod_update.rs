@@ -248,6 +248,12 @@ fn replace_archive_locked_inner(
             ));
         }
         validate_mod_path(&relative_path)?;
+        if crate::admin_permissions::is_admin_data(&key) {
+            return Err(format!(
+                "The archive contains {}, which belongs to Modstoke Admin's staff permissions. Edit staff permissions in Manager or F7 instead.",
+                relative_path.display()
+            ));
+        }
         let existed = validate_target(&root, &relative_path)?;
         if existed
             && (is_bepinex_config(original)
@@ -986,6 +992,16 @@ pub(crate) fn ensure_unmanaged(root: &Path, relative: &Path) -> Result<(), Strin
 }
 
 pub(crate) fn durable_rename(source: &Path, destination: &Path, replace: bool) -> Result<(), String> {
+    move_durably(source, destination, replace).map_err(|error| {
+        format!(
+            "Could not move {} to {}: {error}",
+            source.display(),
+            destination.display()
+        )
+    })
+}
+
+pub(crate) fn move_durably(source: &Path, destination: &Path, replace: bool) -> std::io::Result<()> {
     #[cfg(windows)]
     let result = {
         use std::os::windows::ffi::OsStrExt;
@@ -1032,13 +1048,7 @@ pub(crate) fn durable_rename(source: &Path, destination: &Path, replace: bool) -
         }
         Ok::<(), std::io::Error>(())
     })();
-    result.map_err(|error| {
-        format!(
-            "Could not move {} to {}: {error}",
-            source.display(),
-            destination.display()
-        )
-    })
+    result
 }
 
 fn write_durable(folder: &Path, name: &str, bytes: &[u8]) -> Result<(), String> {
