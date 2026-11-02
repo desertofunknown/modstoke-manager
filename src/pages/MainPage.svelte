@@ -5,6 +5,7 @@
     import ServerRequirements from "../lib/ServerRequirements.svelte";
     import ClientAdmission from "../lib/ClientAdmission.svelte";
     import AdminPermissions from "../lib/AdminPermissions.svelte";
+    import LoaderConsole from "../lib/LoaderConsole.svelte";
     import { createEventDispatcher, onDestroy } from "svelte";
     import { installationProfiles, selectedInstallation, type InspectedInstallation } from "../lib/installationProfiles";
     import { invoke } from "@tauri-apps/api/core";
@@ -299,6 +300,15 @@
                 </div>
             </section>
         </div>
+        {#if $selectedInstallation?.target.kind === "player" && $selectedInstallation.available && $selectedInstallation.root}
+            <section class="game-console" aria-labelledby="game-console-heading">
+                <h2 id="game-console-heading">Loader console</h2>
+                {#key $selectedInstallation.target.id + $selectedInstallation.root}
+                    <LoaderConsole installation={$selectedInstallation}
+                        note="Commands go to Modstoke Loader in your running game. Admin passes staff commands on to the host, which checks your permissions." />
+                {/key}
+            </section>
+        {/if}
     {/if}
 
     {#if view === "multiplayer"}
@@ -426,6 +436,8 @@
     h2 { margin: 0; color: var(--text-primary, #eef0f4); font-size: 15px; font-weight: 650; line-height: 1.4; letter-spacing: -.01em; }
     .section-heading p { margin: 4px 0 0; color: var(--text-secondary, #9da6b6); font-size: 12px; line-height: 1.5; }
     .feature-list { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+    .game-console { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 20px; background: var(--surface-panel, #171a21); border: 1px solid var(--border-subtle, #30353f); border-radius: 10px; }
+    .game-console h2 { margin: 0; font-size: 15px; }
     .loader-health { display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 20px; background: var(--surface-panel, #171a21); border: 1px solid var(--border-subtle, #30353f); border-radius: 10px; }
     .health-heading { display: flex; align-items: center; gap: 11px; }
     .health-icon { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border: 1px solid var(--border-subtle, #30353f); background: var(--surface-raised, #20242c); border-radius: 9px; color: var(--text-secondary, #9da6b6); }

@@ -14,6 +14,7 @@ mod native_inventory;
 mod server_requirements;
 mod client_admission;
 mod admin_permissions;
+mod loader_console;
 mod server_process;
 mod server_native_config;
 mod server_launch;
@@ -1243,6 +1244,8 @@ fn main() {
             admin_permissions::read_admin_permissions,
             admin_permissions::check_admin_permissions,
             admin_permissions::write_admin_permissions,
+            loader_console::read_loader_console,
+            loader_console::submit_loader_console,
             server_launch::read_server_launch,
             server_launch::write_server_launch,
             server_launch::write_server_capacity,

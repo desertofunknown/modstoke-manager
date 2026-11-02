@@ -132,8 +132,20 @@ checks as the other settings, and applies the next time the server starts.
 Modstoke Loader is installed there.
 
 Lines can trail the server's own window by a few seconds, and the view keeps
-the latest 2,000 lines. The console only reads; it does not send commands to
-the server.
+the latest 2,000 lines. These two views only read files.
+
+**Loader console** connects to Modstoke Loader in the running server. It shows
+the Loader's live output and sends its commands: type a command or pick one
+from the list, add arguments if it takes them, and Run. Commands that ask for
+confirmation wait until you confirm. A command is only queued when it is sent,
+so its result appears later under **Recent results**, which can also include
+results of commands sent from another Loader console view. Commands typed in
+the server's own window print their results there and in the Loader log
+instead. Admin treats commands from this console as coming from the host. The
+console needs the server to be running with Modstoke Loader, and connects only
+to the server process started from this installation. When the server stops,
+its last output stays until it starts again. The Loaders page has the same
+console for a running game.
 
 ## Staff permissions
 

@@ -2,12 +2,13 @@
     import { onMount, tick } from "svelte";
     import type { InspectedInstallation } from "./installationProfiles";
     import { readServerConsole, type ConsoleSource } from "./serverConsole";
+    import LoaderConsole from "./LoaderConsole.svelte";
 
     export let installation: InspectedInstallation;
 
     const MAX_LINES = 2000;
 
-    let source: ConsoleSource = "game";
+    let source: ConsoleSource | "commands" = "game";
     let lines: string[] = [];
     let file: string | null = null;
     let offset: number | null = null;
@@ -18,7 +19,7 @@
     let following = true;
     let output: HTMLElement;
 
-    function selectSource(next: ConsoleSource) {
+    function selectSource(next: ConsoleSource | "commands") {
         if (next === source) return;
         source = next;
         generation++;
@@ -32,7 +33,7 @@
     }
 
     async function poll() {
-        if (reading || document.visibilityState !== "visible") return;
+        if (source === "commands" || reading || document.visibilityState !== "visible") return;
         const request = generation;
         reading = true;
         try {
@@ -81,8 +82,12 @@
         <div class="source-switch" role="group" aria-label="Log source">
             <button type="button" class:active={source === "game"} aria-pressed={source === "game"} on:click={() => selectSource("game")}>Game log</button>
             <button type="button" class:active={source === "loader"} aria-pressed={source === "loader"} on:click={() => selectSource("loader")}>Loader log</button>
+            <button type="button" class:active={source === "commands"} aria-pressed={source === "commands"} on:click={() => selectSource("commands")}>Loader console</button>
         </div>
     </div>
+    {#if source === "commands"}
+        <LoaderConsole {installation} note="Commands go to the server's Modstoke Loader, and Admin treats them as the host. Their results appear here, not in the server's own window or the Loader log." />
+    {:else}
     <div class="console-meta">
         <span class="path">{file ?? "No log file"}</span>
         <span>{following ? "Following new lines" : "Paused while scrolled up"}</span>
@@ -92,7 +97,8 @@
     {#if problem && lines.length}<p class="note">{problem}</p>{/if}
     <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users need to focus and scroll the log.) -->
     <pre class="console-output" bind:this={output} on:scroll={updateFollowing} tabindex="0">{#if lines.length}{lines.join("\n")}{:else}<span class="empty">{problem || "Waiting for output…"}</span>{/if}</pre>
-    <p class="note">Shows the server's log files, which can trail its own console window by a few seconds. The game log needs Log files turned on in Server settings. The Loader log appears when Modstoke Loader is installed on this server.</p>
+    <p class="note">Shows the server's log files, which can trail its own console window by a few seconds. The game log needs Log files turned on in Server settings. The Loader log and console appear when Modstoke Loader is installed on this server.</p>
+    {/if}
 </section>
 
 <style>
