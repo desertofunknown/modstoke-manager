@@ -2,11 +2,11 @@
     import { onDestroy, onMount, tick } from "svelte";
     import SOTFMods from "./Mods.svelte";
     import NexusVortex from "./NexusVortex.svelte";
-    import NativePackages from "../lib/NativePackages.svelte";
+    import NativePackages from "../lib/native/NativePackages.svelte";
     import { selectedInstallation } from "../lib/installationProfiles";
     import { gameExePath } from "../lib/store";
     import { clampNumber, cssPixels } from "../lib/format";
-    import type { SourceSummary } from "../lib/sourceSummary";
+    import type { SourceSummary } from "../lib/mods/sourceSummary";
     import LucideCloudDownload from "~icons/lucide/cloud-download";
     import LucideLayoutGrid from "~icons/lucide/layout-grid";
     import LucideMaximize2 from "~icons/lucide/maximize-2";

@@ -1,6 +1,6 @@
 <script lang="ts">
-    import FeatureList from "../lib/FeatureList.svelte";
-    import { ueFeature } from "../lib/featureInstaller";
+    import FeatureList from "../lib/installers/FeatureList.svelte";
+    import { ueFeature } from "../lib/installers/featureInstaller";
 </script>
 
 <div class="modding-page">

@@ -1,22 +1,22 @@
 <script lang="ts">
-    import InstallFeature from "../lib/InstallationComponent.svelte";
+    import InstallFeature from "../lib/installers/InstallationComponent.svelte";
     import PathSelector from "../lib/PathSelector.svelte";
-    import PackRecovery from "../lib/PackRecovery.svelte";
-    import ServerRequirements from "../lib/ServerRequirements.svelte";
-    import ClientAdmission from "../lib/ClientAdmission.svelte";
-    import AdminPermissions from "../lib/AdminPermissions.svelte";
-    import LoaderConsole from "../lib/LoaderConsole.svelte";
+    import PackRecovery from "../lib/mods/PackRecovery.svelte";
+    import ServerRequirements from "../lib/server/ServerRequirements.svelte";
+    import ClientAdmission from "../lib/server/ClientAdmission.svelte";
+    import AdminPermissions from "../lib/server/AdminPermissions.svelte";
+    import LoaderConsole from "../lib/server/LoaderConsole.svelte";
     import { createEventDispatcher, onDestroy } from "svelte";
     import { installationProfiles, selectedInstallation, type InspectedInstallation } from "../lib/installationProfiles";
     import { invoke } from "@tauri-apps/api/core";
-    import { openAcaiLoaderFeature, melonFeature } from "../lib/featureInstaller";
+    import { openAcaiLoaderFeature, melonFeature } from "../lib/installers/featureInstaller";
     import { gameExePath, isPathValid, isDotnetInstalled, getDirectoryPath, processName, processProgress, processing } from "../lib/store";
     import {
         ensureLatestOpenAcaiLoader,
         getInstalledLoaderVersion,
         verifyInstalledLoader,
         type LoaderIntegrityReport
-    } from "../lib/openAcaiLoaderUpdater";
+    } from "../lib/installers/openAcaiLoaderUpdater";
     import LucidePlay from "~icons/lucide/play";
     import LucideFolderOpen from "~icons/lucide/folder-open";
     import LucideShieldCheck from "~icons/lucide/shield-check";

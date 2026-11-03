@@ -1,10 +1,10 @@
 <script lang="ts">
     import { createEventDispatcher, onDestroy, onMount, tick } from "svelte";
     import { isPathValid } from "../lib/store";
-    import ModCard from "../lib/ModCard.svelte";
-    import type { Mod, ModCategory, ModVersion } from "../lib/mods";
-    import { ModDatabase, modDependencies, modPreviewUrls, Sorting } from "../lib/mods";
-    import { renderStoreRichText } from "../lib/richText";
+    import ModCard from "../lib/mods/ModCard.svelte";
+    import type { Mod, ModCategory, ModVersion } from "../lib/mods/mods";
+    import { ModDatabase, modDependencies, modPreviewUrls, Sorting } from "../lib/mods/mods";
+    import { renderStoreRichText } from "../lib/mods/richText";
     import { clampNumber, cssPixels, formatCount, formatDate } from "../lib/format";
     import {
         dateValue,
@@ -25,12 +25,12 @@
         sortMetricLabel,
         trustedAuthorLabel,
         type SotfCatalogSort
-    } from "../lib/modDisplay";
-    import type { SourceSummary } from "../lib/sourceSummary";
+    } from "../lib/mods/modDisplay";
+    import type { SourceSummary } from "../lib/mods/sourceSummary";
     import { openWebLink } from "../lib/utils";
-    import { fallbackPreviewUrl } from "../lib/modPreview";
+    import { fallbackPreviewUrl } from "../lib/mods/modPreview";
     import { modalFocus } from "../lib/modalFocus";
-    import InfiniteScroll from "../lib/InfiniteScroll.svelte";
+    import InfiniteScroll from "../lib/mods/InfiniteScroll.svelte";
     import debounce from "lodash/debounce";
     import SvgSpinnersBlocksWave from '~icons/svg-spinners/blocks-wave'
     import LucideChevronLeft from "~icons/lucide/chevron-left";

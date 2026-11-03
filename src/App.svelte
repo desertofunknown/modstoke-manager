@@ -8,8 +8,8 @@
   import MainPage from "./pages/MainPage.svelte";
   import SettingsPage from "./pages/Settings.svelte";
   import OperationStatus from "./lib/OperationStatus.svelte";
-  import ServerDirectory from "./lib/ServerDirectory.svelte";
-  import { receiveCommunityLinks } from "./lib/serverDirectory";
+  import ServerDirectory from "./lib/server/ServerDirectory.svelte";
+  import { receiveCommunityLinks } from "./lib/server/serverDirectory";
   import { errorMessage } from "./lib/format";
   import LucideMinus from "~icons/lucide/minus";
   import LucideSquare from "~icons/lucide/square";

@@ -6,12 +6,12 @@
     import LucideSlidersHorizontal from "~icons/lucide/sliders-horizontal";
     import LucideShieldCheck from "~icons/lucide/shield-check";
     import PathSelector from "../lib/PathSelector.svelte";
-    import ServerLaunch from "../lib/ServerLaunch.svelte";
-    import ServerConsole from "../lib/ServerConsole.svelte";
-    import ServerGameSettings from "../lib/ServerGameSettings.svelte";
-    import AdminPermissions from "../lib/AdminPermissions.svelte";
-    import ServerInstallation from "../lib/ServerInstallation.svelte";
-    import ServerWorldRecovery from "../lib/ServerWorldRecovery.svelte";
+    import ServerLaunch from "../lib/server/ServerLaunch.svelte";
+    import ServerConsole from "../lib/server/ServerConsole.svelte";
+    import ServerGameSettings from "../lib/server/ServerGameSettings.svelte";
+    import AdminPermissions from "../lib/server/AdminPermissions.svelte";
+    import ServerInstallation from "../lib/server/ServerInstallation.svelte";
+    import ServerWorldRecovery from "../lib/server/ServerWorldRecovery.svelte";
     import { installationProfiles, selectedInstallation, profilesReady } from "../lib/installationProfiles";
     import { processing } from "../lib/store";
 

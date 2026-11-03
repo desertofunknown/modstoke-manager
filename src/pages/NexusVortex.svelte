@@ -11,7 +11,7 @@
     import LucideCompass from "~icons/lucide/compass";
     import LucideRefreshCw from "~icons/lucide/refresh-cw";
     import LucideX from "~icons/lucide/x";
-    import { fallbackPreviewUrl } from "../lib/modPreview";
+    import { fallbackPreviewUrl } from "../lib/mods/modPreview";
     import { modalFocus } from "../lib/modalFocus";
     import {
         clearNexusApiKey,
@@ -42,7 +42,7 @@
         type NexusSession,
         type NexusTrackedMod,
         type NexusView
-    } from "../lib/nexus";
+    } from "../lib/mods/nexus";
     import {
         advanceNestedDependencyTraversal,
         createNestedDependencyTraversal,
@@ -50,7 +50,7 @@
         NESTED_DEPENDENCY_DEPTH_STEP,
         type NestedDependencySource,
         type NestedDependencyTraversal
-    } from "../lib/nexusDependencyTraversal";
+    } from "../lib/mods/nexusDependencyTraversal";
     import {
         nexusRichTextImageUrls,
         normalizeNexusMarkup,
@@ -58,14 +58,14 @@
         renderNexusRichText,
         renderOptionalNexusRichText,
         uniquePreviewUrls
-    } from "../lib/nexusRichText";
+    } from "../lib/mods/nexusRichText";
     import {
         extractAuthorInstructions,
         extractAuthorRequirements,
         type AuthorInstructionHint,
         type AuthorRequirementLink,
         type AuthorRequirementSource
-    } from "../lib/nexusAuthorHints";
+    } from "../lib/mods/nexusAuthorHints";
     import {
         describeInstallSource,
         findMatchingInstall,
@@ -74,10 +74,10 @@
         scanInstalledInventory,
         setInventoryEntryEnabled,
         type InstalledInventoryEntry
-    } from "../lib/modInventory";
+    } from "../lib/mods/modInventory";
     import { gameExePath, getDirectoryPath, isPathValid } from "../lib/store";
     import { clampNumber, cssPixels, errorMessage, formatCount } from "../lib/format";
-    import type { SourceSummary } from "../lib/sourceSummary";
+    import type { SourceSummary } from "../lib/mods/sourceSummary";
     import * as dialog from "@tauri-apps/plugin-dialog"
     import * as shell from "@tauri-apps/plugin-shell"
     import { invoke } from "@tauri-apps/api/core";

@@ -8,16 +8,16 @@
     import LucideRefreshCw from "~icons/lucide/refresh-cw";
     import LucideFolderOpen from "~icons/lucide/folder-open";
     import LucideX from "~icons/lucide/x";
-    import NativePackages from "../lib/NativePackages.svelte";
+    import NativePackages from "../lib/native/NativePackages.svelte";
     import PathSelector from "../lib/PathSelector.svelte";
     import { selectedInstallation } from "../lib/installationProfiles";
-    import { nativeInstallationKey } from "../lib/nativePackage";
-    import { ModDatabase } from "../lib/mods";
+    import { nativeInstallationKey } from "../lib/native/nativePackage";
+    import { ModDatabase } from "../lib/mods/mods";
     import { gameExePath, isPathValid, processing, processName, processProgress } from "../lib/store";
     import {
         assertCurrentGameRoot, describeInstallSource, pathKey, scanInstalledInventory, setInventoryEntryEnabled,
         type InstalledInventoryEntry, type InstallSource, type LoaderType
-    } from "../lib/modInventory";
+    } from "../lib/mods/modInventory";
 
     type InventoryTab = "mods" | "native";
     type SortColumn = "name" | "enabled" | "version" | "loaderType" | "installSource";
