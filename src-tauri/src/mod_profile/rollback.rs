@@ -1,5 +1,5 @@
 use super::*;
-use crate::mod_pack::{self, RetainedPackage};
+use super::rollback_store::{self, RetainedPackage};
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -48,7 +48,7 @@ pub(super) fn validate(profile: &ModProfile) -> Result<(), String> {
             || checkpoint.phase == "available" && receipt.restored {
             return Err(invalid_profile());
         }
-        mod_pack::validate_receipt(&checkpoint.workspace, receipt.step_index, &receipt.files)?;
+        rollback_store::validate_receipt(&checkpoint.workspace, receipt.step_index, &receipt.files)?;
         previous = Some(receipt.step_index);
         if let Some(plan) = &profile.pending_plan {
             let step = plan.steps.get(receipt.step_index).ok_or_else(invalid_profile)?;
@@ -155,7 +155,7 @@ pub(super) fn begin(root: &Path, current: &ProfileState, proposed: &mut ModProfi
     if current.profile.as_ref().is_some_and(|profile| profile.rollback.is_some()) {
         discard(root, current.clone(), None)?;
     }
-    proposed.rollback.as_mut().expect("checkpoint").workspace = mod_pack::create_workspace(root)?;
+    proposed.rollback.as_mut().expect("checkpoint").workspace = rollback_store::create_workspace(root)?;
     Ok(())
 }
 
@@ -165,7 +165,7 @@ pub(super) fn retain_step(root: &Path, profile: &mut ModProfile, index: usize, t
     let plan = profile.pending_plan.as_ref().ok_or_else(invalid_profile)?;
     let step = plan.steps.get(index).ok_or_else(invalid_profile)?;
     if checkpoint.plan_id != plan.id { return Err(invalid_profile()); }
-    let files = mod_pack::retain_package(root, &checkpoint.workspace, index, targets)?;
+    let files = rollback_store::retain_package(root, &checkpoint.workspace, index, targets)?;
     if let Some(receipt) = checkpoint.receipts.iter_mut().find(|receipt| receipt.step_index == index) {
         if receipt.files != files || receipt.package_id != step.package.id || receipt.restored {
             return Err("The package's retained originals differ from this retry. Its existing recovery data was preserved.".into());
@@ -197,7 +197,7 @@ pub(super) fn discard(root: &Path, state: ProfileState, plan_id: Option<&str>) -
     }
     let checkpoint = profile.rollback.as_ref().expect("checkpoint");
     let packages: Vec<_> = checkpoint.receipts.iter().map(|receipt| (receipt.step_index, &receipt.files)).collect();
-    mod_pack::discard_workspace(root, &checkpoint.workspace, &packages)
+    rollback_store::discard_workspace(root, &checkpoint.workspace, &packages)
         .map_err(|error| format!("Package changes are settled, but retained-backup cleanup needs attention. Use Finish cleanup on the Main page. {error}"))?;
     profile.rollback = None;
     // Once recovery data is released, the ordinary lockfile remains readable by
@@ -213,7 +213,7 @@ pub(super) fn restore(root: &Path, state: ProfileState, plan_id: &str) -> Result
     if checkpoint.phase == "discarding" { return Err("The files are already settled. Finish backup cleanup on the Main page.".into()); }
     let packages: Vec<_> = checkpoint.receipts.iter().filter(|receipt| !receipt.restored)
         .map(|receipt| (receipt.step_index, &receipt.files)).collect();
-    mod_pack::preflight_restore(root, &checkpoint.workspace, &packages)?;
+    rollback_store::preflight_restore(root, &checkpoint.workspace, &packages)?;
     if checkpoint.phase != "restoring" {
         profile.rollback.as_mut().expect("checkpoint").phase = "restoring".into();
         write_locked(root, &profile)?;
@@ -223,7 +223,7 @@ pub(super) fn restore(root: &Path, state: ProfileState, plan_id: &str) -> Result
         let checkpoint = profile.rollback.as_ref().expect("checkpoint");
         let receipt = &checkpoint.receipts[index];
         if receipt.restored { continue; }
-        mod_pack::restore_package(root, &checkpoint.workspace, receipt.step_index, &receipt.files)?;
+        rollback_store::restore_package(root, &checkpoint.workspace, receipt.step_index, &receipt.files)?;
         profile.rollback.as_mut().expect("checkpoint").receipts[index].restored = true;
         write_locked(root, &profile)?;
     }

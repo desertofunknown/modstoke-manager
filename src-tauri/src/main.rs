@@ -9,7 +9,6 @@ mod hashing;
 mod installation_profiles;
 mod loader_console;
 mod loader_package;
-mod mod_pack;
 mod mod_profile;
 mod mod_update;
 mod native_inventory;

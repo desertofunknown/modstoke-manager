@@ -6,15 +6,11 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-#[path = "mod_profile_rollback.rs"]
 mod rollback;
-#[path = "native_package_archive.rs"]
+mod rollback_store;
 mod native_archive;
-#[path = "native_package_install.rs"]
 pub(crate) mod native_local;
-#[path = "native_pack_prepare.rs"]
 pub(crate) mod native_pack;
-#[path = "native_pack_install.rs"]
 pub(crate) mod native_pack_install;
 
 const PROFILE_FILE: &str = "modstoke-profile.lock.json";
