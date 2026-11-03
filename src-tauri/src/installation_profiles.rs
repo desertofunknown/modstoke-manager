@@ -373,6 +373,30 @@ pub(crate) fn inspect_target(executable: &str) -> Result<InspectedTarget, String
     }
 }
 
+// Installation-scoped commands re-inspect the executable they're given, so a folder that was moved
+// or swapped since the page selected it is refused before anything touches it.
+pub(crate) fn require_selected(
+    executable: &str,
+    installation_id: &str,
+    kind: Option<(TargetKind, &str)>,
+    unavailable: &str,
+    changed: &str,
+) -> Result<InspectedTarget, String> {
+    let inspected = inspect_target(executable)?;
+    if let Some((kind, wrong_kind)) = kind {
+        if inspected.target.kind != kind {
+            return Err(wrong_kind.into());
+        }
+    }
+    if !inspected.available {
+        return Err(inspected.problem.unwrap_or_else(|| unavailable.into()));
+    }
+    if inspected.target.id != installation_id {
+        return Err(changed.into());
+    }
+    Ok(inspected)
+}
+
 #[tauri::command]
 pub async fn write_installation_profiles(
     app: tauri::AppHandle,

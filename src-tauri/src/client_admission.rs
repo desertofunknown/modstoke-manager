@@ -82,17 +82,11 @@ pub async fn write_client_admission(
 }
 
 fn require_installation(executable: &str, installation_id: &str) -> Result<String, String> {
-    let inspected = installation_profiles::inspect_target(executable)?;
-    if inspected.target.kind != installation_profiles::TargetKind::Player {
-        return Err("Managed client admission requires a player installation.".into());
-    }
-    if !inspected.available {
-        return Err(inspected.problem.unwrap_or_else(|| "The player installation is unavailable.".into()));
-    }
-    if inspected.target.id != installation_id {
-        return Err("The player installation no longer matches its selected identity. Select it again before changing managed admission.".into());
-    }
-    inspected.root.ok_or_else(|| "The player installation has no resolved folder.".into())
+    let selected = installation_profiles::require_selected(executable, installation_id,
+        Some((installation_profiles::TargetKind::Player, "Managed client admission requires a player installation.")),
+        "The player installation is unavailable.",
+        "The player installation no longer matches its selected identity. Select it again before changing managed admission.")?;
+    selected.root.ok_or_else(|| "The player installation has no resolved folder.".into())
 }
 
 fn read_config(root: &Path) -> Result<Config, String> {

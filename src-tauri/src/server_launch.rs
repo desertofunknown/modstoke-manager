@@ -69,17 +69,11 @@ pub struct ServerLaunchState {
 }
 
 fn require_installation(executable: &str, installation_id: &str) -> Result<(String, String), String> {
-    let inspected = installation_profiles::inspect_target(executable)?;
-    if inspected.target.kind != installation_profiles::TargetKind::Server {
-        return Err("Select a dedicated-server installation before preparing its launch.".into());
-    }
-    if !inspected.available {
-        return Err(inspected.problem.unwrap_or_else(|| "The dedicated-server installation is unavailable.".into()));
-    }
-    if inspected.target.id != installation_id {
-        return Err("The dedicated-server installation changed. Select its current executable again.".into());
-    }
-    Ok((inspected.root.ok_or("The server installation has no resolved folder.")?, inspected.target.executable))
+    let selected = installation_profiles::require_selected(executable, installation_id,
+        Some((installation_profiles::TargetKind::Server, "Select a dedicated-server installation before preparing its launch.")),
+        "The dedicated-server installation is unavailable.",
+        "The dedicated-server installation changed. Select its current executable again.")?;
+    Ok((selected.root.ok_or("The server installation has no resolved folder.")?, selected.target.executable))
 }
 
 fn ordinary_path(path: &Path) -> Result<String, String> {

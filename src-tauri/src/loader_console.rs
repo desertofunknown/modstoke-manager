@@ -162,14 +162,10 @@ async fn live_endpoint(executable: String, installation_id: String) -> Result<Re
 }
 
 fn require_installation(executable: &str, installation_id: &str) -> Result<String, String> {
-    let inspected = installation_profiles::inspect_target(executable)?;
-    if !inspected.available {
-        return Err(inspected.problem.unwrap_or_else(|| "The installation is unavailable.".into()));
-    }
-    if inspected.target.id != installation_id {
-        return Err("The installation no longer matches its saved identity. Select it again.".into());
-    }
-    inspected.root.ok_or_else(|| "The installation has no resolved folder.".into())
+    let selected = installation_profiles::require_selected(executable, installation_id, None,
+        "The installation is unavailable.",
+        "The installation no longer matches its saved identity. Select it again.")?;
+    selected.root.ok_or_else(|| "The installation has no resolved folder.".into())
 }
 
 fn valid_pipe(pipe: &str, process_id: u32) -> bool {
