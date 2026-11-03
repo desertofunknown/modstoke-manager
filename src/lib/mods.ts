@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { gameExePath, getDirectoryPath, isPathValid, processName } from './store';
 import { get } from 'svelte/store';
 import { downloadAndInstall, openWebLink } from './utils';
-import { assertCurrentGameRoot, linkedExists, scanInstalledInventory, type InstallSource, type LoaderType } from './modInventory';
+import { assertCurrentGameRoot, linkedExists, pathKey, scanInstalledInventory, type InstallSource, type LoaderType } from './modInventory';
 import { resolveInstallPlan, type InstallPlan } from './modInstallPlan';
 import { applyProfilePackage, completedPackage, discardModProfileRollback, freshPlanInventory, mergeRequestedRoots, pinArchive, readModProfile, rollbackModProfile, saveModProfile, type ModProfile, type ProfileState } from './modProfile';
 import * as fs from "@tauri-apps/plugin-fs"
@@ -181,11 +181,6 @@ export type InstalledMod = {
     disabledPackagePath?: string;
 }
 
-type FsDirEntry = {
-    name?: string;
-    path?: string;
-}
-
 export enum Sorting {
     newest = "newest",
 }
@@ -342,7 +337,7 @@ export class ModDatabase {
         }
     }
 
-    private static async readDirSafe(folderPath: string, logErrors: boolean = true): Promise<any[]> {
+    private static async readDirSafe(folderPath: string, logErrors: boolean = true): Promise<fs.DirEntry[]> {
         try {
             if (!await fs.exists(folderPath)) {
                 return [];
@@ -358,18 +353,6 @@ export class ModDatabase {
         }
     }
 
-    private static async resolveDirEntryPath(parentPath: string, entry: FsDirEntry): Promise<string | null> {
-        if (entry.path) {
-            return entry.path;
-        }
-
-        if (entry.name) {
-            return await path.join(parentPath, entry.name);
-        }
-
-        return null;
-    }
-
     private static async findManifestFolders(folderPath: string, depth: number = 0): Promise<string[]> {
         if (depth > MAX_MANIFEST_SCAN_DEPTH) {
             return [];
@@ -378,18 +361,14 @@ export class ModDatabase {
         let results: string[] = [];
         const files = await this.readDirSafe(folderPath);
         for (const file of files) {
-            const filePath = await this.resolveDirEntryPath(folderPath, file);
-            if (!filePath) {
-                continue;
-            }
-
-            const name = file.name ?? await path.basename(filePath);
-            if (name.toLowerCase() === "manifest.json") {
+            const filePath = await path.join(folderPath, file.name);
+            const name = file.name.toLowerCase();
+            if (name === "manifest.json") {
                 results.push(await path.dirname(filePath));
                 continue;
             }
 
-            if (depth === MAX_MANIFEST_SCAN_DEPTH || name.toLowerCase().endsWith(".dll") || name.toLowerCase().endsWith(".disabled")) {
+            if (depth === MAX_MANIFEST_SCAN_DEPTH || name.endsWith(".dll") || name.endsWith(".disabled")) {
                 continue;
             }
 
@@ -402,12 +381,8 @@ export class ModDatabase {
         return results;
     }
 
-    private static normalizePath(value: string): string {
-        return value.replace(/\\/g, "/").replace(/\/+$/g, "").toLowerCase();
-    }
-
     private static isDisabledPackagePath(folderPath: string): boolean {
-        const normalized = this.normalizePath(folderPath);
+        const normalized = pathKey(folderPath);
         return normalized.includes("/_disabled/") || normalized.endsWith("/_disabled");
     }
 
@@ -550,15 +525,10 @@ export class ModDatabase {
         for (const rootPath of [modPath, libPath]) {
             const files = await this.readDirSafe(rootPath);
             for (const file of files) {
-                const filePath = await this.resolveDirEntryPath(rootPath, file);
-                if (!filePath) {
-                    continue;
-                }
-
-                const fileName = file.name ?? await path.basename(filePath);
-                if(fileName.endsWith(".dll") || fileName.endsWith(".disabled")){
-                    let isEnabled = fileName.endsWith(".dll");
-                    let folderName = fileName.replace(".dll", "").replace(".disabled", "");
+                const filePath = await path.join(rootPath, file.name);
+                if(file.name.endsWith(".dll") || file.name.endsWith(".disabled")){
+                    let isEnabled = file.name.endsWith(".dll");
+                    let folderName = file.name.replace(".dll", "").replace(".disabled", "");
                     let folderPath = await path.join(rootPath, folderName);
                     let enabledAssemblyPath = await path.join(rootPath, folderName + ".dll");
                     let disabledAssemblyPath = await path.join(rootPath, folderName + ".disabled");
@@ -568,7 +538,7 @@ export class ModDatabase {
                         continue;
                     }
 
-                    scannedManifestFolders.add(this.normalizePath(folderPath));
+                    scannedManifestFolders.add(pathKey(folderPath));
                     let mod = await this.initInstalledMod(
                         gameRoot,
                         folderPath,
@@ -586,7 +556,7 @@ export class ModDatabase {
         for (const rootPath of [modPath, libPath]) {
             const manifestFolders = await this.findManifestFolders(rootPath);
             for (const manifestFolder of manifestFolders) {
-                const key = this.normalizePath(manifestFolder);
+                const key = pathKey(manifestFolder);
                 if (scannedManifestFolders.has(key)) {
                     continue;
                 }
@@ -630,7 +600,7 @@ export class ModDatabase {
             mod.installedMod = installedMod;
             mod.hasUpdate = mod.isInstalled && (installedMod?.manifest.version !== mod.latestVersion
                 || this.pendingProfileRoot?.modId.toLowerCase() === mod.mod_id.toLowerCase()
-                    && this.normalizePath(this.pendingProfileRoot.gameRoot) === this.normalizePath(installedMod!.gameRoot));
+                    && pathKey(this.pendingProfileRoot.gameRoot) === pathKey(installedMod!.gameRoot));
         });
     }
 
@@ -697,8 +667,8 @@ export class ModDatabase {
                     const before = plan.steps.find(step => step.package.id.toLowerCase() === selectedId)?.before;
                     if (!before || before.id.toLowerCase() !== previousInstall.manifest.id.toLowerCase() || before.version !== previousInstall.manifest.version
                         || before.enabled !== previousInstall.isEnabled
-                        || this.normalizePath(before.assemblyPath ?? "") !== this.normalizePath(previousInstall.assemblyPath ?? "")
-                        || this.normalizePath(before.packagePath ?? "") !== this.normalizePath(previousInstall.packagePath ?? "")) {
+                        || pathKey(before.assemblyPath ?? "") !== pathKey(previousInstall.assemblyPath ?? "")
+                        || pathKey(before.packagePath ?? "") !== pathKey(previousInstall.packagePath ?? "")) {
                         throw new Error("The selected installed mod changed. Refresh the installed list before updating it.");
                     }
                 }

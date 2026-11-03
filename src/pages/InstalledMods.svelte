@@ -15,7 +15,7 @@
     import { ModDatabase } from "../lib/mods";
     import { gameExePath, isPathValid, processing, processName, processProgress } from "../lib/store";
     import {
-        assertCurrentGameRoot, describeInstallSource, scanInstalledInventory, setInventoryEntryEnabled,
+        assertCurrentGameRoot, describeInstallSource, pathKey, scanInstalledInventory, setInventoryEntryEnabled,
         type InstalledInventoryEntry, type InstallSource, type LoaderType
     } from "../lib/modInventory";
 
@@ -92,13 +92,9 @@
     $: busy = scanning || actionBusy || $processing;
     $: hasFilters = !!searchTerm || stateFilter !== "all" || sourceFilter !== "all" || loaderFilter !== "all";
 
-    function normalizedPath(value: string) {
-        return value.replace(/\\/g, "/").replace(/\/+$/g, "").toLocaleLowerCase();
-    }
-
     function entryKey(entry: InstalledInventoryEntry) {
         const location = entry.manifestPath ?? entry.assemblyPath ?? entry.packagePath ?? entry.id;
-        return `${entry.loaderType}:${entry.id}:${normalizedPath(location)}`;
+        return `${entry.loaderType}:${entry.id}:${pathKey(location)}`;
     }
 
     function operationKey(entry: InstalledInventoryEntry) {
@@ -264,7 +260,7 @@
             await assertCurrent(request);
             if (get(processing)) return;
             const restoresFolder = shouldEnable && candidates.some(entry => entry.loaderType === "bepinex-plugin"
-                && normalizedPath(entry.packagePath ?? "").includes("/_disabled/"));
+                && pathKey(entry.packagePath ?? "").includes("/_disabled/"));
             const accepted = await confirm(
                 `${action} ${targets.length} of ${candidates.length} selected ${candidates.length === 1 ? "entry" : "entries"} in “${request.name}”?\n\n${request.root}\n\n`
                 + (targets.length === 1 ? targets[0].name : targets.map(entry => entry.name).slice(0, 8).join("\n")

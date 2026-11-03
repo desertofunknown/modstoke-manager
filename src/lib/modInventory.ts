@@ -46,11 +46,6 @@ type ManifestData = {
     type?: string;
 };
 
-type FsDirEntry = {
-    name?: string;
-    path?: string;
-};
-
 const MAX_SCAN_DEPTH = 4;
 const BepInExSupportFolders = new Set(["openacailoader", "redloaderbepinexcompat"]);
 
@@ -116,6 +111,10 @@ export function normalizeMatchKey(value: string | null | undefined): string {
         .toLowerCase()
         .replace(/&/g, "and")
         .replace(/[^a-z0-9]+/g, "");
+}
+
+export function pathKey(value: string): string {
+    return value.replace(/\\/g, "/").replace(/\/+$/g, "").toLowerCase();
 }
 
 export function findMatchingInstall(
@@ -342,7 +341,7 @@ async function findManifestFolders(rootPath: string, depth: number = 0): Promise
     }
 
     const results: string[] = [];
-    let files: any[] = [];
+    let files: fs.DirEntry[] = [];
     try {
         files = await fs.readDir(rootPath);
     } catch {
@@ -350,18 +349,14 @@ async function findManifestFolders(rootPath: string, depth: number = 0): Promise
     }
 
     for (const file of files) {
-        const filePath = await resolveDirEntryPath(rootPath, file);
-        if (!filePath) {
-            continue;
-        }
-
-        const name = file.name ?? await path.basename(filePath);
-        if (name.toLowerCase() === "manifest.json") {
+        const filePath = await path.join(rootPath, file.name);
+        const name = file.name.toLowerCase();
+        if (name === "manifest.json") {
             results.push(await path.dirname(filePath));
             continue;
         }
 
-        if (depth === MAX_SCAN_DEPTH || name.toLowerCase().startsWith(".") || name.toLowerCase().endsWith(".dll") || name.toLowerCase().endsWith(".disabled")) {
+        if (depth === MAX_SCAN_DEPTH || name.startsWith(".") || name.endsWith(".dll") || name.endsWith(".disabled")) {
             continue;
         }
 
@@ -377,7 +372,7 @@ async function findFiles(rootPath: string, predicate: (fileName: string) => bool
     }
 
     const results: string[] = [];
-    let files: any[] = [];
+    let files: fs.DirEntry[] = [];
     try {
         files = await fs.readDir(rootPath);
     } catch {
@@ -385,35 +380,18 @@ async function findFiles(rootPath: string, predicate: (fileName: string) => bool
     }
 
     for (const file of files) {
-        const filePath = await resolveDirEntryPath(rootPath, file);
-        if (!filePath) {
-            continue;
-        }
-
-        const name = file.name ?? await path.basename(filePath);
-        if (predicate(name)) {
+        const filePath = await path.join(rootPath, file.name);
+        if (predicate(file.name)) {
             results.push(filePath);
             continue;
         }
 
-        if (!name.startsWith(".") && !name.toLowerCase().endsWith(".dll")) {
+        if (!file.name.startsWith(".") && !file.name.toLowerCase().endsWith(".dll")) {
             results.push(...await findFiles(filePath, predicate, depth + 1));
         }
     }
 
     return results;
-}
-
-async function resolveDirEntryPath(parentPath: string, entry: FsDirEntry): Promise<string | null> {
-    if (entry.path) {
-        return entry.path;
-    }
-
-    if (entry.name) {
-        return await path.join(parentPath, entry.name);
-    }
-
-    return null;
 }
 
 async function readManifest(manifestPath: string): Promise<ManifestData> {
@@ -525,13 +503,8 @@ async function hasVortexMarker(packagePath: string | null | undefined, depth: nu
         }
 
         for (const file of await fs.readDir(packagePath)) {
-            const childPath = await resolveDirEntryPath(packagePath, file);
-            if (!childPath) {
-                continue;
-            }
-
-            const name = file.name ?? await path.basename(childPath);
-            if (!name.startsWith(".") && await hasVortexMarker(childPath, depth + 1)) {
+            const childPath = await path.join(packagePath, file.name);
+            if (!file.name.startsWith(".") && await hasVortexMarker(childPath, depth + 1)) {
                 return true;
             }
         }
