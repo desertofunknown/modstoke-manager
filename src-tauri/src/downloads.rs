@@ -4,11 +4,13 @@ use std::{io::Write, time::Duration};
 use tauri::{ipc::Channel, Manager};
 
 const MAX_DOWNLOAD_BYTES: u64 = 512 * 1024 * 1024;
-// The SOTF Mods catalog, the Loader's and UnityExplorer's GitHub releases, and the storage both redirect to.
-const SOURCES: [&str; 7] = [
+// The SOTF Mods catalog, modstoke.com's release manifests and Loader packages, the Loader's and
+// UnityExplorer's GitHub releases, and the storage both redirect to.
+const SOURCES: [&str; 8] = [
     "https://sotf-mods.com/mods/",
     "https://r2.sotf-mods.com/",
     "https://modstoke.com/releases/",
+    "https://modstoke.com/downloads/loader/",
     "https://github.com/desertofunknown/",
     "https://github.com/ToniMacaroni/UnityExplorer_Sons/releases/",
     "https://release-assets.githubusercontent.com/",
