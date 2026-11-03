@@ -69,7 +69,7 @@
 <style>
   .operation-backdrop {
     position: fixed;
-    inset: var(--operation-top-offset, 38px) 0 0;
+    inset: var(--operation-inset, 38px 0 0);
     z-index: 100;
     display: grid;
     place-items: center;

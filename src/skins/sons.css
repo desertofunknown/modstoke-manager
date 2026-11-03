@@ -1,0 +1,51 @@
+/* The window is transparent, so the Sons options-menu mask gives it a ragged silhouette. The frame
+   padding follows the mask's deepest edge (about 4.2% top, 4% bottom and 2.9% each side). */
+main[data-skin="sons"] {
+  --frame-top: calc(4.2vh + 6px);
+  --frame-side: calc(2.9vw + 8px);
+  --frame-bottom: calc(4vh + 10px);
+  --frame-padding: var(--frame-top) var(--frame-side) var(--frame-bottom);
+  --operation-inset: calc(var(--frame-top) + 38px) var(--frame-side) var(--frame-bottom);
+  --surface-base: rgba(6, 7, 9, 0.7);
+  --surface-panel: rgba(18, 20, 24, 0.82);
+  --surface-raised: rgba(40, 43, 49, 0.86);
+  --titlebar-surface: transparent;
+  --sidebar-surface: rgba(0, 0, 0, 0.42);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  isolation: isolate;
+}
+
+main[data-skin="sons"]::before,
+main[data-skin="sons"]::after {
+  content: "";
+  position: absolute;
+  inset: 4px 6px 8px;
+  z-index: -1;
+  pointer-events: none;
+  mask: url("../assets/sons-ui/background-(400ppu)-texture2d-1277.png") center / 100% 100% no-repeat;
+}
+
+main[data-skin="sons"]::before {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.98) 0 6%, rgba(4, 4, 4, 0.94) 18%, rgba(0, 0, 0, 0.96) 100%),
+    radial-gradient(ellipse at 48% 18%, rgba(255, 255, 255, 0.07), transparent 34%),
+    radial-gradient(ellipse at 85% 50%, rgba(255, 255, 255, 0.045), transparent 28%),
+    #020202;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 0 28px rgba(255, 255, 255, 0.055),
+    inset 0 0 160px rgba(0, 0, 0, 0.98);
+}
+
+main[data-skin="sons"]::after {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.84), rgba(0, 0, 0, 0.93)),
+    url("../assets/sons-ui/blurred-title-screen-texture2d-14.png"),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 14px);
+  background-position: center;
+  background-size: cover, cover, auto;
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.96);
+  opacity: 0.5;
+}

@@ -10,6 +10,8 @@
   --surface-base: #101217;
   --surface-panel: #171a21;
   --surface-raised: #20242c;
+  --titlebar-surface: #0d0f13;
+  --sidebar-surface: #12151b;
   --border-subtle: rgba(255, 255, 255, 0.08);
   --text-primary: #eef0f4;
   --text-secondary: #9da6b6;
@@ -19,7 +21,8 @@
   --app-bottom-safe-area: 24px;
   --app-content-max-width: 1680px;
   --app-content-side-rail: 0px;
-  --operation-top-offset: 38px;
+  --frame-padding: 0;
+  --operation-inset: 38px 0 0;
   color-scheme: dark;
   font-family: "SonsRoboto", "Segoe UI", sans-serif;
   font-size: 14px;

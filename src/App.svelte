@@ -6,6 +6,7 @@
     processing,
   } from "./lib/store";
   import Page1 from "./pages/MainPage.svelte";
+  import SettingsPage from "./pages/Settings.svelte";
   import OperationStatus from "./lib/OperationStatus.svelte";
   import ServerDirectory from "./lib/ServerDirectory.svelte";
   import { receiveCommunityLinks } from "./lib/serverDirectory";
@@ -21,12 +22,14 @@
   import LucideUsers from "~icons/lucide/users";
   import LucideCode from "~icons/lucide/code-2";
   import LucideTrees from "~icons/lucide/trees";
+  import LucideSettings from "~icons/lucide/settings";
   import { initializeInstallationProfiles, selectedInstallation } from "./lib/installationProfiles";
+  import { resolveSkin, skinChoice } from "./lib/skins";
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { currentMonitor, getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 
-  type TabId = "main" | "installed" | "mods" | "loaders" | "servers" | "multiplayer" | "modding" | "directory";
+  type TabId = "main" | "installed" | "mods" | "loaders" | "servers" | "multiplayer" | "modding" | "directory" | "settings";
   type Tab = { id: TabId; label: string; group: string };
   const tabs: Tab[] = [
     { id: "main", label: "Overview", group: "Game" },
@@ -37,6 +40,7 @@
     { id: "servers", label: "Dedicated servers", group: "Toolkit" },
     { id: "multiplayer", label: "Multiplayer", group: "Toolkit" },
     { id: "modding", label: "Creator tools", group: "Toolkit" },
+    { id: "settings", label: "Settings", group: "Manager" },
   ];
   $: serverSelected = $selectedInstallation?.target.kind === "server";
   let activeTab: TabId = "main";
@@ -250,7 +254,7 @@
   });
 </script>
 
-<main class:maximized={isWindowMaximized}>
+<main class:maximized={isWindowMaximized} data-skin={resolveSkin($skinChoice)}>
   <div class="app-frame">
     <div class="titlebar" class:operation-active={$processing} data-tauri-drag-region role="presentation" on:mousedown={startWindowDrag}>
       <div class="window-brand" data-tauri-drag-region>
@@ -295,7 +299,7 @@
         on:click={() => selectTab(tab.id)}
         on:keydown={(event) => handleTabKeyDown(event, tab.id)}
       >
-        {#if tab.id === "main"}<LucideLayoutDashboard aria-hidden="true" />{:else if tab.id === "mods"}<LucideLibrary aria-hidden="true" />{:else if tab.id === "installed"}<LucidePackage aria-hidden="true" />{:else if tab.id === "servers" || tab.id === "directory"}<LucideServer aria-hidden="true" />{:else if tab.id === "loaders"}<LucideLayers aria-hidden="true" />{:else if tab.id === "multiplayer"}<LucideUsers aria-hidden="true" />{:else}<LucideCode aria-hidden="true" />{/if}
+        {#if tab.id === "main"}<LucideLayoutDashboard aria-hidden="true" />{:else if tab.id === "mods"}<LucideLibrary aria-hidden="true" />{:else if tab.id === "installed"}<LucidePackage aria-hidden="true" />{:else if tab.id === "servers" || tab.id === "directory"}<LucideServer aria-hidden="true" />{:else if tab.id === "loaders"}<LucideLayers aria-hidden="true" />{:else if tab.id === "multiplayer"}<LucideUsers aria-hidden="true" />{:else if tab.id === "settings"}<LucideSettings aria-hidden="true" />{:else}<LucideCode aria-hidden="true" />{/if}
         <span>{tab.label}</span>
       </button>
     {/each}
@@ -365,6 +369,9 @@
       {/await}
     {/if}
   </div>
+  <div class="container" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden={activeTab !== "settings"} tabindex="0">
+    {#if activeTab === "settings"}<SettingsPage />{/if}
+  </div>
   </div>
   </div>
   {#if $processing}
@@ -377,16 +384,18 @@
   .container[hidden] { display: none; }
 
   .app-frame {
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     height: 100%;
     min-height: 0;
     overflow: hidden;
+    padding: var(--frame-padding);
   }
 
   .titlebar {
     align-items: center;
-    background: #0d0f13;
+    background: var(--titlebar-surface);
     border-bottom: 1px solid var(--border-subtle);
     display: flex;
     flex: 0 0 38px;
@@ -433,7 +442,7 @@
   }
 
   .sidebar {
-    background: #12151b;
+    background: var(--sidebar-surface);
     border-right: 1px solid var(--border-subtle);
     box-sizing: border-box;
     display: flex;
