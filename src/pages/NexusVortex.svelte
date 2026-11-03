@@ -4585,26 +4585,6 @@
         };
     }
 
-    function updateTone(label: string): UpdateTone {
-        if (label === "Update available") {
-            return "update";
-        }
-
-        if (label === "Current" || label === "Local newer") {
-            return "current";
-        }
-
-        if (label === "Tracked") {
-            return "tracked";
-        }
-
-        if (label === "Review version" || label === "Refresh Nexus") {
-            return "review";
-        }
-
-        return "neutral";
-    }
-
     function versionsDiffer(left?: string, right?: string): boolean {
         const comparison = compareVersionValues(left, right);
         return comparison !== "same" && comparison !== "unknown";

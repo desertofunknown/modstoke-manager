@@ -1,6 +1,6 @@
 <script lang="ts">
-    import InstallFeature from "../lib/InstallationComponent.svelte";
-    import { isPathValid } from "../lib/store";
+    import InstallFeature from "./InstallationComponent.svelte";
+    import { isPathValid } from "./store";
     import type { FeatureInstaller } from "./featureInstaller";
 
     export let features: FeatureInstaller[] = [];

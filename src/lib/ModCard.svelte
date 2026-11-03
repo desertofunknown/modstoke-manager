@@ -15,7 +15,6 @@
     export let mod: Mod;
     export let actionsDisabled = false;
     export let detailActionsOnly = false;
-    export let showDetailsButton = true;
     export let sortMetricLabel = "";
     export let sortMetricValue = "";
 
@@ -325,9 +324,7 @@
 
       <StatusButton subject={mod.name} disabled={actionsDisabled || actionBusy || $processing || !$isPathValid} isUpdateAvailable={mod.hasUpdate} isModInstalled={mod.isInstalled} update={update} uninstall={uninstall} install={install} />
       <div class="secondary-actions">
-        {#if showDetailsButton}
-          <button class="details-button" type="button" aria-label={`Details for ${mod.name}`} on:click={showDetails}>Details</button>
-        {/if}
+        <button class="details-button" type="button" aria-label={`Details for ${mod.name}`} on:click={showDetails}>Details</button>
         <button class="open-page-button" type="button" aria-label={`Open Page for ${mod.name}`} on:click={openModPage}>Open page</button>
       </div>
       {#if operationError}<p class="operation-error" role="alert">{operationError}</p>{/if}

@@ -6,12 +6,6 @@ import * as fs from "@tauri-apps/plugin-fs"
 export type LoaderType = "redloader-mod" | "redloader-library" | "bepinex-plugin";
 export type InstallSource = "native" | "vortex" | "manual";
 
-export type VortexDeploymentFile = {
-    relPath: string;
-    source: string;
-    target?: string;
-};
-
 export type VortexDeployment = {
     detected: boolean;
     stagingPath: string | null;

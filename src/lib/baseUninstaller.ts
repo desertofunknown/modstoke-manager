@@ -23,14 +23,6 @@ export class BaseUninstaller {
         return `${directoryPath}/${fileName}`;
     }
 
-    public get needsDialog(): boolean {
-        return true;
-    }
-
-    public get customMessage(): string | null {
-        return null;
-    }
-
     public async uninstall(): Promise<void> {
         const gameRoot = await getDirectoryPath();
         for (const folder of this.foldersToClear) {

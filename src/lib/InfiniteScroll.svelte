@@ -2,7 +2,6 @@
     import { onMount, createEventDispatcher } from "svelte";
 
     export let threshold = 0;
-    export let horizontal = false;
     export let hasMore = true;
     export let loading = false;
     export let contentKey = "";
@@ -32,9 +31,7 @@
         if (!scrollElement || !hasMore || loading || requested || scrollElement.clientHeight === 0) {
             return;
         }
-        const offset = horizontal
-            ? scrollElement.scrollWidth - scrollElement.clientWidth - scrollElement.scrollLeft
-            : scrollElement.scrollHeight - scrollElement.clientHeight - scrollElement.scrollTop;
+        const offset = scrollElement.scrollHeight - scrollElement.clientHeight - scrollElement.scrollTop;
         if (offset <= threshold) {
             requested = true;
             dispatch("loadMore");

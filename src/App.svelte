@@ -5,7 +5,7 @@
     processProgress,
     processing,
   } from "./lib/store";
-  import Page1 from "./pages/MainPage.svelte";
+  import MainPage from "./pages/MainPage.svelte";
   import SettingsPage from "./pages/Settings.svelte";
   import OperationStatus from "./lib/OperationStatus.svelte";
   import ServerDirectory from "./lib/ServerDirectory.svelte";
@@ -261,12 +261,12 @@
   <div class="page-workspace">
   <div class="container" id="panel-main" role="tabpanel" aria-labelledby="tab-main" hidden={activeTab !== "main"} tabindex="0">
     {#if activeTab === "main"}
-      <Page1 on:navigate={(event) => selectTab(event.detail.id)} />
+      <MainPage on:navigate={(event) => selectTab(event.detail.id)} />
     {/if}
   </div>
   {#each ["loaders", "multiplayer"] as section}
     <div class="container" id="panel-{section}" role="tabpanel" aria-labelledby="tab-{section}" hidden={activeTab !== section} tabindex="0">
-      {#if activeTab === section}<Page1 view={section === "loaders" ? "loaders" : "multiplayer"} on:navigate={(event) => selectTab(event.detail.id)} />{/if}
+      {#if activeTab === section}<MainPage view={section === "loaders" ? "loaders" : "multiplayer"} on:navigate={(event) => selectTab(event.detail.id)} />{/if}
     </div>
   {/each}
   <div class="container" id="panel-installed" role="tabpanel" aria-labelledby="tab-installed" hidden={activeTab !== "installed"} tabindex="0">
