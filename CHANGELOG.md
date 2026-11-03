@@ -1,6 +1,12 @@
 # Changelog
 
 - Unreleased
+  - Limit what the Manager's window can reach. Files are limited to its downloads folder and the selected game or server folder, where nothing can be written as text. Downloads come only from the catalog and release hosts, over HTTPS, with size limits and the Loader's published hash checked. Archives install only into a game or dedicated server folder. The window can no longer run programs, and system libraries load only from System32.
+  - Make the Open folder, Send to Vortex and mod page and source buttons work, and launch the game straight through Steam so Start game no longer reports a failure after starting it.
+  - From Start game, only repair the installed Loader version. Install a new version from the Loaders page, and never install an older release over a newer one.
+  - Keep one malformed SOTF Mods or Nexus listing from breaking the catalog. Out-of-range characters, very deep nesting and very long descriptions no longer crash or freeze it, and a card that cannot be shown is replaced on its own.
+  - Remove the staging folder an interrupted install leaves in the game folder on the next install.
+  - Update to Tauri 2.12. The installer closes a running Manager before replacing it.
   - Start faster. The window opens already sized for its monitor once the page has loaded, without the blocking Initializing overlay, and the Sons of the Forest skin loads its cached files as ordinary images and a font. Hashing, unzipping and the .NET check no longer run on the window's thread. In development, Vite no longer stalls on a PostCSS config search or on watching the Rust build output, which took a dev launch from about 40 seconds to about 5.
   - Add a Settings page to choose a skin: Match the game (the default, which uses the Sons of the Forest skin), Modstoke or Sons of the Forest. The Sons of the Forest skin brings back the ragged frame and title screen backdrop from the game's menus; the Modstoke skin keeps the plain dark panels.
   - Read the Sons of the Forest skin's frame and backdrop, and the game's Roboto font, from the player's own game files; the Manager ships no Endnight art. The files are cached for that user and read again when the game's files change. Without a player installation the Manager uses the Modstoke skin and Segoe UI.
