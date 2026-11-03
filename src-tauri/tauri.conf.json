@@ -39,6 +39,12 @@
       "desktop": {
         "schemes": ["modstoke"]
       }
+    },
+    "fs": {
+      "scopeDroppedPaths": false
+    },
+    "http": {
+      "scopeRedirects": true
     }
   },
   "app": {

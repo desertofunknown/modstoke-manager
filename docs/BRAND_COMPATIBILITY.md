@@ -39,4 +39,4 @@ Upstream projects keep their own names: BepInEx, RedLoader, SonsSdk and `RedLoad
 
 ## Installer template
 
-`src-tauri/windows/installer.nsi` is based on the [Tauri CLI 2.11.2 template](https://github.com/tauri-apps/tauri/blob/499df79be65ef8c0670abc0207cd9e37b55d8491/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi), with its MIT license retained alongside it. Local changes separate installed identities from display text. When upgrading the bundler, compare its new template and check install, maintenance and uninstall behavior before replacing this copy.
+`src-tauri/windows/installer.nsi` is based on the [Tauri CLI 2.12.4 template](https://github.com/tauri-apps/tauri/blob/993038c49185307dfc895ab7657d77ca0d5ed7c7/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi), with its MIT license retained alongside it. Local changes separate installed identities from display text. When upgrading the bundler, compare its new template and check install, maintenance and uninstall behavior before replacing this copy.

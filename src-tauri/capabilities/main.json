@@ -13,7 +13,6 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-message",
-    "dialog:allow-confirm",
     "shell:allow-open",
     "fs:deny-default",
     "fs:allow-exists",
