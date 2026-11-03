@@ -25,7 +25,7 @@ Keys remain in the operating system's credential vault. The Manager does not sen
 
 Browsing and refreshes follow user navigation or an explicit refresh action. There is no periodic background catalog polling or automatic endorsement. Tracking and endorsements use explicit controls. Selected file downloads are handed to Vortex through `nxm://`; the Manager does not bypass Nexus download entitlements or manage Vortex's deployment itself.
 
-The API implementation is in [main.rs](../src-tauri/src/main.rs), the request cache in [nexus.ts](../src/lib/nexus.ts), and the account and catalog UI in [NexusVortex.svelte](../src/pages/NexusVortex.svelte).
+The API implementation is in [nexus.rs](../src-tauri/src/nexus.rs), the request cache in [nexus.ts](../src/lib/mods/nexus.ts), and the account and catalog UI in [NexusVortex.svelte](../src/pages/NexusVortex.svelte).
 
 ## OAuth registration proposal
 
