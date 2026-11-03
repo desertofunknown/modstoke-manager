@@ -1,5 +1,6 @@
 use crate::hashing::{is_sha256_hex, sha256_hex, sha256_reader};
 use crate::mod_update::{self, path_key, UpdateTarget};
+use crate::native_root;
 use crate::safe_fs;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -182,13 +183,14 @@ pub(crate) fn preflight_restore(
     // package's original to be an earlier package's replacement at the same path.
     for (slot, package) in packages.iter().rev() {
         for (index, target) in package.targets.iter().enumerate().rev() {
-            mod_update::ensure_unmanaged(&root, &target.relative_path)?;
+            let live = live_path(&root, &target.relative_path);
+            mod_update::ensure_unmanaged(&root, &live)?;
             validate_backup(&workspace, target, false)?;
             validate_removed(&workspace, *slot, index, target)?;
-            let key = path_key(&target.relative_path);
+            let key = path_key(&live);
             let current = match current_files.get(&key) {
                 Some(hash) => hash.clone(),
-                None => target_hash(&root, &target.relative_path)?,
+                None => target_hash(&root, &live)?,
             };
             require_restorable(target, &current)?;
             current_files.insert(key, target.original_sha256.clone());
@@ -207,20 +209,21 @@ pub(crate) fn restore_package(
     let root = canonical_root(root)?;
     let workspace = existing_workspace(&root, workspace_name)?;
     for (index, target) in package.targets.iter().enumerate().rev() {
-        mod_update::ensure_unmanaged(&root, &target.relative_path)?;
+        let live = live_path(&root, &target.relative_path);
+        mod_update::ensure_unmanaged(&root, &live)?;
         validate_backup(&workspace, target, false)?;
         validate_removed(&workspace, slot, index, target)?;
-        require_restorable(target, &target_hash(&root, &target.relative_path)?)?;
+        require_restorable(target, &target_hash(&root, &live)?)?;
         let update_target = UpdateTarget {
-            relative_path: target.relative_path.clone(),
+            relative_path: live.clone(),
             originally_existed: target.original_sha256.is_some(),
             backup_path: target.backup_path.clone(),
             original_sha256: target.original_sha256.clone(),
             replacement_sha256: target.replacement_sha256.clone(),
         };
         mod_update::restore_pack_target(&root, &workspace, slot, index, &update_target)?;
-        if target_hash(&root, &target.relative_path)? != target.original_sha256 {
-            return Err(format!("{} changed while its original contents were being restored.", target.relative_path.display()));
+        if target_hash(&root, &live)? != target.original_sha256 {
+            return Err(format!("{} changed while its original contents were being restored.", live.display()));
         }
     }
     Ok(())
@@ -408,6 +411,22 @@ fn read_slot_receipt(
     }))
 }
 
+// Receipts keep the paths they were retained with, because their slot receipts are checked
+// against them. A package the Loader has since moved from OpenACAI/<sub> to Modstoke/<sub> is
+// restored where it is now. One the Loader left behind is restored where it still is.
+fn live_path(root: &Path, relative: &Path) -> PathBuf {
+    if !native_root::is_player_data(relative) {
+        return relative.to_path_buf();
+    }
+    let parts: Vec<String> = relative.components().map(|part| part.as_os_str().to_string_lossy().into_owned()).collect();
+    let active = native_root::resolve_native_root(root, &parts[1]);
+    let package = parts.iter().take(3).collect::<PathBuf>();
+    if parts[0].eq_ignore_ascii_case(active) || root.join(&package).exists() {
+        return relative.to_path_buf();
+    }
+    std::iter::once(active.to_owned()).chain(parts.into_iter().skip(1)).collect()
+}
+
 fn receipt_path(slot: usize) -> PathBuf {
     PathBuf::from(format!("receipt-{slot}.json"))
 }
@@ -579,4 +598,27 @@ fn check_receipt_size<T: Serialize + ?Sized>(value: &T) -> Result<(), String> {
     }
     serde_json::to_writer(BoundedWriter(MAX_RECEIPT_BYTES), value)
         .map_err(|error| format!("The retained pack receipts exceed their size limit or cannot be serialized: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::live_path;
+    use std::path::Path;
+
+    #[test]
+    fn restores_into_the_folder_that_holds_the_package() {
+        let game = tempfile::tempdir().unwrap();
+        let saved = Path::new("OpenACAI/Mods/Example/Example.dll");
+        std::fs::create_dir_all(game.path().join("OpenACAI/Mods/Example")).unwrap();
+        assert_eq!(live_path(game.path(), saved), saved);
+        // The Loader moved the package: restore it where it is now.
+        std::fs::create_dir_all(game.path().join("Modstoke/Mods/Example")).unwrap();
+        std::fs::remove_dir_all(game.path().join("OpenACAI/Mods/Example")).unwrap();
+        assert_eq!(live_path(game.path(), saved), Path::new("Modstoke/Mods/Example/Example.dll"));
+        // A package the Loader left behind stays where it is.
+        std::fs::create_dir_all(game.path().join("OpenACAI/Mods/Example")).unwrap();
+        assert_eq!(live_path(game.path(), saved), saved);
+        let runtime = Path::new("Modstoke/Runtime/Modstoke.Loader.dll");
+        assert_eq!(live_path(game.path(), runtime), runtime);
+    }
 }

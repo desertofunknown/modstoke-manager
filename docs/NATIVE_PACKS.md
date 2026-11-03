@@ -64,7 +64,8 @@ The portable descriptor uses `format: "modstoke.native-pack"` and
 Each package contains `id`, `name`, `version`, `folder`, `required`, `sha256`
 and `size`; each required dependency contains `id` and `version`. Size is the
 ZIP's length in bytes, and hashes use lowercase hexadecimal. The folder is the
-single directory directly beneath `OpenACAI/Mods`.
+single directory directly beneath `Modstoke/Mods` (or `OpenACAI/Mods` in older
+installations).
 
 The descriptor is limited to 256 KiB and 128 packages. Pack names contain
 1–120 Unicode characters without surrounding whitespace or control characters.

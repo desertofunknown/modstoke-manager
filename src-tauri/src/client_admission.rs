@@ -1,5 +1,5 @@
 use crate::hashing::sha256_hex;
-use crate::{installation_profiles, mod_update, safe_fs};
+use crate::{installation_profiles, mod_update, native_root, safe_fs};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{ErrorKind, Write};
@@ -7,8 +7,7 @@ use std::ops::Range;
 use std::path::Path;
 
 const CONFIG_PATH: &str = "BepInEx/config/modstoke.client.cfg";
-const MANIFEST_PATH: &str = "OpenACAI/Mods/Modstoke.Client/openacai.mod.json";
-const ASSEMBLY_PATH: &str = "OpenACAI/Mods/Modstoke.Client/Modstoke.Client.dll";
+const PACKAGE_FOLDER: &str = "Mods/Modstoke.Client";
 const MAX_CONFIG_BYTES: usize = 1024;
 
 #[derive(Serialize)]
@@ -130,7 +129,11 @@ fn invalid_config() -> String {
 }
 
 fn installed_client(root: &Path) -> Result<String, String> {
-    let bytes = safe_fs::read_bounded(root, Path::new(MANIFEST_PATH), 64 * 1024)?
+    // The package the Loader would load: from whichever Mods folder it uses.
+    let package = format!("{}/{PACKAGE_FOLDER}", native_root::resolve_native_root(root, "Mods"));
+    let manifest_path = format!("{package}/openacai.mod.json");
+    let assembly_path = format!("{package}/Modstoke.Client.dll");
+    let bytes = safe_fs::read_bounded(root, Path::new(&manifest_path), 64 * 1024)?
         .ok_or("Install the Modstoke Client package in this player installation before changing managed admission.")?;
     let manifest: ClientManifest = serde_json::from_slice(&bytes)
         .map_err(|error| format!("The Modstoke Client package manifest is unreadable or unsupported: {error}"))?;
@@ -149,10 +152,10 @@ fn installed_client(root: &Path) -> Result<String, String> {
     {
         return Err("The Modstoke Client manifest has an invalid version.".into());
     }
-    if !safe_fs::validate_target(root, Path::new(ASSEMBLY_PATH))? {
+    if !safe_fs::validate_target(root, Path::new(&assembly_path))? {
         return Err("The Modstoke Client assembly is missing. Install the complete client package before changing managed admission.".into());
     }
-    let metadata = fs::metadata(root.join(ASSEMBLY_PATH))
+    let metadata = fs::metadata(root.join(&assembly_path))
         .map_err(|error| format!("Could not inspect the Modstoke Client assembly: {error}"))?;
     if metadata.len() == 0 {
         return Err("The Modstoke Client assembly is empty. Install the complete client package before changing managed admission.".into());

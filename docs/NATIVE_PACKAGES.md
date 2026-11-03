@@ -21,12 +21,19 @@ Runtime enforcement of this declaration requires Modstoke Loader SDK package
 Use this archive layout:
 
 ```text
-OpenACAI/Mods/Example.Mod/
+Modstoke/Mods/Example.Mod/
   openacai.mod.json
   Example.Mod.dll
   LICENSE
   config/defaults.ini
 ```
+
+Archives built for the older `OpenACAI/Mods/Example.Mod/` layout are still
+accepted. Manager installs either layout into the Mods folder the Loader uses:
+`Modstoke/Mods` when it exists, otherwise an existing `OpenACAI/Mods`, otherwise
+a new `Modstoke/Mods`. Recorded packages follow the same rule, so packages the
+Loader moved from `OpenACAI/Mods` stay Manager-owned. Packages left in the folder
+the Loader no longer reads are listed separately: the Loader moves them on its next start unless the active folder already has a folder of the same name.
 
 The package folder and mod IDs use 1–96 ASCII letters, digits, dots, underscores
 or hyphens. The UTF-8 manifest explicitly declares `id`, `version`, a relative

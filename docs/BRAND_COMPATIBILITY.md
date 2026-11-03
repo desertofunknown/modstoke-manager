@@ -31,6 +31,8 @@ The source-built installer is named `Modstoke Manager_<version>_x64-setup.exe`. 
 
 The manager displays **Modstoke Loader**, **Modstoke Admin** and **Modstoke SDK**, but retains loader namespaces, assembly names, manifests, configuration keys and command APIs. In particular, it still uses `BepInEx/plugins/OpenACAILoader` and the existing `openacai-loader*.json` files. Its loader package check accepts the core as `Modstoke.Loader.dll`, as current Loader builds ship it, or as `OpenACAI.Endnight.Loader.Core.dll` from older packages. Loader requirement hints accept both the OpenACAI and Modstoke names.
 
+The Loader's own folder in the game root moved from `OpenACAI/` to `Modstoke/` (`Runtime`, `Mods` and `UserData`). The Loader moves existing mods and user data across on its first start. Until then, and for anything it could not move, the Manager follows the Loader's rule: `Modstoke/<folder>` when it exists, otherwise an existing `OpenACAI/<folder>`. Native ZIPs for either layout install into that folder, the console endpoint is read from either `UserData`, and a Loader update removes the old `OpenACAI/Runtime` files listed in its previous file manifest. Mods and user data are never removed.
+
 Upstream projects keep their own names: BepInEx, RedLoader, SonsSdk and `RedLoader.Templates` are not renamed. SOTF Mods and Nexus Mods remain third-party catalogs.
 
 ## Coordination with other projects

@@ -1,12 +1,13 @@
-use crate::{installation_profiles, safe_fs};
+use crate::{installation_profiles, native_root, safe_fs};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::path::Path;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-// Modstoke Loader publishes its console pipe here while the game or server runs. The file can
-// outlive a crash, so the process it names is checked before anything is sent.
-const ENDPOINT_PATH: &str = "OpenACAI/UserData/console-endpoint.json";
+// Modstoke Loader publishes its console pipe in Modstoke/UserData, or OpenACAI/UserData before the
+// rename, while the game or server runs. The file can outlive a crash, so the process it names is
+// checked before anything is sent.
+const ENDPOINT_FILE: &str = "UserData/console-endpoint.json";
 const PIPE_PREFIX: &str = "modstoke-console-";
 const MAX_REQUEST_BYTES: usize = 16 * 1024;
 const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
@@ -209,8 +210,24 @@ fn unix_seconds(value: &str) -> Option<i64> {
 /// The pipe and process of a live console for this installation, or why there is none.
 fn endpoint(root: &Path, executable: &str) -> Result<(String, u32), String> {
     let offline = "The Loader console is available while the game or server runs with Modstoke Loader.";
-    let bytes = safe_fs::read_bounded(root, Path::new(ENDPOINT_PATH), 4096)?.ok_or(offline)?;
-    let endpoint: Endpoint = serde_json::from_slice(&bytes)
+    let mut failure = None;
+    for name in native_root::ROOTS {
+        let path = format!("{name}/{ENDPOINT_FILE}");
+        let Some(bytes) = safe_fs::read_bounded(root, Path::new(&path), 4096)? else {
+            continue;
+        };
+        match read_endpoint(&bytes, executable, offline) {
+            Ok(found) => return Ok(found),
+            Err(error) => {
+                failure.get_or_insert(error);
+            }
+        }
+    }
+    Err(failure.unwrap_or_else(|| offline.into()))
+}
+
+fn read_endpoint(bytes: &[u8], executable: &str, offline: &str) -> Result<(String, u32), String> {
+    let endpoint: Endpoint = serde_json::from_slice(bytes)
         .map_err(|error| format!("console-endpoint.json could not be read: {error}"))?;
     if endpoint.schema != 1 {
         return Err("console-endpoint.json uses a version this Manager does not know. Update Manager to use the console.".into());

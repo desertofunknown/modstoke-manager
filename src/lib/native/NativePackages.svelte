@@ -90,7 +90,7 @@
     <div class="inventory-heading">
         <div>
             <h2>Native packages</h2>
-            <p class="intro">Modstoke packages in OpenACAI/Mods</p>
+            <p class="intro">Modstoke packages in {inventory?.modsFolder ?? "Modstoke/Mods"}</p>
         </div>
         <button type="button" disabled={busy || $processing || !gameRoot} on:click={refresh}>{busy ? "Reading…" : "Refresh native packages"}</button>
     </div>
@@ -108,12 +108,18 @@
                 <ul>{#each inventory.notices as notice}<li>{notice}</li>{/each}</ul>
             </div>
         {/if}
+        {#if inventory.legacyNotices.length}
+            <div class="scan-notices" role="status">
+                <strong>Packages the Loader does not read</strong>
+                <ul>{#each inventory.legacyNotices as notice}<li>{notice}</li>{/each}</ul>
+            </div>
+        {/if}
         <p class="inventory-summary">{visible.length} of {inventory.packages.length} manifest entries{#if attention} · {attention} need attention{/if}</p>
         {#if folderError}<p class="error" role="alert">{folderError}</p>{/if}
         {#if !inventory.packages.length}
             <div class="empty-state">
                 <h3>No native package manifests found</h3>
-                <p>{inventory.notices.length ? "Review the scan notes before treating this inventory as complete." : "This installation has no discovered manifests in OpenACAI/Mods."}</p>
+                <p>{inventory.notices.length ? "Review the scan notes before treating this inventory as complete." : `This installation has no discovered manifests in ${inventory.modsFolder}.`}</p>
                 <p>RedLoader and BepInEx packages are listed separately.</p>
             </div>
         {:else if !visible.length}

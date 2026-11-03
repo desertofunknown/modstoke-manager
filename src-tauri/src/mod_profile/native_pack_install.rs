@@ -67,7 +67,7 @@ fn pending<'a>(profile: Option<&'a ModProfile>, document: &NativePackDocument) -
     Ok(Some(plan))
 }
 
-fn require_progress(plan: &InstallPlan, prepared: &native_local::Prepared) -> Result<(), String> {
+fn require_progress(root: &Path, plan: &InstallPlan, prepared: &native_local::Prepared) -> Result<(), String> {
     if plan.steps.len() != prepared.steps.len() {
         return Err("The native pack's dependency plan changed. Restore its dependencies or use Pack recovery.".into());
     }
@@ -75,7 +75,7 @@ fn require_progress(plan: &InstallPlan, prepared: &native_local::Prepared) -> Re
         let mut expected = saved.package.clone();
         expected.archive_sha256 = fresh.package.archive_sha256.clone();
         if !native_local::same(&expected, &fresh.package)?
-            || saved.status != "applied" && (saved.action != fresh.action || !native_local::same(&saved.before, &fresh.before)?) {
+            || saved.status != "applied" && (saved.action != fresh.action || !native_local::same_observation(root, &saved.before, &fresh.before)?) {
             return Err(format!("The installed state of {} changed since this pack began. Restore it or use Pack recovery.", saved.package.id));
         }
     }
@@ -117,9 +117,9 @@ pub async fn inspect_native_pack_install(game_root: String, sources: Vec<String>
         mod_update::require_no_pending_updates(&root)?;
         let state = read_locked(&root)?;
         let plan = pending(state.profile.as_ref(), &document)?;
-        let inspected = native_pack::prepare_archives(document.name.clone(), sources, Some(document.clone()))?;
+        let inspected = native_pack::prepare_archives(document.name.clone(), sources, Some(document.clone()), native_local::mods_layout(&root))?;
         let prepared = native_local::prepare_many(&root, state.profile.as_ref(), &inspected.archives)?;
-        if let Some(plan) = plan { require_progress(plan, &prepared)?; }
+        if let Some(plan) = plan { require_progress(&root, plan, &prepared)?; }
         if prepared.steps.iter().map(|step| step.package.dependencies.len()).sum::<usize>() > 1024 {
             return Err("This installation plan exceeds 1024 dependency links. Split the collection into smaller compatible packs.".into());
         }
@@ -243,13 +243,13 @@ pub async fn install_native_pack(game_root: String, sources: Vec<String>, docume
         // Keep all verified ZIP snapshots alive until the whole operation exits.
         let snapshots = snapshots(&root, &sources, document.packages.len())?;
         let paths = snapshots.iter().map(|path| path.to_string_lossy().into_owned()).collect();
-        let inspected = native_pack::prepare_archives(document.name.clone(), paths, Some(document.clone()))?;
+        let inspected = native_pack::prepare_archives(document.name.clone(), paths, Some(document.clone()), native_local::mods_layout(&root))?;
         let archives = inspected.archives;
         let prepared = native_local::prepare_many(&root, current.profile.as_ref(), &archives)?;
         let mut profile = current.profile.clone().unwrap_or_else(|| empty_profile(&root));
         pin_archives(&mut profile, &archives);
         if let Some(plan) = pending(Some(&profile), &document)? {
-            require_progress(plan, &prepared)?;
+            require_progress(&root, plan, &prepared)?;
             check_capacity(&root, &profile)?;
         } else {
             let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|error| error.to_string())?.as_nanos();
@@ -269,13 +269,13 @@ pub async fn install_native_pack(game_root: String, sources: Vec<String>, docume
             // Earlier writes change the observed manifests and assemblies. Rebuild
             // from recorded progress, retaining the original actions and receipts.
             let prepared = native_local::prepare_many(&root, Some(&profile), &archives)?;
-            require_progress(plan, &prepared)?;
+            require_progress(&root, plan, &prepared)?;
             let archive_index = archives.iter().position(|archive| key(&archive.id) == key(&plan.steps[index].package.id)).ok_or_else(invalid_profile)?;
             apply_step(&root, &mut profile, index, snapshots[archive_index].as_ref(), &archives[archive_index], &prepared.observed)?;
         }
         // Include the final write in the same ownership and dependency check.
         let prepared = native_local::prepare_many(&root, Some(&profile), &archives)?;
-        require_progress(profile.pending_plan.as_ref().ok_or_else(invalid_profile)?, &prepared)?;
+        require_progress(&root, profile.pending_plan.as_ref().ok_or_else(invalid_profile)?, &prepared)?;
         native_local::require_observed(&root, &prepared.observed)?;
         native_local::require_stopped()?;
         for package in &document.packages {

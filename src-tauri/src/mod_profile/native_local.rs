@@ -28,6 +28,32 @@ pub(super) struct Prepared {
     pub(super) action: String,
 }
 
+// A plan saved before the Loader moved OpenACAI/Mods observed absolute paths under the old folder.
+// Comparing both observations on the active folder lets that plan resume once the files moved.
+pub(super) fn same_observation(root: &Path, saved: &Option<InstallObservation>, fresh: &Option<InstallObservation>) -> Result<bool, String> {
+    let layout = mods_layout(root);
+    let normalize = |observation: &Option<InstallObservation>| observation.clone().map(|mut observation| {
+        for path in [&mut observation.manifest_path, &mut observation.package_path, &mut observation.assembly_path].into_iter().flatten() {
+            *path = on_layout(path, layout);
+        }
+        observation
+    });
+    same(&normalize(saved), &normalize(fresh))
+}
+
+// Replaces the root folder in front of the last Mods segment of an absolute display path.
+fn on_layout(path: &str, layout: &str) -> String {
+    let parts: Vec<&str> = path.split(['\\', '/']).collect();
+    let Some(index) = (1..parts.len()).rev().find(|&index| {
+        parts[index].eq_ignore_ascii_case("Mods") && crate::native_root::is_root_name(parts[index - 1])
+    }) else {
+        return path.to_owned();
+    };
+    let mut parts = parts;
+    parts[index - 1] = layout;
+    parts.join("\\")
+}
+
 pub(super) fn same<T: Serialize>(left: &T, right: &T) -> Result<bool, String> {
     Ok(serde_json::to_value(left).map_err(|e| e.to_string())?
         == serde_json::to_value(right).map_err(|e| e.to_string())?)
@@ -225,7 +251,7 @@ pub(super) fn prepare_many(
     if inventory
         .notices
         .iter()
-        .any(|notice| notice != "The OpenACAI/Mods folder does not exist.")
+        .any(|notice| notice != native_inventory::MISSING_MODS_NOTICE)
     {
         return Err(format!(
             "Native inventory is incomplete: {}",
@@ -261,8 +287,8 @@ pub(super) fn prepare_many(
             let old = old_archive.ok_or("This native package is not owned by Manager. Its manual or externally managed files were preserved.")?;
             if existing.state != "candidate"
                 || old.package_path != archive.package_path
-                || relative(root, &existing.package_path)? != Path::new(&old.package_path)
-                || relative(root, &existing.manifest_path)? != Path::new(&old.manifest_path)
+                || key(&relative(root, &existing.package_path)?.to_string_lossy()) != key(&old.package_path)
+                || key(&relative(root, &existing.manifest_path)?.to_string_lossy()) != key(&old.manifest_path)
                 || existing.version.as_deref() != Some(&old.version)
             {
                 return Err("The installed native package no longer matches its enabled Manager record or destination. Refresh and resolve the conflict before updating.".into());
@@ -554,6 +580,23 @@ fn pending_archive(profile: &ModProfile) -> Result<&NativeArchive, String> {
         .ok_or_else(invalid_profile)
 }
 
+pub(super) fn mods_layout(root: &Path) -> &'static str {
+    crate::native_root::resolve_native_root(root, "Mods")
+}
+
+// Records written before the Modstoke/ rename name OpenACAI/Mods. Keep every record on the
+// folder the Loader reads now, so ownership checks follow packages that were moved there.
+pub(super) fn rebase_records(root: &Path, profile: &mut ModProfile) {
+    let layout = mods_layout(root);
+    let plan = profile.pending_plan.iter_mut().flat_map(|plan| plan.steps.iter_mut().map(|step| &mut step.package));
+    let checkpoint = profile.rollback.iter_mut().flat_map(|checkpoint| checkpoint.before_packages.iter_mut());
+    for package in profile.packages.iter_mut().chain(plan).chain(checkpoint) {
+        if let Some(archive) = &mut package.native {
+            archive.rebase(layout);
+        }
+    }
+}
+
 pub(super) fn require_observed(root: &Path, observed: &[(PathBuf, String)]) -> Result<(), String> {
     for (path, expected) in observed {
         if safe_fs::target_hash(root, path)?.as_ref() != Some(expected) {
@@ -577,7 +620,7 @@ pub async fn inspect_native_package(
         let _lock = mod_update::acquire_update_lock(&root)?;
         mod_update::require_no_pending_updates(&root)?;
         let state = read_locked(&root)?;
-        let archive = native_archive::inspect(Path::new(&source))?;
+        let archive = native_archive::inspect(Path::new(&source), mods_layout(&root))?;
         let plan_id = state.profile.as_ref().and_then(|profile| profile.pending_plan.as_ref()).map(|plan| plan.id.clone());
         if let Some(profile) = state.profile.as_ref().filter(|profile| profile.pending_plan.is_some()) {
             rollback::require_forward(profile)?;
@@ -623,7 +666,7 @@ pub async fn install_native_package(
         snapshot.as_file().sync_all().map_err(|error| error.to_string())?;
         let snapshot = snapshot.into_temp_path();
         let snapshot_path: &Path = snapshot.as_ref();
-        let archive = native_archive::inspect(snapshot_path)?;
+        let archive = native_archive::inspect(snapshot_path, mods_layout(&root))?;
         if archive.sha256 != expected_sha256 { return Err("The selected ZIP changed since review. Select it again before installing.".into()); }
         let prepared = prepare(&root, current.profile.as_ref(), &archive)?;
         let mut profile = current.profile.clone().unwrap_or(ModProfile { schema_version: 1, game_root: root.to_string_lossy().into_owned(),
@@ -637,7 +680,7 @@ pub async fn install_native_package(
             for (a, b) in old.iter().zip(&prepared.steps) {
                 if key(&a.package.id) != key(&b.package.id) || a.package.version != b.package.version
                     || a.package.dependencies != b.package.dependencies
-                    || (a.status != "applied" || a.action == "preserve") && !same(&a.before, &b.before)? {
+                    || (a.status != "applied" || a.action == "preserve") && !same_observation(&root, &a.before, &b.before)? {
                     return Err("The installed native dependencies changed since this plan began. Restore them or roll back the pending plan.".into());
                 }
             }
@@ -699,4 +742,19 @@ pub async fn install_native_package(
         profile.pending_plan = None;
         write_locked(&root, &profile)
     }).await.map_err(|error| error.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::on_layout;
+
+    #[test]
+    fn moves_absolute_paths_onto_the_active_folder() {
+        assert_eq!(
+            on_layout(r"C:\Games\Sons Of The Forest\OpenACAI\Mods\Example\manifest.json", "Modstoke"),
+            r"C:\Games\Sons Of The Forest\Modstoke\Mods\Example\manifest.json"
+        );
+        assert_eq!(on_layout(r"C:\Games\SOTF\Modstoke\Mods\A", "Modstoke"), r"C:\Games\SOTF\Modstoke\Mods\A");
+        assert_eq!(on_layout(r"C:\Games\SOTF\BepInEx\plugins\A.dll", "Modstoke"), r"C:\Games\SOTF\BepInEx\plugins\A.dll");
+    }
 }

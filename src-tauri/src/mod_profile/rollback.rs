@@ -8,7 +8,7 @@ pub(super) struct PackCheckpoint {
     root_name: String,
     workspace: String,
     pub(super) phase: String,
-    before_packages: Vec<ProfilePackage>,
+    pub(super) before_packages: Vec<ProfilePackage>,
     before_requested_roots: Vec<String>,
     receipts: Vec<PackReceipt>,
 }

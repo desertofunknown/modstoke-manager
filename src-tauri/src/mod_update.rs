@@ -1,4 +1,5 @@
 use crate::hashing::{is_sha256_hex, sha256_hex};
+use crate::native_root;
 use crate::safe_fs::{
     collect_files, copy_durable, create_parent_dirs, durable_rename, exclusive_lock_options,
     hash_file, is_linked, reject_linked_path, target_hash, validate_directory,
@@ -19,11 +20,14 @@ const TRANSACTION_KIND: &str = "openacai-native-mod-update";
 const MAX_ARCHIVE_ENTRIES: usize = 8192;
 const MAX_EXTRACTED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_LOADER_JSON_BYTES: u64 = 512 * 1024;
-const LOADER_DESCRIPTORS: [&str; 2] = [
+// Loader packages before the Modstoke/ rename shipped their runtime in OpenACAI/Runtime.
+const LOADER_DESCRIPTORS: [&str; 3] = [
+    "Modstoke/Runtime/openacai-loader.manifest.json",
     "OpenACAI/Runtime/openacai-loader.manifest.json",
     "BepInEx/plugins/OpenACAILoader/openacai-loader.manifest.json",
 ];
-const LOADER_FILE_MANIFESTS: [&str; 2] = [
+const LOADER_FILE_MANIFESTS: [&str; 3] = [
+    "Modstoke/Runtime/openacai-loader-files.json",
     "OpenACAI/Runtime/openacai-loader-files.json",
     "BepInEx/plugins/OpenACAILoader/openacai-loader-files.json",
 ];
@@ -178,11 +182,16 @@ fn replace_archive_locked_inner(
     if let Some(policy) = &native {
         validate_native_archive(&source, policy)?;
     }
-    extract_archive(&source, &staging).map_err(|error| {
-        format!(
-            "Could not prepare the replacement archive. The installed mod was not changed. {error}"
-        )
-    })?;
+    extract_archive(&source, &staging)
+        .and_then(|()| match &native {
+            Some(policy) => rebase_native_staging(&staging, policy),
+            None => Ok(()),
+        })
+        .map_err(|error| {
+            format!(
+                "Could not prepare the replacement archive. The installed mod was not changed. {error}"
+            )
+        })?;
 
     let mut staged_files = Vec::new();
     collect_files(&staging, &mut staged_files)?;
@@ -264,7 +273,7 @@ fn replace_archive_locked_inner(
         {
             continue;
         }
-        if key == "vortex.deployment.json" || vortex_files.contains(&key) {
+        if key == "vortex.deployment.json" || vortex_files.contains(&vortex_key(&relative_path)) {
             return Err(format!(
                 "{} is managed by Vortex. Update it through Vortex before retrying this mod.",
                 relative_path.display()
@@ -554,14 +563,38 @@ fn record_native_path_case(path: &Path, spellings: &mut HashMap<String, PathBuf>
     Ok(())
 }
 
+fn native_layout(policy: &NativePackagePolicy) -> String {
+    policy
+        .package_path
+        .components()
+        .next()
+        .map(|part| part.as_os_str().to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+// Native ZIPs may still be authored for OpenACAI/Mods; stage them on the package's own root.
+fn rebase_native_staging(staging: &Path, policy: &NativePackagePolicy) -> Result<(), String> {
+    let layout = native_layout(policy);
+    let entries: Vec<_> = fs::read_dir(staging)
+        .and_then(|entries| entries.collect::<Result<_, _>>())
+        .map_err(|error| error.to_string())?;
+    for entry in entries {
+        let name = entry.file_name();
+        if name.to_string_lossy() != layout && native_root::is_root_name(&name.to_string_lossy()) {
+            fs::rename(entry.path(), staging.join(&layout)).map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 fn validate_native_policy(policy: &NativePackagePolicy) -> Result<(), String> {
     validate_native_path(&policy.package_path)?;
     let parts: Vec<_> = policy.package_path.components().collect();
     if parts.len() != 3
-        || !parts[0].as_os_str().to_string_lossy().eq_ignore_ascii_case("OpenACAI")
+        || !native_root::is_root_name(&parts[0].as_os_str().to_string_lossy())
         || !parts[1].as_os_str().to_string_lossy().eq_ignore_ascii_case("Mods")
     {
-        return Err("Native mod packages must use OpenACAI/Mods/<folder>.".into());
+        return Err("Native mod packages must use Modstoke/Mods/<folder>.".into());
     }
     if policy.old_files.len() > 8192 {
         return Err("The native mod ownership record contains too many files.".into());
@@ -587,10 +620,12 @@ fn validate_native_archive(source: &str, policy: &NativePackagePolicy) -> Result
     for (path, _) in &policy.old_files {
         record_native_path_case(path, &mut spellings)?;
     }
+    let layout = native_layout(policy);
     for index in 0..archive.len() {
         let entry = archive.by_index(index).map_err(|error| error.to_string())?;
         let name = if entry.is_dir() { entry.name().trim_end_matches(['/', '\\']) } else { entry.name() };
-        let path = Path::new(name);
+        let name = native_root::rebase(&name.replace('\\', "/"), &layout);
+        let path = Path::new(&name);
         validate_native_path(path)?;
         // ZIPs may explicitly include the package's ancestor directories.
         if !entry.is_dir() || strip_path_prefix(&policy.package_path, path).is_none() {
@@ -690,13 +725,15 @@ fn validate_staged_loader(staging: &Path, staged_files: &[PathBuf]) -> Result<bo
     if manifest.version != version {
         return Err("The Loader descriptor and file manifest have different versions.".into());
     }
-    // Both copies describe the same package; neither may silently override the other.
-    if validate_target(staging, Path::new(LOADER_FILE_MANIFESTS[0]))?
-        && validate_target(staging, Path::new(LOADER_FILE_MANIFESTS[1]))?
-        && hash_file(&staging.join(LOADER_FILE_MANIFESTS[0]))?
-            != hash_file(&staging.join(LOADER_FILE_MANIFESTS[1]))?
-    {
-        return Err("The Loader package contains conflicting file manifest copies.".into());
+    // Every copy describes the same package; none may silently override another.
+    let mut copy_hash = None;
+    for path in LOADER_FILE_MANIFESTS {
+        if validate_target(staging, Path::new(path))? {
+            let hash = hash_file(&staging.join(path))?;
+            if copy_hash.get_or_insert_with(|| hash.clone()) != &hash {
+                return Err("The Loader package contains conflicting file manifest copies.".into());
+            }
+        }
     }
     let mut listed = HashSet::new();
     for file in &manifest.files {
@@ -734,7 +771,10 @@ fn plan_loader_removals(
     if let Some(previous) = read_loader_file_manifest(root)? {
         for file in previous.files {
             let key = path_key(&file.path);
-            if staged_paths.contains(&key) || is_loader_user_file(&file.path) {
+            if staged_paths.contains(&key)
+                || is_loader_user_file(&file.path)
+                || native_root::is_player_data(&file.path)
+            {
                 continue;
             }
             let Some(current) = target_hash(root, &file.path)? else {
@@ -752,6 +792,26 @@ fn plan_loader_removals(
                 removal_sha256: Some(current),
             });
         }
+    }
+    // The file manifest does not list itself. Drop metadata copies the new package no longer ships,
+    // such as OpenACAI/Runtime after the move to Modstoke/Runtime, so a stale copy is never read.
+    for path in LOADER_DESCRIPTORS.into_iter().chain(LOADER_FILE_MANIFESTS) {
+        let relative = Path::new(path);
+        let key = path_key(relative);
+        if staged_paths.contains(&key) || removals.contains(&key) {
+            continue;
+        }
+        let Some(current) = target_hash(root, relative)? else {
+            continue;
+        };
+        ensure_unmanaged(root, relative)?;
+        removals.insert(key);
+        replacements.push(Replacement {
+            source: None,
+            relative_path: relative.to_owned(),
+            existed: true,
+            removal_sha256: Some(current),
+        });
     }
 
     let mut legacy_files = Vec::new();
@@ -874,7 +934,7 @@ fn require_original(root: &Path, target: &UpdateTarget) -> Result<(), String> {
 
 pub(crate) fn ensure_unmanaged(root: &Path, relative: &Path) -> Result<(), String> {
     validate_mod_path(relative)?;
-    if vortex_deployed_files(root)?.contains(&path_key(relative)) {
+    if vortex_deployed_files(root)?.contains(&vortex_key(relative)) {
         return Err(format!("{} is managed by Vortex. Its current contents were not changed; resolve its ownership in Vortex before retrying.", relative.display()));
     }
     Ok(())
@@ -1231,6 +1291,12 @@ fn vortex_deployed_files(root: &Path) -> Result<HashSet<String>, String> {
         .into_iter()
         .flatten()
         .filter_map(|file| file.get("relPath").and_then(|path| path.as_str()))
-        .map(|path| path_key(Path::new(path.trim_start_matches(['/', '\\']))))
+        .map(|path| vortex_key(Path::new(path.trim_start_matches(['/', '\\']))))
         .collect())
+}
+
+// Vortex records native files where it deployed them. The Loader treats OpenACAI/ and Modstoke/
+// spellings of a path as one file, and so does this ownership check.
+fn vortex_key(path: &Path) -> String {
+    native_root::rebase(&path_key(path), &native_root::ROOT.to_lowercase())
 }

@@ -1,6 +1,6 @@
 use crate::hashing::sha256_hex;
 use crate::installation_profiles::{self, required_nullable};
-use crate::safe_fs;
+use crate::{native_root, safe_fs};
 use serde::{Deserialize, Serialize};
 use serde_json::ser::{CharEscape, Formatter, PrettyFormatter};
 use std::collections::{HashMap, HashSet};
@@ -18,7 +18,7 @@ const POLICY_FILE: &str = "permissions.json";
 const LOCK_FILE: &str = "permissions.lock";
 const STATUS_FILE: &str = "permissions-status.json";
 const NODES_FILE: &str = "permission-nodes.json";
-const ADMIN_MANIFEST: &str = "OpenACAI/Mods/Modstoke.Admin/openacai.mod.json";
+const ADMIN_MANIFEST: &str = "Mods/Modstoke.Admin/openacai.mod.json";
 const FORMAT: &str = "modstoke.admin.permissions";
 const STATUS_FORMAT: &str = "modstoke.admin.permissions-status";
 const MAX_POLICY_BYTES: usize = 64 * 1024;
@@ -283,7 +283,8 @@ fn read_status(folder: &Path) -> (Option<AdminStatus>, Option<String>) {
 }
 
 fn installed_admin(root: &Path) -> Option<String> {
-    let bytes = safe_fs::read_bounded(root, Path::new(ADMIN_MANIFEST), 64 * 1024).ok()??;
+    let manifest = format!("{}/{ADMIN_MANIFEST}", native_root::resolve_native_root(root, "Mods"));
+    let bytes = safe_fs::read_bounded(root, Path::new(&manifest), 64 * 1024).ok()??;
     let manifest: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
     manifest.get("version")?.as_str().map(str::to_owned)
 }

@@ -1,3 +1,4 @@
+use crate::native_root;
 use crate::safe_fs::{strip_verbatim_prefix, validate_directory, validate_target};
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -14,13 +15,17 @@ const MAX_MANIFEST_BYTES: usize = 512 * 1024;
 const MAX_TOTAL_BYTES: usize = 32 * 1024 * 1024;
 const MANIFEST_DEPTH: usize = 4;
 const ASSEMBLY_DEPTH: usize = 16;
+pub(crate) const MISSING_MODS_NOTICE: &str = "The Modstoke/Mods folder does not exist.";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeInventory {
     pub(crate) root: String,
+    pub(crate) mods_folder: String,
     pub(crate) packages: Vec<NativePackage>,
     pub(crate) notices: Vec<String>,
+    // Packages left in the Mods folder the Loader no longer reads.
+    pub(crate) legacy_notices: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -61,7 +66,9 @@ pub(crate) fn read_inventory(game_root: &str) -> Result<NativeInventory, String>
     }
 
     let mut scan = Scan::default();
-    let mods = root.join("OpenACAI").join("Mods");
+    let active = native_root::resolve_native_root(&root, "Mods");
+    let mods_folder = format!("{active}/Mods");
+    let mods = root.join(active).join("Mods");
     // Validate the existing ancestry even when Mods itself has not been created.
     let mut existing = mods.as_path();
     loop {
@@ -82,12 +89,13 @@ pub(crate) fn read_inventory(game_root: &str) -> Result<NativeInventory, String>
         }
     }
     if existing != mods {
-        scan.notices
-            .push("The OpenACAI/Mods folder does not exist.".into());
+        scan.notices.push(MISSING_MODS_NOTICE.into());
         return Ok(NativeInventory {
             root: display_path(&root),
+            mods_folder,
             packages: Vec::new(),
             notices: scan.notices,
+            legacy_notices: Vec::new(),
         });
     }
 
@@ -95,11 +103,41 @@ pub(crate) fn read_inventory(game_root: &str) -> Result<NativeInventory, String>
     let mut packages: Vec<_> = manifests.iter().map(|path| scan.package(path)).collect();
     mark_duplicates(&mut packages);
     packages.sort_by(|left, right| left.manifest_path.cmp(&right.manifest_path));
+    let legacy_notices = legacy_packages(&root, active, &packages);
     Ok(NativeInventory {
         root: display_path(&root),
+        mods_folder,
         packages,
         notices: scan.notices,
+        legacy_notices,
     })
+}
+
+// A partial migration can leave packages in the other root's Mods folder, which the Loader ignores.
+fn legacy_packages(root: &Path, active: &str, packages: &[NativePackage]) -> Vec<String> {
+    let mut notices = Vec::new();
+    for other in native_root::ROOTS.into_iter().filter(|name| *name != active) {
+        let mods = root.join(other).join("Mods");
+        if !mods.is_dir() {
+            continue;
+        }
+        let mut scan = Scan::default();
+        for manifest in scan.manifests(&mods) {
+            let package = scan.package(&manifest);
+            // The Loader moves every entry whose folder name is free in the active Mods folder on its
+            // next start, and leaves the rest where they are.
+            let folder = Path::new(&package.package_path).file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+            let blocked = root.join(active).join("Mods").join(&folder).exists();
+            let duplicate = packages.iter().any(|loaded| loaded.id.eq_ignore_ascii_case(&package.id));
+            notices.push(match (blocked, duplicate) {
+                (true, _) => format!("{} is not loaded: {active}/Mods already has a folder named {folder}, so the Loader leaves it where it is.", package.package_path),
+                (false, true) => format!("{} has the same mod ID as a package in {active}/Mods ({}). The Loader moves it there on its next start, and then both copies are duplicates.", package.package_path, package.id),
+                (false, false) => format!("{} is not loaded yet. The Loader moves it to {active}/Mods on its next start.", package.package_path),
+            });
+        }
+        notices.append(&mut scan.notices);
+    }
+    notices
 }
 
 #[derive(Clone, Default)]

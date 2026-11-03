@@ -20,8 +20,10 @@ export type NativePackage = {
 
 export type NativeInventory = {
     root: string;
+    modsFolder: string;
     packages: NativePackage[];
     notices: string[];
+    legacyNotices: string[];
 };
 
 export async function readNativeInventory(gameRoot: string): Promise<NativeInventory> {

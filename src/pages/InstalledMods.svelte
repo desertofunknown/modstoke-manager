@@ -460,7 +460,7 @@
                                         {:else if scanError}<h2>Could not read installed mods</h2><p class="inline-error" role="alert">{scanError}</p><button type="button" disabled={busy} on:click={refresh}>Try again</button>
                                         {:else if !scanned}<p role="status">The inventory will refresh when the current operation finishes.</p>
                                         {:else if entries.length}<h2>No matching entries</h2><p>Change the search or filters to see your installed mods.</p><button type="button" on:click={clearFilters}>Clear filters</button>
-                                        {:else}<h2>No mods or plugins found</h2><p>This scan covers Mods, Libs and BepInEx/plugins. Check Native packages for OpenACAI/Mods.</p><button type="button" on:click={() => dispatch("navigate", { id: "mods" })}>Browse mods</button>{/if}
+                                        {:else}<h2>No mods or plugins found</h2><p>This scan covers Mods, Libs and BepInEx/plugins. Check Native packages for the Loader's Mods folder.</p><button type="button" on:click={() => dispatch("navigate", { id: "mods" })}>Browse mods</button>{/if}
                                     </td></tr>
                                 {/each}
                             </tbody>

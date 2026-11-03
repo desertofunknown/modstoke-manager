@@ -82,7 +82,7 @@ fn canonicalize_package(package: &mut NativePackPackage) -> Result<(), String> {
     native_archive::validate_version(&package.version)?;
     native_archive::validate_hash(&package.sha256)?;
     native_archive::validate_package_folder(&package.folder)?;
-    native_archive::validate_path(&format!("OpenACAI/Mods/{}", package.folder))?;
+    native_archive::validate_path(&format!("{}/Mods/{}", crate::native_root::ROOT, package.folder))?;
     if package.size == 0 || package.size > MAX_ARCHIVE_BYTES {
         return Err(format!("Package {} must describe an archive of 1 byte to 256 MiB.", package.id));
     }
@@ -207,7 +207,8 @@ pub async fn prepare_native_pack(
     if expected.as_ref().is_some_and(|document| document.packages.len() != sources.len()) {
         return Err("The selected archive count does not match the native pack descriptor.".into());
     }
-    tauri::async_runtime::spawn_blocking(move || prepare_archives(name, sources, expected).map(|result| result.preparation))
+    // A pack describes package folders only, so any layout serves for preparation.
+    tauri::async_runtime::spawn_blocking(move || prepare_archives(name, sources, expected, crate::native_root::ROOT).map(|result| result.preparation))
         .await.map_err(|error| format!("Native pack preparation could not finish: {error}"))?
 }
 
@@ -215,6 +216,7 @@ pub(super) fn prepare_archives(
     name: String,
     sources: Vec<String>,
     expected: Option<NativePackDocument>,
+    layout: &str,
 ) -> Result<InspectedPack, String> {
     validate_pack_name(&name)?;
     if sources.is_empty() || sources.len() > MAX_PACKAGES
@@ -232,7 +234,7 @@ pub(super) fn prepare_archives(
     let mut selected_ids = BTreeSet::new();
     let mut selected_folders = BTreeMap::new();
     for (index, source) in sources.iter().enumerate() {
-        let archive = native_archive::inspect(Path::new(source))
+        let archive = native_archive::inspect(Path::new(source), layout)
             .map_err(|error| format!("Selected archive {}: {error}", index + 1))?;
         if archive.size > MAX_TOTAL_BYTES - total_archive_bytes {
             return Err("The native pack exceeds 2 GiB of archive bytes.".into());

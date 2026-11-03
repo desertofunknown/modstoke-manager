@@ -18,6 +18,7 @@
   - Add a community server browser backed by modstoke.com. It shows server status, settings and recent activity, compares required mods with the selected installation, and joins through Steam after rechecking the server. `modstoke://join/` links open that server, and launching the Manager again focuses the running window.
   - Request loader releases from modstoke.com, reject manifest file records that could point outside the game folder, and accept loader packages that ship the core as `Modstoke.Loader.dll`.
   - Rename the app to Modstoke Manager by OpenACAI, with new artwork and consistent Loader, Admin and SDK labels. Preserve existing installations, settings and mod catalog addresses.
+  - Support the Loader's new Modstoke folder. Native mods install into Modstoke/Mods, and installations that still use OpenACAI/Mods keep working until the Loader moves them across on its next start. Native ZIPs built for either layout install into the Mods folder the Loader currently uses.
   - Stage native mod updates before replacing files, preserve disabled paths and files absent from the release, and restore overwritten files after installation failures. Keep recovery backups when restoration fails and refuse to overwrite Vortex-managed files.
   - Keep expanded Nexus descriptions and file notes inside the scrolling detail layout on short, narrow windows.
   - Match local package names to possessive Nexus titles, prefer explicit Nexus identities, and stop treating author names as installed mods.

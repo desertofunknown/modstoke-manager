@@ -444,7 +444,7 @@
         </div>
         <p class="note">Roles and staff for this installation's Admin, saved to permissions.json. Admin enforces them on the host, picks up a saved file within about 5 seconds while the game or server runs, and keeps the rules it last accepted if the file has a problem.</p>
         {#if state}
-            <p class="note">{state.adminVersion ? `Admin ${state.adminVersion} installed.` : "Admin's package was not found in OpenACAI\\Mods."} File: <span class="path">{state.path}</span></p>
+            <p class="note">{state.adminVersion ? `Admin ${state.adminVersion} installed.` : "Admin's package was not found in the Loader's Mods folder."} File: <span class="path">{state.path}</span></p>
             {#if state.state === "valid" || state.state === "invalid"}
                 {@const status = verdict(state)}
                 <div class="status-notes {status.tone}" role="status">

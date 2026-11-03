@@ -1,5 +1,5 @@
 use crate::hashing::is_sha256_hex;
-use crate::{mod_update, safe_fs};
+use crate::{mod_update, native_root, safe_fs};
 use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Number, Value};
@@ -46,6 +46,18 @@ pub(super) struct NativeArchive {
     pub(super) size: u64,
 }
 
+impl NativeArchive {
+    /// Moves every recorded path onto the `layout` root folder.
+    pub(super) fn rebase(&mut self, layout: &str) {
+        let paths = [&mut self.package_path, &mut self.manifest_path, &mut self.assembly_path]
+            .into_iter()
+            .chain(self.files.iter_mut().map(|file| &mut file.path));
+        for path in paths {
+            *path = native_root::rebase(path, layout);
+        }
+    }
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct NativeManifest {
@@ -57,7 +69,9 @@ pub(super) struct NativeManifest {
     pub(super) required: Vec<NativeDependency>,
 }
 
-pub(super) fn inspect(source: &Path) -> Result<NativeArchive, String> {
+// ZIPs may use OpenACAI/Mods/<package>/ or Modstoke/Mods/<package>/. The record names the
+// `layout` root, where the package is installed.
+pub(super) fn inspect(source: &Path, layout: &str) -> Result<NativeArchive, String> {
     let source = if source.is_absolute() {
         source.to_owned()
     } else {
@@ -107,6 +121,7 @@ pub(super) fn inspect(source: &Path) -> Result<NativeArchive, String> {
     let mut entries = HashMap::new();
     let mut files = Vec::new();
     let mut package_path: Option<String> = None;
+    let mut archive_root: Option<String> = None;
     let mut manifest: Option<(String, NativeManifest)> = None;
     let mut decoded = 0u64;
     for index in 0..archive.len() {
@@ -131,13 +146,16 @@ pub(super) fn inspect(source: &Path) -> Result<NativeArchive, String> {
             ));
         }
         let parts: Vec<_> = path.split('/').collect();
-        if !parts[0].eq_ignore_ascii_case("OpenACAI")
+        if !native_root::is_root_name(parts[0])
             || (parts.len() > 1 && !parts[1].eq_ignore_ascii_case("Mods"))
             || (!directory && parts.len() < 4)
         {
             return Err(format!(
-                "Native payload must be under OpenACAI/Mods/<package>/: {path}"
+                "Native payload must be under Modstoke/Mods/<package>/ or OpenACAI/Mods/<package>/: {path}"
             ));
+        }
+        if archive_root.get_or_insert_with(|| parts[0].to_owned()).as_str() != parts[0] {
+            return Err("A native archive must use a single Modstoke or OpenACAI root folder.".into());
         }
         if parts.len() >= 3 {
             validate_package_folder(parts[2])?;
@@ -221,7 +239,7 @@ pub(super) fn inspect(source: &Path) -> Result<NativeArchive, String> {
         .map(|file| file.path.clone())
         .ok_or("The explicitly declared native DLL does not exist in the archive.")?;
     files.sort_by(|left, right| left.path.cmp(&right.path));
-    let record = NativeArchive {
+    let mut record = NativeArchive {
         id: manifest.id,
         name: manifest.name,
         version: manifest.version,
@@ -233,6 +251,7 @@ pub(super) fn inspect(source: &Path) -> Result<NativeArchive, String> {
         sha256,
         size,
     };
+    record.rebase(layout);
     validate_record(&record)?;
     Ok(record)
 }
@@ -249,10 +268,10 @@ pub(super) fn validate_record(record: &NativeArchive) -> Result<(), String> {
     let parts: Vec<_> = package.split('/').collect();
     if package != record.package_path
         || parts.len() != 3
-        || !parts[0].eq_ignore_ascii_case("OpenACAI")
+        || !native_root::is_root_name(parts[0])
         || !parts[1].eq_ignore_ascii_case("Mods")
     {
-        return Err("The native archive record must name one OpenACAI/Mods package folder.".into());
+        return Err("The native archive record must name one Modstoke/Mods package folder.".into());
     }
     validate_package_folder(parts[2])?;
     let manifest_path = validate_path(&record.manifest_path)?;

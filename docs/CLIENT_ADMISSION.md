@@ -10,7 +10,8 @@ actions change only the Client preference. Starting the game, changing profiles
 or importing a server requirements list never enables participation automatically.
 
 The panel checks the expected Client manifest and assembly in
-`OpenACAI/Mods/Modstoke.Client`. File presence does not establish successful
+`Modstoke/Mods/Modstoke.Client`, or `OpenACAI/Mods/Modstoke.Client` in an
+installation that has no `Modstoke/Mods` folder yet. File presence does not establish successful
 loading, an unambiguous mod inventory, compatibility or client integrity. Use
 the Client's in-game admission view to inspect its current state and recent
 attempts. Manager does not read live game state or confirm server acceptance.

@@ -12,6 +12,7 @@ mod loader_package;
 mod mod_profile;
 mod mod_update;
 mod native_inventory;
+mod native_root;
 mod nexus;
 mod nexus_auth;
 mod safe_fs;

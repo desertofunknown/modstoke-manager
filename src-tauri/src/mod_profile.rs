@@ -316,7 +316,8 @@ fn read_locked(root: &Path) -> Result<ProfileState, String> {
     if !matches!(json.get("schemaVersion").and_then(|value| value.as_u64()), Some(1 | 2)) {
         return Err(format!("{PROFILE_FILE} has an unsupported schema. Update Manager to read it; the file was preserved."));
     }
-    let profile: ModProfile = serde_json::from_value(json).map_err(|_| invalid_profile())?;
+    let mut profile: ModProfile = serde_json::from_value(json).map_err(|_| invalid_profile())?;
+    native_local::rebase_records(root, &mut profile);
     validate_profile(root, &profile)?;
     Ok(ProfileState { profile: Some(profile), revision: Some(sha256_hex(&bytes)) })
 }
