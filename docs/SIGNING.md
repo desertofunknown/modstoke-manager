@@ -71,7 +71,7 @@ Or build, copy, sign and rewrite checksums in one command. The script defaults t
 .\scripts\refresh-prebuilt.ps1 -Version 0.3.0 -Build -Sign
 ```
 
-The script removes the old files in `prebuilt/` before copying, and it does not stop if the build fails. Check that the build succeeded. If the script stops partway, restore the old files with `git restore prebuilt`.
+The script stops if the build fails or an output is missing, before it touches `prebuilt/`. If signing stops partway, restore the old files with `git restore prebuilt`.
 
 The signing script:
 

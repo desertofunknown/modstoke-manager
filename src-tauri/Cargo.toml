@@ -4,10 +4,9 @@ version = "0.2.0"
 description = "Modstoke Manager by OpenACAI, an independent game and dedicated-server toolkit for Sons of the Forest."
 authors = ["Alex Cooper"]
 license = "GPL-3.0-or-later"
-repository = ""
+repository = "https://github.com/desertofunknown/modstoke-manager"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -18,9 +17,9 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["raw_value"] }
 zip = "0.5"
 tauri-plugin-upload = "2"
-tokio = { version = "*", features = ["net", "time", "io-util"] }
-regex = "*"
-winreg = "*"
+tokio = { version = "1", features = ["net", "time", "io-util"] }
+regex = "1"
+winreg = "0.55"
 keyring = "2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.10"
@@ -46,6 +45,5 @@ features = [
 ]
 
 [features]
-# this feature is used for production builds or when `devPath` points to the filesystem
-# DO NOT REMOVE!!
+# Tauri enables this for production builds and when frontendDist points to the filesystem.
 custom-protocol = ["tauri/custom-protocol"]

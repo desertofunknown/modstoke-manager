@@ -8,7 +8,7 @@
     import { fallbackPreviewUrl } from "../lib/modPreview";
     import { modalFocus } from "../lib/modalFocus";
     import InfiniteScroll from "../lib/InfiniteScroll.svelte";
-    import { debounce } from "lodash";
+    import debounce from "lodash/debounce";
     import SvgSpinnersBlocksWave from '~icons/svg-spinners/blocks-wave'
     import LucideChevronLeft from "~icons/lucide/chevron-left";
     import LucideChevronRight from "~icons/lucide/chevron-right";

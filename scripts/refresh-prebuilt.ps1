@@ -13,6 +13,9 @@ if ($Build) {
     Push-Location $RepoRoot
     try {
         npm run tauri build
+        if ($LASTEXITCODE -ne 0) {
+            throw "npm run tauri build failed (exit $LASTEXITCODE)"
+        }
     }
     finally {
         Pop-Location
@@ -38,6 +41,12 @@ $Artifacts = @(
     }
 )
 
+foreach ($artifact in $Artifacts) {
+    if (-not (Test-Path -LiteralPath $artifact.Source)) {
+        throw "Missing build artifact: $($artifact.Source)"
+    }
+}
+
 New-Item -ItemType Directory -Force -Path $PrebuiltDir | Out-Null
 New-Item -ItemType Directory -Force -Path $LocalTestDir | Out-Null
 Get-ChildItem -LiteralPath $PrebuiltDir -Filter "OpenACAI-Mod-Manager-*" -File | Remove-Item -Force
@@ -46,10 +55,6 @@ Get-ChildItem -LiteralPath $LocalTestDir -Filter "OpenACAI-Mod-Manager-*" -File 
 $checksumLines = New-Object System.Collections.Generic.List[string]
 $portablePrebuiltPath = $null
 foreach ($artifact in $Artifacts) {
-    if (-not (Test-Path -LiteralPath $artifact.Source)) {
-        throw "Missing build artifact: $($artifact.Source)"
-    }
-
     $prebuiltPath = Join-Path $PrebuiltDir $artifact.Name
     Copy-Item -LiteralPath $artifact.Source -Destination $prebuiltPath -Force
 

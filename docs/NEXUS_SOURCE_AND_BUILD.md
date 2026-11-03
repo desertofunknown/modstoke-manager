@@ -131,7 +131,7 @@ Signing is not needed to compile or inspect the source, but every binary committ
 .\scripts\refresh-prebuilt.ps1 -Build -Sign
 ```
 
-This signs the portable exe and the installer after the build. It does not sign the copy of the app inside the installer, so the installed `OpenACAI Mod Manager.exe` stays unsigned (the signed 0.2.0 installer included) until the build signs the app before packaging it. If the build or signing stops partway, `prebuilt/` is left with missing or unsigned files: run `git restore prebuilt` and don't commit it. Check every file with `Get-AuthenticodeSignature` before committing. Signing needs OpenACAI's Azure Artifact Signing account or its certificate; see [SIGNING.md](../SIGNING.md).
+This signs the portable exe and the installer after the build. It does not sign the copy of the app inside the installer, so the installed `OpenACAI Mod Manager.exe` stays unsigned (the signed 0.2.0 installer included) until the build signs the app before packaging it. If the build or signing stops partway, `prebuilt/` is left with missing or unsigned files: run `git restore prebuilt` and don't commit it. Check every file with `Get-AuthenticodeSignature` before committing. Signing needs OpenACAI's Azure Artifact Signing account or its certificate; see [SIGNING.md](SIGNING.md).
 
 ## Build Loader Dependencies
 

@@ -16,13 +16,13 @@ The manager supports **Sons of the Forest**. It is not affiliated with or endors
 
 ## Product artwork
 
-`public/modstoke-mark.svg` is the source for the manager's amber M and ember mark. Application and installer icons are generated from it with `tauri icon`. `docs/assets/modstoke-banner.svg` is the source for the Nexus page banner.
+`public/modstoke-mark.svg` is the source for the manager's amber M and ember mark. Application and installer icons are generated from it with `tauri icon`. `docs/assets/modstoke-banner.svg` is the source for the Nexus page banner, and `docs/assets/modstoke-banner.png` is the export uploaded there.
 
-Display names do not determine installed identities. See [rename compatibility](docs/BRAND_COMPATIBILITY.md) before changing package names, paths or integration IDs.
+Display names do not determine installed identities. See [rename compatibility](BRAND_COMPATIBILITY.md) before changing package names, paths or integration IDs.
 
 ## Publisher artwork
 
-`public/openacai-mark.svg` preserves the symbol-only SVG recreation of the public OpenACAI Inc mark.
+`docs/assets/openacai-mark.svg` preserves the symbol-only SVG recreation of the public OpenACAI Inc mark.
 
 Reference sources:
 

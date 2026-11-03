@@ -51,7 +51,7 @@ For a local Windows build:
 npm run tauri build
 ```
 
-The executable is `src-tauri/target/release/OpenACAI Mod Manager.exe` (the filename is kept for compatibility), and the NSIS installer is under `src-tauri/target/release/bundle/nsis/`. Local builds are unsigned. Builds committed to `prebuilt/` must be signed first; see [code signing](SIGNING.md). `npm run build` builds only the web frontend.
+The executable is `src-tauri/target/release/OpenACAI Mod Manager.exe` (the filename is kept for compatibility), and the NSIS installer is under `src-tauri/target/release/bundle/nsis/`. Local builds are unsigned. Builds committed to `prebuilt/` must be signed first; see [code signing](docs/SIGNING.md). `npm run build` builds only the web frontend.
 
 The Svelte frontend lives in `src/`, and the Rust/Tauri backend in `src-tauri/`. Loader, SDK, and Admin are separate projects. Admin is not included in this repository or its Manager downloads.
 

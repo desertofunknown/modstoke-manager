@@ -15,7 +15,7 @@ MSI builds are intentionally not published while the current MSI launch issue is
 
 These builds are signed by OpenACAI Inc through Azure Trusted Signing (now Azure Artifact Signing). Windows SmartScreen and some browsers may still warn until the publisher builds reputation. To check a download, see [Check a downloaded executable](../docs/TROUBLESHOOTING.md#check-a-downloaded-executable).
 
-Every executable in this folder must be signed before it is committed or pushed. Build and sign with `scripts/refresh-prebuilt.ps1 -Build -Sign`; without `-Sign` the script copies unsigned builds here. Before pushing, check that `Get-AuthenticodeSignature` reports `Valid` with OpenACAI Inc as the signer for each `.exe`, and that `SHA256SUMS.txt` matches the files. See [SIGNING.md](../SIGNING.md).
+Every executable in this folder must be signed before it is committed or pushed. Build and sign with `scripts/refresh-prebuilt.ps1 -Build -Sign`; without `-Sign` the script copies unsigned builds here. Before pushing, check that `Get-AuthenticodeSignature` reports `Valid` with OpenACAI Inc as the signer for each `.exe`, and that `SHA256SUMS.txt` matches the files. See [SIGNING.md](../docs/SIGNING.md).
 
 Dependency/source links:
 

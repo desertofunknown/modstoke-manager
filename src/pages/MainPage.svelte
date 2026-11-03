@@ -347,7 +347,7 @@
 
     <footer class="workspace-footer">
         <span>Independent tools by OpenACAI. Not affiliated with Endnight Games.</span>
-        <a href="https://github.com/desertofunknown/openacai-loader" target="_blank" rel="noreferrer">Modstoke Loader <LucideArrowUpRight aria-hidden="true" /></a>
+        <a href="https://github.com/desertofunknown/modstoke-loader" target="_blank" rel="noreferrer">Modstoke Loader <LucideArrowUpRight aria-hidden="true" /></a>
     </footer>
 </div>
 

@@ -1,3 +1,5 @@
+# Changelog
+
 - Unreleased
   - Start faster. The window opens already sized for its monitor once the page has loaded, without the blocking Initializing overlay, and the Sons of the Forest skin loads its cached files as ordinary images and a font. Hashing, unzipping and the .NET check no longer run on the window's thread. In development, Vite no longer stalls on a PostCSS config search or on watching the Rust build output, which took a dev launch from about 40 seconds to about 5.
   - Add a Settings page to choose a skin: Match the game (the default, which uses the Sons of the Forest skin), Modstoke or Sons of the Forest. The Sons of the Forest skin brings back the ragged frame and title screen backdrop from the game's menus; the Modstoke skin keeps the plain dark panels.
@@ -122,6 +124,7 @@
   - Rendered Nexus spoiler, details, collapse, and accordion BBCode/HTML blocks as native expandable sections with safe summaries so author-hidden instructions keep their intended collapsed layout.
   - Preserved more Nexus author-layout BBCode by converting labeled divider sections, standalone anchor/bookmark markers, and table cell width/alignment hints into safe drawer markup.
   - Preserved labeled code/preformatted blocks, quote citations, and attribute-bearing alignment BBCode so author-written install examples and centered/right-aligned sections keep their intended layout.
+
 - 0.2.0
   - Moved OpenACAI Endnight Loader update checks to GitHub Release assets instead of raw branch prebuilts.
   - Added live loader-file SHA256 verification progress and cached the latest release manifest for last-known-good comparisons.
@@ -137,10 +140,11 @@
   - Added launch-time loader verification before starting Sons Of The Forest.
   - Updated OpenACAI Endnight Loader packaging expectations for .NET 10 LTS.
 
-- Added infinite scroll instead of pre-fetching all mods.
-- Use sotf-mods api for searching with debounce.
-- Added icons for navigation bar.
-- UI overhaul.
-- Fixed last updated indicator.
-- Fixed image covers not showing.
-- Fixed wrong image covers for mods after searching.
+- Earlier RedManager releases
+  - Added infinite scroll instead of pre-fetching all mods.
+  - Use sotf-mods api for searching with debounce.
+  - Added icons for navigation bar.
+  - UI overhaul.
+  - Fixed last updated indicator.
+  - Fixed image covers not showing.
+  - Fixed wrong image covers for mods after searching.
