@@ -1,6 +1,6 @@
+use crate::hashing::sha256_hex;
 use crate::installation_profiles::{self, TargetKind};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -136,7 +136,7 @@ pub fn serve<R: tauri::Runtime>(
 }
 
 fn revision(manifest: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(manifest))[..16].to_owned()
+    sha256_hex(manifest)[..16].to_owned()
 }
 
 fn stamps(data: &Path) -> Vec<Stamp> {

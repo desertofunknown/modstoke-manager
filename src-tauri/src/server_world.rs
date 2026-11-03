@@ -1,3 +1,4 @@
+use crate::hashing::{is_sha256_hex, sha256_hex};
 use crate::{mod_update, server_launch, server_world_restore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -67,7 +68,7 @@ pub(crate) struct Inventory {
 
 impl Inventory {
     pub(crate) fn revision(&self) -> Result<String, String> {
-        Ok(hash_bytes(&serde_json::to_vec(self).map_err(|error| error.to_string())?))
+        Ok(sha256_hex(&serde_json::to_vec(self).map_err(|error| error.to_string())?))
     }
 
     fn bytes(&self) -> u64 { self.files.iter().map(|file| file.bytes).sum() }
@@ -91,12 +92,6 @@ pub(crate) struct Backup {
     pub(crate) manifest: Manifest,
     pub(crate) revision: String,
     pub(crate) payload: PathBuf,
-}
-
-pub(crate) fn hash_bytes(bytes: &[u8]) -> String { format!("{:x}", Sha256::digest(bytes)) }
-
-pub(crate) fn valid_hash(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 pub(crate) fn valid_id(value: &str) -> bool {
@@ -234,7 +229,7 @@ pub(crate) fn read_record<T: serde::de::DeserializeOwned>(folder: &Path, name: &
     file.take(MAX_RECORD_BYTES + 1).read_to_end(&mut bytes).map_err(|error| error.to_string())?;
     if bytes.len() as u64 > MAX_RECORD_BYTES { return Err("Recovery metadata exceeds the supported size.".into()); }
     let record = serde_json::from_slice(&bytes).map_err(|_| "Recovery metadata is invalid or unsupported. It was preserved.")?;
-    Ok((record, hash_bytes(&bytes)))
+    Ok((record, sha256_hex(&bytes)))
 }
 
 pub(crate) fn write_record<T: Serialize>(folder: &Path, name: &str, record: &T) -> Result<String, String> {
@@ -247,7 +242,7 @@ pub(crate) fn write_record<T: Serialize>(folder: &Path, name: &str, record: &T) 
     temporary.write_all(&bytes).and_then(|_| temporary.as_file().sync_all()).map_err(|error| error.to_string())?;
     let temporary = temporary.into_temp_path();
     mod_update::durable_rename(&temporary, &folder.join(name), false)?;
-    Ok(hash_bytes(&bytes))
+    Ok(sha256_hex(&bytes))
 }
 
 fn hash_or_copy(folder: &Path, entry: &str, destination: Option<&Path>, limit: u64) -> Result<(u64, String), String> {
@@ -336,7 +331,7 @@ fn validate_inventory(inventory: &Inventory) -> Result<(), String> {
     previous = None;
     for file in &inventory.files {
         validate_relative(&file.path)?;
-        if file.bytes > MAX_FILE_BYTES || !valid_hash(&file.sha256)
+        if file.bytes > MAX_FILE_BYTES || !is_sha256_hex(&file.sha256)
             || previous.is_some_and(|previous| previous >= file.path.as_str()) || !names.insert(file.path.to_lowercase()) {
             return Err("The save inventory contains invalid or duplicate files.".into());
         }
@@ -502,7 +497,7 @@ pub(crate) fn read_backup(store: &Path, id: &str) -> Result<Backup, String> {
     mod_update::validate_directory(&folder)?;
     require_backup_layout(&folder)?;
     let (manifest, revision): (Manifest, _) = read_record(&folder, "manifest.json")?;
-    if manifest.schema_version != 1 || manifest.id != id || !valid_hash(&manifest.installation_id)
+    if manifest.schema_version != 1 || manifest.id != id || !is_sha256_hex(&manifest.installation_id)
         || manifest.created_utc.len() != 20 || !matches!(manifest.label.as_str(), "Manual backup" | "Before restore") {
         return Err("The backup manifest is invalid or unsupported. It was preserved.".into());
     }

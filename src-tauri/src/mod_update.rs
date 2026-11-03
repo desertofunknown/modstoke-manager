@@ -1,5 +1,5 @@
+use crate::hashing::{is_sha256_hex, sha256_hex, sha256_reader};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
@@ -294,7 +294,7 @@ fn replace_archive_locked_inner(
     let mut transaction = UpdateTransaction {
         kind: TRANSACTION_KIND.into(),
         version: 2,
-        root_sha256: hash_bytes(path_key(&root).as_bytes()),
+        root_sha256: root_identity(&root),
         targets: Vec::new(),
     };
     for (index, replacement) in replacements.iter().enumerate() {
@@ -336,7 +336,7 @@ fn replace_archive_locked_inner(
         }
     }
     let manifest = serde_json::to_vec(&transaction).map_err(|error| error.to_string())?;
-    let manifest_hash = hash_bytes(&manifest);
+    let manifest_hash = sha256_hex(&manifest);
     write_durable(workspace.path(), MANIFEST_PATH, &manifest)?;
     before_commit(&transaction.targets, &staging)?;
 
@@ -566,10 +566,7 @@ fn validate_native_policy(policy: &NativePackagePolicy) -> Result<(), String> {
     record_native_path_case(&policy.package_path, &mut spellings)?;
     for (path, hash) in &policy.old_files {
         validate_native_payload_path(path, &policy.package_path)?;
-        if !valid_sha256(hash)
-            || hash.bytes().any(|byte| byte.is_ascii_uppercase())
-            || !paths.insert(path_key(path))
-        {
+        if !is_sha256_hex(hash) || !paths.insert(path_key(path)) {
             return Err(format!("Invalid or duplicate native mod ownership record for {}.", path.display()));
         }
         record_native_path_case(path, &mut spellings)?;
@@ -649,7 +646,8 @@ fn read_loader_file_manifest(root: &Path) -> Result<Option<LoaderFileManifest>, 
         let mut paths = HashSet::new();
         for file in &manifest.files {
             validate_mod_path(&file.path)?;
-            if !valid_sha256(&file.sha256) || !paths.insert(path_key(&file.path)) {
+            // Loader file manifests are compared case-insensitively, so their digests may be uppercase.
+            if !is_sha256_hex(&file.sha256.to_ascii_lowercase()) || !paths.insert(path_key(&file.path)) {
                 return Err(format!("Invalid or duplicate file record for {} in {}.", file.path.display(), root.join(path).display()));
             }
         }
@@ -977,12 +975,8 @@ pub(crate) fn acquire_update_lock(root: &Path) -> Result<File, String> {
     Ok(lock)
 }
 
-fn hash_bytes(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
-}
-
-fn valid_sha256(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+pub(crate) fn root_identity(root: &Path) -> String {
+    sha256_hex(path_key(root).as_bytes())
 }
 
 pub(crate) fn hash_file(path: &Path) -> Result<String, String> {
@@ -993,20 +987,9 @@ pub(crate) fn hash_file(path: &Path) -> Result<String, String> {
     if !metadata.is_file() {
         return Err(format!("Expected an ordinary file at {}", path.display()));
     }
-    let mut file =
+    let file =
         File::open(path).map_err(|error| format!("Could not read {}: {error}", path.display()))?;
-    let mut hash = Sha256::new();
-    let mut buffer = [0u8; 65536];
-    loop {
-        let length = file
-            .read(&mut buffer)
-            .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
-        if length == 0 {
-            break;
-        }
-        hash.update(&buffer[..length]);
-    }
-    Ok(format!("{:x}", hash.finalize()))
+    sha256_reader(file).map_err(|error| format!("Could not read {}: {error}", path.display()))
 }
 
 pub(crate) fn target_hash(root: &Path, relative: &Path) -> Result<Option<String>, String> {
@@ -1211,7 +1194,7 @@ fn validate_transaction(root: &Path, transaction: &UpdateTransaction) -> Result<
     {
         return Err("The retained native update transaction has an unsupported format.".into());
     }
-    if transaction.root_sha256 != hash_bytes(path_key(root).as_bytes()) {
+    if transaction.root_sha256 != root_identity(root) {
         return Err(
             "The retained native update transaction belongs to a different game folder.".into(),
         );
@@ -1221,7 +1204,7 @@ fn validate_transaction(root: &Path, transaction: &UpdateTransaction) -> Result<
         validate_mod_path(&target.relative_path)?;
         if !targets.insert(path_key(&target.relative_path))
             || match &target.replacement_sha256 {
-                Some(hash) => !valid_sha256(hash),
+                Some(hash) => !is_sha256_hex(hash),
                 None => transaction.version != 2 || !target.originally_existed,
             }
         {
@@ -1232,7 +1215,7 @@ fn validate_transaction(root: &Path, transaction: &UpdateTransaction) -> Result<
         }
         if target.originally_existed {
             if target.backup_path.as_ref() != Some(&PathBuf::from("backup").join(index.to_string()))
-                || !target.original_sha256.as_deref().is_some_and(valid_sha256)
+                || !target.original_sha256.as_deref().is_some_and(is_sha256_hex)
             {
                 return Err(format!(
                     "Invalid backup record for {}",
@@ -1283,7 +1266,7 @@ fn recover_workspace(root: &Path, workspace: &Path) -> Result<RecoveryOutcome, S
                 format!("The retained transaction manifest could not be read: {error}")
             })?;
         validate_transaction(root, &transaction)?;
-        let manifest_hash = hash_bytes(&manifest);
+        let manifest_hash = sha256_hex(&manifest);
         if finished {
             cleanup_transaction(workspace, true).map_err(|error| {
                 format!("Update recovery is complete, but workspace cleanup failed: {error}")

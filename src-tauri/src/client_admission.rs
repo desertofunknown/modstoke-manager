@@ -1,6 +1,6 @@
+use crate::hashing::sha256_hex;
 use crate::{installation_profiles, mod_update};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{ErrorKind, Read, Write};
 use std::ops::Range;
@@ -144,7 +144,7 @@ fn read_config(root: &Path) -> Result<Config, String> {
         offset += line.len();
     }
     let (enabled, boolean_span) = setting.ok_or_else(invalid_config)?;
-    let revision = Some(format!("{:x}", Sha256::digest(&bytes)));
+    let revision = Some(sha256_hex(&bytes));
     Ok(Config { bytes: Some(bytes), boolean_span: Some(boolean_span), enabled, revision })
 }
 

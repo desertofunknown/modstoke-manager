@@ -1,7 +1,7 @@
+use crate::hashing::sha256_hex;
 use crate::{client_admission, installation_profiles, mod_update};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::ser::{CharEscape, Formatter, PrettyFormatter};
-use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
@@ -231,10 +231,6 @@ fn require_installation(executable: &str, installation_id: &str) -> Result<Strin
     inspected.root.ok_or_else(|| "The installation has no resolved folder.".into())
 }
 
-fn hash(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
-}
-
 // Short-lived and matched immediately, so the large Parsed variant isn't boxed.
 #[allow(clippy::large_enum_variant)]
 enum Stored {
@@ -250,7 +246,7 @@ fn read_policy(folder: &Path) -> Stored {
         Ok(None) => return Stored::Missing,
         Err(problem) => return Stored::Unreadable(problem),
     };
-    let revision = hash(&bytes);
+    let revision = sha256_hex(&bytes);
     let body = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&bytes);
     // Look at the format first, so a newer file gets a version message rather than a field error.
     let header: serde_json::Value = match serde_json::from_slice(body) {
@@ -701,7 +697,7 @@ fn lock(folder: &Path) -> Result<File, String> {
 fn require_revision(folder: &Path, expected: &str) -> Result<Vec<u8>, String> {
     let bytes = client_admission::read_bounded(folder, Path::new(POLICY_FILE), MAX_POLICY_BYTES)?
         .ok_or("permissions.json was removed after it was read. Read it again before saving.")?;
-    if hash(&bytes) != expected {
+    if sha256_hex(&bytes) != expected {
         return Err("permissions.json changed after it was read, in F7, by Admin or in another editor. Read it again before saving; nothing was written.".into());
     }
     Ok(bytes)
@@ -787,7 +783,7 @@ fn write_policy(backups: &Path, executable: &str, installation_id: &str, expecte
             }
         }
     }
-    let revision = hash(&bytes);
+    let revision = sha256_hex(&bytes);
     Ok(PermissionsSave {
         changed: true, revision, backup_path: Some(backup_path.to_string_lossy().into_owned()),
         state: snapshot(Path::new(&root), installation_id),

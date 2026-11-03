@@ -5,6 +5,7 @@ mod admin_permissions;
 mod client_admission;
 mod downloads;
 mod game_skin;
+mod hashing;
 mod installation_profiles;
 mod loader_console;
 mod loader_package;

@@ -1,6 +1,6 @@
+use crate::hashing::{is_sha256_hex, sha256_hex};
 use crate::mod_update;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -136,16 +136,10 @@ pub struct ProfileState {
     revision: Option<String>,
 }
 
-fn hash(bytes: &[u8]) -> String { format!("{:x}", Sha256::digest(bytes)) }
-
 fn key(value: &str) -> String { value.replace('\\', "/").to_lowercase() }
 
 fn valid_text(value: &str) -> bool {
     !value.trim().is_empty() && value.len() <= 2048 && !value.chars().any(char::is_control)
-}
-
-fn valid_hash(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn invalid_profile() -> String {
@@ -199,7 +193,7 @@ fn validate_package(pkg: &ProfilePackage) -> Result<(), String> {
         || pkg.dependencies.len() > 64
         || !["catalog-current-identities", native_local::DEPENDENCY_BASIS].contains(&pkg.dependency_basis.as_str())
         || pkg.dependencies.iter().any(|value| !valid_text(value))
-        || pkg.archive_sha256.as_deref().is_some_and(|value| !valid_hash(value)) {
+        || pkg.archive_sha256.as_deref().is_some_and(|value| !is_sha256_hex(value)) {
         return Err(invalid_profile());
     }
     native_local::validate_package_record(pkg)?;
@@ -238,7 +232,7 @@ fn validate_profile(root: &Path, profile: &ModProfile) -> Result<(), String> {
     let mut archives = HashSet::new();
     let mut observed_versions = HashMap::new();
     for pin in &profile.archives {
-        if !valid_text(&pin.id) || !valid_text(&pin.version) || !valid_text(&pin.url) || !valid_hash(&pin.sha256)
+        if !valid_text(&pin.id) || !valid_text(&pin.version) || !valid_text(&pin.url) || !is_sha256_hex(&pin.sha256)
             || !archives.insert((key(&pin.id), &pin.version, &pin.url))
             || observed_versions.insert((key(&pin.id), &pin.version), &pin.sha256).is_some_and(|known| known != &pin.sha256) {
             return Err(invalid_profile());
@@ -299,8 +293,8 @@ fn validate_profile(root: &Path, profile: &ModProfile) -> Result<(), String> {
                 for target in targets {
                     mod_update::validate_mod_path(&target.relative_path)?;
                     if !seen.insert(key(&target.relative_path.to_string_lossy()))
-                        || target.original_sha256.as_deref().is_some_and(|value| !valid_hash(value))
-                        || target.replacement_sha256.as_deref().is_some_and(|value| !valid_hash(value)) {
+                        || target.original_sha256.as_deref().is_some_and(|value| !is_sha256_hex(value))
+                        || target.replacement_sha256.as_deref().is_some_and(|value| !is_sha256_hex(value)) {
                         return Err(invalid_profile());
                     }
                 }
@@ -328,7 +322,7 @@ fn read_locked(root: &Path) -> Result<ProfileState, String> {
     }
     let profile: ModProfile = serde_json::from_value(json).map_err(|_| invalid_profile())?;
     validate_profile(root, &profile)?;
-    Ok(ProfileState { profile: Some(profile), revision: Some(hash(&bytes)) })
+    Ok(ProfileState { profile: Some(profile), revision: Some(sha256_hex(&bytes)) })
 }
 
 fn encode_profile(root: &Path, profile: &ModProfile) -> Result<Vec<u8>, String> {
@@ -348,7 +342,7 @@ fn write_locked(root: &Path, profile: &ModProfile) -> Result<ProfileState, Strin
     temporary.write_all(&bytes).and_then(|_| temporary.as_file().sync_all()).map_err(|error| error.to_string())?;
     let temporary = temporary.into_temp_path();
     mod_update::durable_rename(&temporary, &root.join(PROFILE_FILE), replace)?;
-    Ok(ProfileState { profile: Some(profile.clone()), revision: Some(hash(&bytes)) })
+    Ok(ProfileState { profile: Some(profile.clone()), revision: Some(sha256_hex(&bytes)) })
 }
 
 fn complete_package(profile: &mut ModProfile, index: usize) {
@@ -506,7 +500,7 @@ fn validate_previous(root: &Path, before: &InstallObservation) -> Result<mod_upd
 fn validate_observed_files(root: &Path, expected_files: &[ExpectedFile]) -> Result<(), String> {
     if expected_files.len() > 4096 { return Err("Too many inventory observations for this plan.".into()); }
     for expected in expected_files {
-        if expected.sha256.as_deref().is_some_and(|value| !valid_hash(value)) { return Err(invalid_profile()); }
+        if expected.sha256.as_deref().is_some_and(|value| !is_sha256_hex(value)) { return Err(invalid_profile()); }
         let path = relative(root, &expected.path)?;
         if mod_update::target_hash(root, &path)? != expected.sha256 {
             return Err(format!("{} changed before package commit. The pending plan was preserved; refresh before retrying.", path.display()));
@@ -543,7 +537,7 @@ fn validate_staged_identity(staging: &Path, pkg: &ProfilePackage) -> Result<(Pat
                         return Err(format!("The archive for {} does not contain its pinned version {} in a supported Mods/Libs inventory location.", pkg.id, pkg.version));
                     }
                     matching += 1;
-                    identity_manifest = Some((relative.to_owned(), hash(&bytes)));
+                    identity_manifest = Some((relative.to_owned(), sha256_hex(&bytes)));
                 }
             }
         }

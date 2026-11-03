@@ -1,6 +1,6 @@
+use crate::hashing::sha256_hex;
 use crate::mod_update;
 use serde::{Deserialize, Deserializer, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
@@ -72,10 +72,6 @@ fn empty_registry() -> Registry {
     }
 }
 
-fn hash(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
-}
-
 fn path_key(value: &str) -> String {
     value
         .replace('\\', "/")
@@ -84,7 +80,7 @@ fn path_key(value: &str) -> String {
 }
 
 fn root_id(root: &str) -> String {
-    hash(path_key(root).as_bytes())
+    sha256_hex(path_key(root).as_bytes())
 }
 
 fn ordinary_path(path: &Path) -> Result<String, String> {
@@ -266,7 +262,7 @@ fn read_registry(folder: &Path) -> Result<(Registry, Option<String>), String> {
     }
     let registry: Registry = serde_json::from_slice(&bytes).map_err(invalid_registry)?;
     validate_registry(&registry)?;
-    Ok((registry, Some(hash(&bytes))))
+    Ok((registry, Some(sha256_hex(&bytes))))
 }
 
 fn state(registry: Registry, revision: Option<String>) -> RegistryState {
@@ -455,7 +451,7 @@ fn write_registry(folder: &Path, expected_revision: Option<String>, registry: Re
             }
         }
     }
-    let result = state(registry, Some(hash(&bytes)));
+    let result = state(registry, Some(sha256_hex(&bytes)));
     if result.registry.selected_id != previous.selected_id {
         if let Some(selected) = &result.selected {
             if !selected.available {

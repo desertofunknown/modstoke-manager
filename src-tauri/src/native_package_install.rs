@@ -340,7 +340,7 @@ pub(super) fn prepare_many(
         {
             return Err(format!("Native package {} changed or resolves an unexpected assembly. Refresh before installing.", entry.id));
         }
-        observed.push((path, hash(&bytes)));
+        observed.push((path, sha256_hex(&bytes)));
         observed.push((
             assembly_path.clone(),
             mod_update::target_hash(root, &assembly_path)?

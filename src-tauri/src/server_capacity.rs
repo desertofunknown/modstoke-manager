@@ -1,6 +1,6 @@
+use crate::hashing::sha256_hex;
 use crate::{mod_update, server_launch, server_native_config, server_world};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -71,7 +71,7 @@ fn require_exact_file(directory: &Path, name: &Path, expected: &NativeConfig) ->
     file.take((MAX_CONFIG_BYTES + 1) as u64).read_to_end(&mut bytes)
         .map_err(|error| format!("Could not read a configuration or backup file: {error}"))?;
     if bytes != expected.original_bytes()
-        || format!("{:x}", Sha256::digest(&bytes)) != expected.revision {
+        || sha256_hex(&bytes) != expected.revision {
         return Err("A configuration or backup file changed or does not match its expected original bytes. Read server settings before trying again.".into());
     }
     Ok(())

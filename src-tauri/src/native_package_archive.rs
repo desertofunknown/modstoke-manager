@@ -1,3 +1,4 @@
+use crate::hashing::is_sha256_hex;
 use crate::mod_update;
 use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -340,11 +341,7 @@ pub(super) fn validate_record(record: &NativeArchive) -> Result<(), String> {
 }
 
 pub(super) fn validate_hash(value: &str) -> Result<(), String> {
-    if value.len() != 64
-        || !value
-            .bytes()
-            .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
-    {
+    if !is_sha256_hex(value) {
         return Err("Native archive hashes must be 64 lowercase hexadecimal characters.".into());
     }
     Ok(())

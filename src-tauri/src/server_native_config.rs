@@ -1,9 +1,9 @@
+use crate::hashing::sha256_hex;
 use crate::mod_update;
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
@@ -218,7 +218,7 @@ pub(crate) fn parse(bytes: Vec<u8>) -> Result<NativeConfig, String> {
 
     Ok(NativeConfig {
         // Hash the original bytes, including any BOM and formatting.
-        revision: format!("{:x}", Sha256::digest(&bytes)),
+        revision: sha256_hex(&bytes),
         summary: ConfigSummary {
             server_name: server_name.to_owned(),
             save_mode: save_mode.to_owned(),

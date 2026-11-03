@@ -1,7 +1,7 @@
-use sha2::{Digest, Sha256};
+use crate::hashing::sha256_reader;
 use std::ffi::OsStr;
 use std::path::{Component, Path, Prefix};
-use std::{error::Error, fs::File, io::Read, ptr::null_mut};
+use std::{error::Error, fs::File, ptr::null_mut};
 use windows::{
     core::{self, PCWSTR},
     Win32::{
@@ -42,20 +42,8 @@ pub fn get_file_version(path: String) -> Result<String, String> {
 
 #[tauri::command(async)]
 pub fn sha256_file(path: String) -> Result<String, String> {
-    let mut file = File::open(path).map_err(|e| e.to_string())?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 1024 * 64];
-
-    loop {
-        let read = file.read(&mut buffer).map_err(|e| e.to_string())?;
-        if read == 0 {
-            break;
-        }
-
-        hasher.update(&buffer[..read]);
-    }
-
-    Ok(format!("{:x}", hasher.finalize()))
+    let file = File::open(path).map_err(|e| e.to_string())?;
+    sha256_reader(file).map_err(|e| e.to_string())
 }
 
 fn get_file_description(path: impl AsRef<Path>) -> Result<String, Box<dyn Error>> {

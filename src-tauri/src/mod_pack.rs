@@ -1,6 +1,6 @@
+use crate::hashing::{is_sha256_hex, sha256_hex, sha256_reader};
 use crate::mod_update::{self, UpdateTarget};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Write};
@@ -153,8 +153,8 @@ pub(crate) fn validate_receipt(
         if key.split('/').any(|part| part.is_empty() || matches!(part, "." | ".."))
             || !paths.insert(key)
             || target.original_sha256.is_none() && target.replacement_sha256.is_none()
-            || target.original_sha256.as_deref().is_some_and(|hash| !valid_sha256(hash))
-            || target.replacement_sha256.as_deref().is_some_and(|hash| !valid_sha256(hash))
+            || target.original_sha256.as_deref().is_some_and(|hash| !is_sha256_hex(hash))
+            || target.replacement_sha256.as_deref().is_some_and(|hash| !is_sha256_hex(hash))
             || target.backup_path.as_deref().map(Path::as_os_str)
                 != expected_backup.as_deref().map(Path::as_os_str)
         {
@@ -329,7 +329,7 @@ fn retain_slot_receipt(
     }
     let receipt = SlotReceipt {
         version: 1,
-        root_sha256: root_identity(root),
+        root_sha256: mod_update::root_identity(root),
         workspace_name: workspace_name.to_owned(),
         slot,
         package: package.clone(),
@@ -396,23 +396,19 @@ fn read_slot_receipt(
     if receipt.version != 1
         || receipt.slot != slot
         || receipt.workspace_name != workspace_name
-        || receipt.root_sha256 != root_identity(root)
+        || receipt.root_sha256 != mod_update::root_identity(root)
     {
         return Err(format!("The retained pack receipt at {} has an invalid identity.", path.display()));
     }
     validate_receipt(workspace_name, slot, &receipt.package)?;
     Ok(Some(StoredReceipt {
         receipt,
-        sha256: format!("{:x}", Sha256::digest(&bytes)),
+        sha256: sha256_hex(&bytes),
     }))
 }
 
 fn receipt_path(slot: usize) -> PathBuf {
     PathBuf::from(format!("receipt-{slot}.json"))
-}
-
-fn root_identity(root: &Path) -> String {
-    format!("{:x}", Sha256::digest(path_key(root).as_bytes()))
 }
 
 fn validate_workspace_name(name: &str) -> Result<(), String> {
@@ -474,26 +470,15 @@ fn path_key(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/").to_lowercase()
 }
 
-fn valid_sha256(hash: &str) -> bool {
-    hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
 fn target_hash(root: &Path, relative: &Path) -> Result<Option<String>, String> {
     if !mod_update::validate_target(root, relative)? {
         return Ok(None);
     }
     let path = root.join(relative);
-    let mut file = open_single_file(&path)?;
-    let mut hash = Sha256::new();
-    let mut buffer = [0u8; 65536];
-    loop {
-        let length = file.read(&mut buffer).map_err(|error| format!("Could not read {}: {error}", path.display()))?;
-        if length == 0 {
-            break;
-        }
-        hash.update(&buffer[..length]);
-    }
-    Ok(Some(format!("{:x}", hash.finalize())))
+    let file = open_single_file(&path)?;
+    sha256_reader(file)
+        .map(Some)
+        .map_err(|error| format!("Could not read {}: {error}", path.display()))
 }
 
 fn open_single_file(path: &Path) -> Result<File, String> {

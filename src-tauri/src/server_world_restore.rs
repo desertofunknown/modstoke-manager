@@ -1,3 +1,4 @@
+use crate::hashing::is_sha256_hex;
 use crate::{mod_update, server_launch, server_world};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -38,9 +39,9 @@ pub(crate) fn read_pending(store: &Path) -> Result<Option<Pending>, String> {
     if record.schema_version != 1 || !server_world::valid_id(&record.transaction_id)
         || !server_world::valid_id(&record.before_backup_id) || !server_world::valid_id(&record.after_backup_id)
         || record.before_backup_id == record.after_backup_id
-        || !server_world::valid_hash(&record.installation_id)
-        || !server_world::valid_hash(&record.before_backup_revision) || !server_world::valid_hash(&record.after_backup_revision)
-        || !server_world::valid_hash(&record.before_world_revision) || !server_world::valid_hash(&record.after_world_revision)
+        || !is_sha256_hex(&record.installation_id)
+        || !is_sha256_hex(&record.before_backup_revision) || !is_sha256_hex(&record.after_backup_revision)
+        || !is_sha256_hex(&record.before_world_revision) || !is_sha256_hex(&record.after_world_revision)
         || record.before_world_revision == record.after_world_revision {
         return Err("The pending save-restore journal is invalid or unsupported. All folders were preserved and server launch remains blocked.".into());
     }

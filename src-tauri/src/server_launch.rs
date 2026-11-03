@@ -1,6 +1,6 @@
+use crate::hashing::sha256_hex;
 use crate::{installation_profiles, mod_profile, mod_update, server_native_config, server_process};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -139,7 +139,7 @@ fn read_settings(folder: &Path, installation_id: &str, executable: &str) -> Resu
         return Err("Server launch settings do not match this installation or use an unsupported schema. The saved file was preserved.".into());
     }
     validate_path(&settings.data_directory)?;
-    Ok((Some(settings), Some(format!("{:x}", Sha256::digest(&bytes)))))
+    Ok((Some(settings), Some(sha256_hex(&bytes))))
 }
 
 fn create_settings_folder(folder: &Path) -> Result<(), String> {
@@ -409,7 +409,7 @@ pub async fn write_server_launch(app: tauri::AppHandle, executable: String, inst
         let exists = mod_update::validate_target(&folder, Path::new(&filename))?;
         mod_update::durable_rename(&temporary, &folder.join(filename), exists)?;
         let observed = snapshot(&folder, &root, &executable, &installation_id)?;
-        if observed.revision.as_deref() != Some(format!("{:x}", Sha256::digest(&bytes)).as_str()) {
+        if observed.revision.as_deref() != Some(sha256_hex(&bytes).as_str()) {
             return Err("Server launch settings changed after saving. Read their current values before continuing.".into());
         }
         Ok(observed)
