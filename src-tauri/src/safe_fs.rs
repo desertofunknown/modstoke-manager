@@ -68,7 +68,7 @@ pub(crate) fn exclusive_lock_options() -> OpenOptions {
 }
 
 pub(crate) fn validate_directory(path: &Path) -> Result<(), String> {
-    // Include the root's ancestry, not just the paths supplied by the archive.
+    // Include the root's ancestry, not just the relative part a caller checked.
     for ancestor in path.ancestors() {
         if ancestor.as_os_str().is_empty() {
             continue;
@@ -216,8 +216,8 @@ pub(crate) fn move_durably(source: &Path, destination: &Path, replace: bool) -> 
         } else {
             MOVEFILE_WRITE_THROUGH
         };
-        // Both paths are on the selected volume. Write-through makes publication
-        // of the manifest, intents and completion marker precede later mutations.
+        // Both paths are on the same volume. Write-through makes a published file
+        // durable before anything that depends on it changes.
         if unsafe { MoveFileExW(PCWSTR(from.as_ptr()), PCWSTR(to.as_ptr()), flags) }.as_bool() {
             Ok(())
         } else {

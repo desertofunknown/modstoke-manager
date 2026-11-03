@@ -1731,7 +1731,7 @@ function normalizedNexusImageOpeningTag(rawAttrs: string): string {
 
 function nexusSafeBbAttribute(name: string, value?: string): string {
     const cleaned = value?.trim();
-    return cleaned ? `${name}="${escapeAttribute(cleaned)}"` : "";
+    return cleaned ? `${name}="${escapeHtml(cleaned)}"` : "";
 }
 
 function nexusBbTagAttribute(tag: string, rawAttrs?: string): string | undefined {
@@ -2119,8 +2119,8 @@ function nexusHtmlImageAttributes(attrs: string): string {
         alignment ? ` align="${alignment}"` : "",
         width ? ` width="${width}"` : "",
         height ? ` height="${height}"` : "",
-        alt ? ` alt="${escapeAttribute(alt)}"` : "",
-        title ? ` title="${escapeAttribute(title)}"` : ""
+        alt ? ` alt="${escapeHtml(alt)}"` : "",
+        title ? ` title="${escapeHtml(title)}"` : ""
     ].join("");
 }
 

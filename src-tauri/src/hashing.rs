@@ -1,8 +1,7 @@
 use sha2::{Digest, Sha256};
 use std::io::{self, Read};
 
-// Revisions, receipts and file records are stored and compared as lowercase hex, so every digest goes
-// through here.
+// Revisions, receipts and file records are stored and compared as lowercase hex.
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
