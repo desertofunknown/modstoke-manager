@@ -31,6 +31,7 @@
         NEXUS_CACHE_TTL_MINUTES,
         onNexusSignedOut,
         onNexusSignInFinished,
+        onNexusSignInReceived,
         onNexusSignInStale,
         pickRecommendedNexusFile,
         reloadNexusSessionAfterSignIn,
@@ -183,9 +184,13 @@
     let signInLinkCopied = false;
     let signInCode = "";
     let signInCodeBusy = false;
+    // The attempt the page is waiting for, and whether the Manager already has its code.
+    let signInAttempt = 0;
+    let signInFinishing = false;
     let stopSignInListener: (() => void) | null = null;
     let stopSignedOutListener: (() => void) | null = null;
     let stopSignInStaleListener: (() => void) | null = null;
+    let stopSignInReceivedListener: (() => void) | null = null;
     let mods: NexusMod[] = [];
     let knownNexusDetails: Record<number, NexusMod> = {};
     let knownNexusPreviewUrls: Record<number, string[]> = {};
@@ -776,17 +781,20 @@
             lastAppliedSharedSearchVersion = sharedSearchVersion;
         }
         isMounted = true;
-        const stopSignIn = await onNexusSignInFinished(error => void finishNexusSignIn(error));
+        const stopSignIn = await onNexusSignInFinished((error, attempt) => void finishNexusSignIn(error, attempt));
+        const stopSignInReceived = await onNexusSignInReceived(noteSignInReceived);
         const stopSignedOut = await onNexusSignedOut(handleNexusSignedOut);
         const stopSignInStale = await onNexusSignInStale(noteStaleSignIn);
         if (isDestroyed) {
             stopSignIn();
             stopSignedOut();
             stopSignInStale();
+            stopSignInReceived();
         } else {
             stopSignInListener = stopSignIn;
             stopSignedOutListener = stopSignedOut;
             stopSignInStaleListener = stopSignInStale;
+            stopSignInReceivedListener = stopSignInReceived;
         }
         await refreshInventory();
         if (isDestroyed) return;
@@ -804,6 +812,7 @@
         stopSignInListener?.();
         stopSignedOutListener?.();
         stopSignInStaleListener?.();
+        stopSignInReceivedListener?.();
         cleanupManualRefreshCooldown();
         clearNxmCopyFeedback();
         cleanupNexusLayoutObserver();
@@ -1198,10 +1207,13 @@
         signInPending = true;
         signInLink = "";
         signInCode = "";
+        signInFinishing = false;
         status = "Approve Modstoke on Nexus Mods, then select Continue and let your browser open the Manager.";
         try {
             const started = await beginNexusSignIn();
-            if (!isDestroyed && !started.opened) signInLink = started.url;
+            if (isDestroyed) return;
+            signInAttempt = started.attempt;
+            if (!started.opened) signInLink = started.url;
         } catch (error) {
             if (isDestroyed) return;
             cancelSignIn();
@@ -1212,6 +1224,7 @@
     // The Manager keeps the sign-in open for ten minutes; this only stops the page waiting for it.
     function cancelSignIn() {
         signInPending = false;
+        signInFinishing = false;
         signInLink = "";
         signInCode = "";
         isLoading = false;
@@ -1224,9 +1237,7 @@
         signInCodeBusy = true;
         try {
             await finishNexusSignInWithCode(pasted);
-            if (isDestroyed) return;
-            signInCode = "";
-            status = "Finishing the Nexus Mods sign-in...";
+            if (!isDestroyed) signInCode = "";
         } catch (error) {
             if (!isDestroyed) await dialog.message(`${error}`, { title: "Nexus sign-in", kind: "warning" });
         } finally {
@@ -1234,8 +1245,21 @@
         }
     }
 
+    function clearSignInWait() {
+        signInPending = false;
+        signInFinishing = false;
+        signInLink = "";
+        signInCode = "";
+    }
+
+    function noteSignInReceived(attempt: number) {
+        if (isDestroyed || !signInPending || attempt !== signInAttempt) return;
+        signInFinishing = true;
+        status = "Finishing the Nexus Mods sign-in...";
+    }
+
     function noteStaleSignIn() {
-        if (isDestroyed || !signInPending) return;
+        if (isDestroyed || !signInPending || signInFinishing) return;
         status = "Nexus Mods sent back an earlier sign-in. Approve on the Nexus Mods page that opened last, or start again.";
     }
 
@@ -1258,21 +1282,22 @@
         session = { is_connected: false, error: "Nexus Mods ended the sign-in. Sign in again to keep using your account." };
     }
 
-    async function finishNexusSignIn(error: string | null) {
+    async function finishNexusSignIn(error: string | null, attempt: number) {
         if (isDestroyed) return;
-        const wasWaiting = signInPending;
-        signInPending = false;
-        signInLink = "";
-        signInCode = "";
+        const wasWaiting = signInPending && attempt === signInAttempt;
         if (error) {
-            // A sign-in the page stopped waiting for must not end whatever it is doing now.
+            // An earlier attempt failing must not end the one the page waits for now.
+            if (signInPending && !wasWaiting) return;
             if (wasWaiting) {
+                clearSignInWait();
                 isLoading = false;
                 status = "";
             }
             await dialog.message(error, { title: "Nexus sign-in", kind: "error" });
             return;
         }
+        // Any attempt that succeeds signs the player in, so the page stops waiting either way.
+        clearSignInWait();
 
         isLoading = true;
         status = "Checking your Nexus Mods account...";
@@ -4846,7 +4871,7 @@
                         <button on:click={copySignInLink}>{signInLinkCopied ? "Copied" : "Copy link"}</button>
                     </div>
                 {/if}
-                {#if signInPending}
+                {#if signInPending && !signInFinishing}
                     <span class="manual-warning">Browser didn't open the Manager? On the Nexus Mods page, select Having issues?, copy the code and paste it here.</span>
                     <div class="connect-row manual-row">
                         <input class="generic-input key-input" bind:value={signInCode} placeholder="Code from Nexus Mods" aria-label="Code from Nexus Mods" autocomplete="off" spellcheck="false" on:keydown={(event) => { if (event.key === "Enter") void submitSignInCode(); }} />

@@ -29,6 +29,7 @@ const SIGN_IN_WINDOW: Duration = Duration::from_secs(10 * 60);
 const EXPIRY_MARGIN: Duration = Duration::from_secs(60);
 
 struct PendingSignIn {
+    attempt: u64,
     state: String,
     verifier: String,
     started: Instant,
@@ -64,18 +65,28 @@ enum TokenFailure {
 
 #[derive(Serialize)]
 pub struct SignInStarted {
+    attempt: u64,
     url: String,
     opened: bool,
 }
 
+// Events carry the attempt they belong to, so the page can tell an earlier attempt's result apart
+// from the one it is waiting for.
 #[derive(Clone, Serialize)]
 struct SignInFinished {
+    attempt: u64,
     error: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+struct SignInReceived {
+    attempt: u64,
 }
 
 static PENDING: Mutex<Option<PendingSignIn>> = Mutex::new(None);
 // Counts sign-outs, so a sign-in that finishes after one is thrown away.
 static SIGN_OUTS: AtomicU64 = AtomicU64::new(0);
+static ATTEMPTS: AtomicU64 = AtomicU64::new(0);
 static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
 
 // One lock covers the session and the saved refresh token, for sign-in, refresh and sign-out alike.
@@ -111,14 +122,16 @@ pub fn nexus_begin_sign_in() -> Result<SignInStarted, String> {
         ],
     )
     .map_err(|error| error.to_string())?;
+    let attempt = ATTEMPTS.fetch_add(1, Ordering::SeqCst) + 1;
     *PENDING.lock().map_err(|_| busy())? = Some(PendingSignIn {
+        attempt,
         state,
         verifier,
         started: Instant::now(),
         sign_outs: SIGN_OUTS.load(Ordering::SeqCst),
     });
     let opened = crate::system::shell_execute("open", std::ffi::OsStr::new(url.as_str())).is_ok();
-    Ok(SignInStarted { url: url.into(), opened })
+    Ok(SignInStarted { attempt, url: url.into(), opened })
 }
 
 // Picks the sign-in callback out of a second launch's arguments and finishes the sign-in in the
@@ -146,16 +159,25 @@ pub fn nexus_finish_sign_in(app: tauri::AppHandle, pasted: String) -> Result<(),
     let query = pasted_query(pasted.trim()).ok_or(
         "That isn't the code from the Nexus Mods page. Select Having issues? there, use its copy button, then paste here.",
     )?;
-    let pending = take_pending(&query)
-        .ok_or("That code is from an earlier sign-in. Use the Nexus Mods page that opened last, or start the sign-in again.")?;
+    let Some(pending) = take_pending(&query) else {
+        return Err(if waiting() {
+            "That code is from an earlier sign-in. Use the Nexus Mods page that opened last, or start the sign-in again."
+        } else {
+            "No sign-in is waiting for that code. If you just selected Continue, the Manager is already finishing it."
+        }
+        .into());
+    };
     finish_in_background(app, pending, query);
     Ok(())
 }
 
+// The page hears first that the attempt is being finished, then how it ended.
 fn finish_in_background(app: tauri::AppHandle, pending: PendingSignIn, query: HashMap<String, String>) {
+    let attempt = pending.attempt;
+    let _ = app.emit("nexus-sign-in-received", SignInReceived { attempt });
     tauri::async_runtime::spawn(async move {
         let error = complete_sign_in(pending, &query).await.err();
-        let _ = app.emit("nexus-sign-in", SignInFinished { error });
+        let _ = app.emit("nexus-sign-in", SignInFinished { attempt, error });
     });
 }
 
