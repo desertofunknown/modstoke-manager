@@ -34,7 +34,12 @@ pub(super) fn same<T: Serialize>(left: &T, right: &T) -> Result<bool, String> {
 }
 
 pub(super) fn require_stopped() -> Result<(), String> {
-    if crate::client_admission::game_process_running()? {
+    let running = crate::server_process::any_running(
+        &["SonsOfTheForest.exe", "SonsOfTheForestDS.exe"],
+        "Sons of the Forest",
+        "Native packages cannot be changed until process status is known.",
+    )?;
+    if running {
         return Err(
             "Close Sons of the Forest and its dedicated server before changing native packages."
                 .into(),
