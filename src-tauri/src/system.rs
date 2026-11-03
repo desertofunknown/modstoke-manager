@@ -1,16 +1,10 @@
 use crate::hashing::sha256_reader;
 use std::ffi::OsStr;
 use std::path::{Component, Path, Prefix};
-use std::{error::Error, fs::File, ptr::null_mut};
+use std::fs::File;
 use windows::{
-    core::{self, PCWSTR},
-    Win32::{
-        Foundation::HWND,
-        Storage::FileSystem::{
-            GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW, VS_FIXEDFILEINFO,
-        },
-        UI::Shell::ShellExecuteW,
-    },
+    core::PCWSTR,
+    Win32::{Foundation::HWND, UI::Shell::ShellExecuteW},
 };
 use winreg::{enums::*, RegKey};
 
@@ -35,65 +29,9 @@ fn is_dotnet_major_installed(version_prefix: &str) -> Result<bool, String> {
 }
 
 #[tauri::command(async)]
-pub fn get_file_version(path: String) -> Result<String, String> {
-    let desc = get_file_description(path).map_err(|e| e.to_string())?;
-    Ok(desc)
-}
-
-#[tauri::command(async)]
 pub fn sha256_file(path: String) -> Result<String, String> {
     let file = File::open(path).map_err(|e| e.to_string())?;
     sha256_reader(file).map_err(|e| e.to_string())
-}
-
-fn get_file_description(path: impl AsRef<Path>) -> Result<String, Box<dyn Error>> {
-    let size = unsafe { GetFileVersionInfoSizeW(path.as_ref().as_os_str(), null_mut()) };
-    if size == 0 {
-        return Err(core::Error::from_win32().into());
-    }
-
-    let mut buffer = vec![0u8; size as usize];
-    unsafe {
-        GetFileVersionInfoW(
-            path.as_ref().as_os_str(),
-            0,
-            size,
-            buffer.as_mut_ptr() as *mut std::ffi::c_void,
-        )
-    }
-    .ok()?;
-
-    let mut ptr = null_mut();
-    let mut len = 0;
-    let success = unsafe {
-        VerQueryValueW(
-            buffer.as_ptr() as *const std::ffi::c_void,
-            "\\",
-            &mut ptr,
-            &mut len,
-        )
-    }
-    .as_bool();
-
-    if !success {
-        return Err("Failed to query file description".into());
-    }
-
-    let info = ptr as *const VS_FIXEDFILEINFO;
-    unsafe {
-        if (*info).dwSignature != 0xfeef04bd {
-            return Err("Invalid fixed file info signature".into());
-        }
-
-        let description = *info;
-
-        Ok(format!(
-            "{}.{}.{}",
-            description.dwFileVersionMS >> 16,
-            description.dwFileVersionMS & 0xffff,
-            description.dwFileVersionLS >> 16,
-        ))
-    }
 }
 
 // Call this from a plain (not async) command. Those run on the main thread, where COM is already set up

@@ -145,7 +145,6 @@ fn main() {
             loader_package::inspect_openacai_loader_zip,
             steam::get_steam_path,
             system::is_dotnet11_installed,
-            system::get_file_version,
             nexus::nexus_save_api_key,
             nexus::nexus_get_session,
             nexus::nexus_clear_api_key,

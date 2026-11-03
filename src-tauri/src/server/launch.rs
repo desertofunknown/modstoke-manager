@@ -212,7 +212,12 @@ impl ServerWorldAccess {
 }
 
 fn require_world_stopped() -> Result<(), String> {
-    if crate::client_admission::game_process_running()? {
+    let running = crate::server::process::any_running(
+        &["SonsOfTheForest.exe", "SonsOfTheForestDS.exe"],
+        "Sons of the Forest",
+        "Server settings and world backups cannot be changed until process status is known.",
+    )?;
+    if running {
         return Err("Close Sons of the Forest and its dedicated server before changing server settings or accessing world backups and recovery.".into());
     }
     Ok(())

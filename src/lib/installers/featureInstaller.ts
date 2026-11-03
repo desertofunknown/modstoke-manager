@@ -1,12 +1,10 @@
 import type { BaseInstaller } from "./baseInstaller";
-import { getDirectoryPath, processName } from "../store";
+import { gameExePath, getDirectoryPath, processName } from "../store";
 import { BaseUninstaller } from "./baseUninstaller";
 import { get } from "svelte/store";
 import { GithubInstaller } from "./githubInstaller";
 import { unityExplorerInfo } from "./githubInfo";
-import { invoke } from "@tauri-apps/api/core";
 import * as path from "@tauri-apps/api/path";
-import { gameExePath } from "../store";
 import semver from "semver";
 import { OpenAcaiLoaderInstaller } from "./openAcaiLoaderUpdater";
 import * as fs from "@tauri-apps/plugin-fs"
@@ -191,21 +189,15 @@ export class FeatureInstaller {
             return null;
         }
 
+        // The only version file left is the Loader's JSON manifest.
         try {
-            const exeDir = gameRoot ?? await getDirectoryPath();
-            if (this._versionCheckPath.toLowerCase().endsWith(".json")) {
-                const manifestPath = await path.join(exeDir, this._versionCheckPath);
-                if (!await fs.exists(manifestPath)) {
-                    return null;
-                }
-
-                const manifest = JSON.parse(await fs.readTextFile(manifestPath));
-                return typeof manifest.version === "string" ? manifest.version : null;
+            const manifestPath = await path.join(gameRoot ?? await getDirectoryPath(), this._versionCheckPath);
+            if (!await fs.exists(manifestPath)) {
+                return null;
             }
 
-            return await invoke("get_file_version", {
-                path: exeDir + "\\" + this._versionCheckPath
-            });
+            const manifest = JSON.parse(await fs.readTextFile(manifestPath));
+            return typeof manifest.version === "string" ? manifest.version : null;
         } catch (error) {
             console.warn("Could not read the installed version", error);
         }
