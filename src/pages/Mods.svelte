@@ -1078,17 +1078,24 @@
         {/if}
 
         <div class="scroller" class:grid={isGrid} bind:this={catalogScroller}>
-            <!-- One malformed listing must not take the rest of the catalog with it. -->
-            <svelte:boundary onerror={(error) => console.warn("A catalog card failed to render", error)}>
-                {#each visibleMods as mod (mod.mod_id ?? mod.slug ?? mod.name)}
-                    <ModCard
-                        mod={mod}
-                        actionsDisabled={!inventoryReady}
-                        sortMetricLabel={activeSortMetricLabel}
-                        sortMetricValue={rowSortMetricValue(mod, selectedSort)}
-                        on:details={(event) => openModDetails(event.detail)}
-                        on:refreshMods={refreshMods}
-                    />
+            <!-- A malformed listing replaces only its own card; the outer boundary catches errors from the
+                 list itself. -->
+            <svelte:boundary onerror={(error) => console.warn("The catalog list failed to render", error)}>
+                {#each visibleMods as mod (modIdentityKey(mod))}
+                    <svelte:boundary onerror={(error) => console.warn("A catalog card failed to render", error)}>
+                        <ModCard
+                            mod={mod}
+                            actionsDisabled={!inventoryReady}
+                            sortMetricLabel={activeSortMetricLabel}
+                            sortMetricValue={rowSortMetricValue(mod, selectedSort)}
+                            on:details={(event) => openModDetails(event.detail)}
+                            on:refreshMods={refreshMods}
+                        />
+
+                        {#snippet failed()}
+                            <div class="catalog-error" role="alert"><span>This mod could not be shown.</span></div>
+                        {/snippet}
+                    </svelte:boundary>
                 {/each}
 
                 {#snippet failed(_error, reset)}

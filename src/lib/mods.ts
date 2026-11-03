@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { gameExePath, getDirectoryPath, isPathValid, processName } from './store';
 import { get } from 'svelte/store';
 import { downloadAndInstall, openWebLink } from './utils';
-import { assertCurrentGameRoot, scanInstalledInventory, type InstallSource, type LoaderType } from './modInventory';
+import { assertCurrentGameRoot, linkedExists, scanInstalledInventory, type InstallSource, type LoaderType } from './modInventory';
 import { resolveInstallPlan, type InstallPlan } from './modInstallPlan';
 import { applyProfilePackage, completedPackage, discardModProfileRollback, freshPlanInventory, mergeRequestedRoots, pinArchive, readModProfile, rollbackModProfile, saveModProfile, type ModProfile, type ProfileState } from './modProfile';
 import * as fs from "@tauri-apps/plugin-fs"
@@ -563,7 +563,7 @@ export class ModDatabase {
                     let enabledAssemblyPath = await path.join(rootPath, folderName + ".dll");
                     let disabledAssemblyPath = await path.join(rootPath, folderName + ".disabled");
 
-                    if(!(await fs.exists(folderPath)))
+                    if(!(await linkedExists(folderPath)))
                     {
                         console.log("folder does not exist for mod", folderName);
                         continue;

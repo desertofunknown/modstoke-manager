@@ -302,7 +302,7 @@
           </span>
         {/if}
       </div>
-      <div class="author-line">by <strong>{mod.user.name}</strong></div>
+      <div class="author-line">by <strong>{mod.user?.name ?? "Unknown author"}</strong></div>
       <p class="description-content header-desc">{cardSummary}</p>
       <div class="meta-row">
         <span class="source-pill source-{mod.installedMod?.installSource ?? 'online'}">{sourceDisplayLabel}</span>

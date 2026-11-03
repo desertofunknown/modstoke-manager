@@ -54,8 +54,22 @@ type FsDirEntry = {
 const MAX_SCAN_DEPTH = 4;
 const BepInExSupportFolders = new Set(["openacailoader", "redloaderbepinexcompat"]);
 
+// The fs scope resolves links before matching, so a file or folder linked in from outside the game
+// folder (Vortex symlink deployment, a developer's build output) is refused rather than reported.
+// A refusal means something is there.
+export async function linkedExists(target: string): Promise<boolean> {
+    try {
+        return await fs.exists(target);
+    } catch (error) {
+        if (String(error).includes("forbidden path")) return true;
+        throw error;
+    }
+}
+
 export async function scanInstalledInventory(root?: string): Promise<InstalledInventoryEntry[]> {
     const gameRoot = root ?? await getDirectoryPath();
+    // A game folder outside the fs scope must fail here, not look like an empty one below.
+    await fs.exists(gameRoot);
     const vortex = await readVortexDeployment(gameRoot);
     const entries: InstalledInventoryEntry[] = [];
 
@@ -287,7 +301,7 @@ async function scanBepInExPlugins(gameRoot: string, vortex: VortexDeployment): P
     const pluginRoot = await path.join(gameRoot, "BepInEx", "plugins");
     const entries: InstalledInventoryEntry[] = [];
 
-    if (!await fs.exists(pluginRoot)) {
+    if (!await linkedExists(pluginRoot)) {
         return entries;
     }
 
@@ -323,7 +337,7 @@ async function scanBepInExPlugins(gameRoot: string, vortex: VortexDeployment): P
 }
 
 async function findManifestFolders(rootPath: string, depth: number = 0): Promise<string[]> {
-    if (depth > MAX_SCAN_DEPTH || !await fs.exists(rootPath)) {
+    if (depth > MAX_SCAN_DEPTH || !await linkedExists(rootPath)) {
         return [];
     }
 
@@ -358,7 +372,7 @@ async function findManifestFolders(rootPath: string, depth: number = 0): Promise
 }
 
 async function findFiles(rootPath: string, predicate: (fileName: string) => boolean, depth: number = 0): Promise<string[]> {
-    if (depth > MAX_SCAN_DEPTH || !await fs.exists(rootPath)) {
+    if (depth > MAX_SCAN_DEPTH || !await linkedExists(rootPath)) {
         return [];
     }
 
@@ -417,11 +431,11 @@ async function findRedLoaderAssembly(packagePath: string): Promise<string | null
     const siblingDll = await path.join(parent, `${packageName}.dll`);
     const siblingDisabled = await path.join(parent, `${packageName}.disabled`);
 
-    if (await fs.exists(siblingDll)) {
+    if (await linkedExists(siblingDll)) {
         return siblingDll;
     }
 
-    if (await fs.exists(siblingDisabled)) {
+    if (await linkedExists(siblingDisabled)) {
         return siblingDisabled;
     }
 
@@ -500,13 +514,13 @@ function findVortexPackage(gameRoot: string, absolutePath: string | null | undef
 }
 
 async function hasVortexMarker(packagePath: string | null | undefined, depth: number = 0): Promise<boolean> {
-    if (!packagePath || depth > 3 || !await fs.exists(packagePath)) {
+    if (!packagePath || depth > 3 || !await linkedExists(packagePath)) {
         return false;
     }
 
     try {
         const markerPath = await path.join(packagePath, "__folder_managed_by_vortex");
-        if (await fs.exists(markerPath)) {
+        if (await linkedExists(markerPath)) {
             return true;
         }
 

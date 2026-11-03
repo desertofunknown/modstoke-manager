@@ -1800,15 +1800,12 @@
         await shell.open("https://www.nexusmods.com/games/sonsoftheforest");
     }
 
-    // Web links open in the browser, Nexus file links go to the registered mod manager, and anything
-    // else has to be a local folder.
+    // Nexus file links go to the registered mod manager; web links open in the browser.
     async function openExternalTarget(target: string) {
-        if (/^https?:\/\//i.test(target)) {
-            await shell.open(target);
-        } else if (target.startsWith("nxm://")) {
+        if (target.startsWith("nxm://")) {
             await invoke("open_nxm_link", { url: target });
         } else {
-            await openFolder(target);
+            await shell.open(target);
         }
     }
 
@@ -1821,7 +1818,11 @@
             return;
         }
 
-        await openExternalTarget(vortexStagingPath);
+        try {
+            await openFolder(vortexStagingPath);
+        } catch (error) {
+            status = `Could not open Vortex staging: ${error}`;
+        }
     }
 
     function showInstalledInventory() {
@@ -2644,9 +2645,16 @@
         return safeNexusUrl(value) ?? undefined;
     }
 
+    // A loose BepInEx plugin's package path is the DLL itself, so open the folder it sits in.
     async function openInventoryLocation(entry: InstalledInventoryEntry) {
-        const target = entry.packagePath ?? (entry.assemblyPath ? await dirname(entry.assemblyPath) : await getDirectoryPath());
-        await openExternalTarget(target);
+        const location = entry.packagePath ?? entry.assemblyPath;
+        try {
+            const target = !location ? await getDirectoryPath()
+                : location === entry.assemblyPath ? await dirname(location) : location;
+            await openFolder(target);
+        } catch (error) {
+            status = `Could not open the folder for ${entry.name}: ${error}`;
+        }
     }
 
     async function openInstalledEntryDetails(entry: InstalledInventoryEntry) {

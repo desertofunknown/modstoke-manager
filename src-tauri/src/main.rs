@@ -28,9 +28,15 @@ mod system;
 
 use tauri::Manager;
 
+// Only archives the Manager downloaded itself go through here; local packages have their own commands.
 #[tauri::command(async)]
-fn unzip_handler(source: String, destination: String) -> Result<(), String> {
-    mod_update::install_zip_archive(source, destination)
+fn unzip_handler(app: tauri::AppHandle, source: String, destination: String) -> Result<(), String> {
+    let archive = std::fs::canonicalize(&source).map_err(|_| "The downloaded archive is unavailable.")?;
+    let downloads = std::fs::canonicalize(downloads::folder(&app)?).map_err(|error| error.to_string())?;
+    if archive.parent() != Some(downloads.as_path()) || !archive.is_file() {
+        return Err("Only archives the Manager downloaded can be installed this way.".into());
+    }
+    mod_update::install_zip_archive(archive.to_string_lossy().into_owned(), destination)
 }
 
 // The window starts hidden. It is sized for its monitor before it appears and shown once the page has

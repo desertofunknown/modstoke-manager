@@ -4,7 +4,7 @@ import { open as openInBrowser } from '@tauri-apps/plugin-shell';
 import { processName, processProgress } from './store';
 import { TempFileCache } from './tempFileCache';
 
-// The webview ignores window.open and target=_blank, so web links are handed to the default browser.
+// window.open does nothing in the Manager's webview, so buttons hand web links to the default browser.
 export function openWebLink(url: string): void {
     let link: URL;
     try { link = new URL(url); } catch { return; }

@@ -21,6 +21,12 @@ pub struct DownloadProgress {
     total: Option<u64>,
 }
 
+// On Windows the app cache is also where the webview keeps its profile, so the webview only gets this
+// one subfolder of it.
+pub fn folder(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(app.path().app_cache_dir().map_err(|error| error.to_string())?.join("downloads"))
+}
+
 // The URL crate has already resolved dot segments and lowercased the host, so a prefix check holds.
 fn trusted(url: &reqwest::Url) -> bool {
     SOURCES.iter().any(|source| url.as_str().starts_with(source))
@@ -68,9 +74,7 @@ pub async fn download_to_cache(
         return Err(too_large());
     }
 
-    // On Windows the app cache is also where the webview keeps its profile, so the webview only
-    // gets this one subfolder.
-    let folder = app.path().app_cache_dir().map_err(|error| error.to_string())?.join("downloads");
+    let folder = folder(&app)?;
     std::fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
     let mut file = tempfile::Builder::new()
         .prefix("download-")

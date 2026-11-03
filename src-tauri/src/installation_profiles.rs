@@ -5,8 +5,9 @@ use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Component, Path, PathBuf};
+use std::sync::Mutex;
+use tauri::ipc::CapabilityBuilder;
 use tauri::Manager;
-use tauri_plugin_fs::FsExt;
 
 const REGISTRY_FILE: &str = "installation-profiles.json";
 const LOCK_FILE: &str = ".installation-profiles.lock";
@@ -281,12 +282,35 @@ fn state(registry: Registry, revision: Option<String>) -> RegistryState {
     }
 }
 
-// The webview's file access starts at the app cache. The selected game or server folder is added
-// once it checks out, so a script can't reach the rest of the disk through the fs plugin.
+// The webview's file access starts at the downloads folder. The selected game or server folder is
+// added once it checks out, for what managing mods needs: reading it and moving, creating and
+// removing entries. Text is never written there, so a script in the page can't plant a config file.
 fn allow_selected_folder(app: &tauri::AppHandle, state: &RegistryState) {
-    if let Some(root) = state.selected.as_ref().filter(|selected| selected.available).and_then(|selected| selected.root.as_ref()) {
-        let _ = app.fs_scope().allow_directory(root, true);
+    static GRANTED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    let Some(root) = state.selected.as_ref().filter(|selected| selected.available).and_then(|selected| selected.root.clone()) else {
+        return;
+    };
+    let mut granted = GRANTED.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if granted.contains(&root) {
+        return;
     }
+    let folder = glob_escape(&root);
+    let scope = vec![serde_json::json!({ "path": folder }), serde_json::json!({ "path": format!("{folder}/**") })];
+    let mut capability = CapabilityBuilder::new(format!("installation-{}", granted.len())).window("main");
+    for permission in ["fs:allow-exists", "fs:allow-read-dir", "fs:allow-read-text-file", "fs:allow-mkdir", "fs:allow-remove", "fs:allow-rename"] {
+        capability = capability.permission_scoped(permission, scope.clone(), Vec::new());
+    }
+    if app.add_capability(capability).is_ok() {
+        granted.push(root);
+    }
+}
+
+// Scope entries are glob patterns, so brackets in a folder name have to be escaped.
+fn glob_escape(path: &str) -> String {
+    path.chars().map(|c| match c {
+        '[' | ']' | '*' | '?' => format!("[{c}]"),
+        _ => c.to_string(),
+    }).collect()
 }
 
 fn config_folder(app: &tauri::AppHandle) -> Result<PathBuf, String> {

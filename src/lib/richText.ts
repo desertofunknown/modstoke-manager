@@ -1,6 +1,8 @@
 const STORE_LINK_BASE = "https://sotf-mods.com";
-// Mod descriptions come from authors, so their size and nesting are capped before rendering.
-const MAX_STORE_TEXT = 200_000;
+// Mod descriptions come from authors, so their size and nesting are capped before rendering. Real
+// descriptions run to a few thousand characters and card summaries to a few hundred.
+const MAX_STORE_TEXT = 30_000;
+const MAX_STORE_SUMMARY = 4_000;
 const MAX_STORE_NESTING = 8;
 
 type RichBlock =
@@ -28,7 +30,7 @@ export function renderStoreRichText(value?: string, fallback = ""): string {
 
 export function storeRichTextPlainText(value?: string, fallback = ""): string {
     try {
-        return plainStoreText(value?.slice(0, MAX_STORE_TEXT)) || fallback;
+        return plainStoreText(value?.slice(0, MAX_STORE_SUMMARY)) || fallback;
     } catch (error) {
         console.warn("Could not read a mod description", error);
         return fallback;
@@ -117,7 +119,7 @@ function normalizeStoreMarkup(value?: string): string {
         .replace(/<\/th>/gi, "[/th]")
         .replace(/<td\b[^>]*>/gi, "[td]")
         .replace(/<\/td>/gi, "[/td]")
-        .replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi, (_match, attrs: string, label: string) => {
+        .replace(/<a\b([^<>]*)>([\s\S]*?)<\/a>/gi, (_match, attrs: string, label: string) => {
             const href = htmlAttribute(attrs, "href");
             return href ? `[url=${href}]${label}[/url]` : label;
         })
@@ -127,7 +129,7 @@ function normalizeStoreMarkup(value?: string): string {
             return src ? `[img${alt ? ` alt="${safeInlineLabel(alt)}"` : ""}]${src}[/img]` : "";
         })
         .replace(/<\/?(?:p|div|section|article|figure|figcaption)\b[^>]*>/gi, "\n\n")
-        .replace(/<[^>]*>/g, " ");
+        .replace(/<[^<>]*>/g, " ");
 
     return decodeHtmlEntities(text)
         .replace(/\[(?:br|break|nl|newline)\s*\/?\]/gi, "\n")
@@ -173,7 +175,8 @@ function normalizeStoreMarkup(value?: string): string {
         .replace(/\[\/(indent)\]/gi, (_match, tag: string) => `\n[/${tag.toLowerCase()}]\n\n`)
         .replace(/\[(?:hr|line|rule|divider|separator)\s*\/?\]/gi, "\n\n---\n\n")
         .replace(/(^|\n)[ \t]*(?:-{3,}|={3,}|_{3,}|\*{3,})[ \t]*(?=\n|$)/g, "$1\n\n---\n\n")
-        .replace(/[ \t]+\n/g, "\n")
+        // Matching only from the start of a run of spaces keeps long runs linear.
+        .replace(/(?<![ \t])[ \t]+\n/g, "\n")
         .replace(/\n{4,}/g, "\n\n\n")
         .trim();
 }

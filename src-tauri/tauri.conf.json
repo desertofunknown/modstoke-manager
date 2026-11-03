@@ -32,7 +32,7 @@
   },
   "productName": "Modstoke Manager",
   "mainBinaryName": "OpenACAI Mod Manager",
-  "version": "0.2.0",
+  "version": "../package.json",
   "identifier": "com.alexcooper.openacai.modmanager",
   "plugins": {
     "deep-link": {

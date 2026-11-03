@@ -170,8 +170,10 @@
         event.preventDefault();
       }
     };
-    // Links in descriptions and notes open in the browser rather than inside the Manager.
+    // The shell plugin already opens target=_blank links in the browser and marks the click handled.
+    // Any other web link would navigate the Manager's own window, so it goes to the browser too.
     const onLinkClick = (event: MouseEvent) => {
+      if (event.defaultPrevented) return;
       const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
       if (!(link instanceof HTMLAnchorElement) || !/^https?:$/.test(link.protocol)) return;
       event.preventDefault();
