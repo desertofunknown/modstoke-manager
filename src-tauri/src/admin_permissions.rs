@@ -421,8 +421,10 @@ fn check(policy: &Policy, nodes: Option<&[PermissionNode]>) -> (Vec<String>, Vec
     if policy.defaults.remote_minimum_rank > MAX_RANK {
         problems.push("The lowest rank for remote F7 must be from 0 to 999.".into());
     }
-    if policy.roles.len() > 32 {
-        problems.push(format!("There are {} roles; the limit is 32.", policy.roles.len()));
+    match policy.roles.len() {
+        0 => problems.push("There are no roles. Admin needs at least one.".into()),
+        count if count > 32 => problems.push(format!("There are {count} roles; the limit is 32.")),
+        _ => {}
     }
 
     let catalog: Option<HashMap<&str, &PermissionNode>> =

@@ -164,7 +164,12 @@ operators from `settings.ini` into it; until then there is nothing to edit.
   which have to be named exactly. Deny always beats allow, and staff can only
   act on players ranked below them.
 - **Staff** gives a SteamID64 a role, with optional extra nodes, a note and an
-  expiry time.
+  expiry time. An expired entry counts for nothing. While a player's game role
+  is Guest, for example after a quarantine, their role and extra allow entries
+  are set aside, but their extra denies still apply. Staff with
+  `permissions.assign` can also give roles in F7, but only roles ranked below
+  their own whose nodes they hold, to players ranked below them, and never to
+  themselves.
 
 Manager checks the file against Admin's rules and suggests node names from the
 `permission-nodes.json` list Admin writes. Review the changes, then save.

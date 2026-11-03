@@ -572,7 +572,8 @@
                             disabled={busy || $processing || !editable} on:change={event => setRole(index, { deny: event.detail })} />
                     </div>
                     <div class="actions">
-                        <button type="button" class="danger-button" disabled={busy || $processing || !editable} on:click={() => removeRole(index)}>Remove role</button>
+                        <button type="button" class="danger-button" disabled={busy || $processing || !editable || draft.roles.length === 1}
+                            title={draft.roles.length === 1 ? "Admin needs at least one role." : undefined} on:click={() => removeRole(index)}>Remove role</button>
                     </div>
                 </details>
             {/each}
@@ -586,7 +587,8 @@
                     <button type="button" disabled={busy || $processing || !editable || draft.assignments.length >= 512} on:click={addAssignment}><LucidePlus aria-hidden="true" /> Add player</button>
                 </div>
             </div>
-            <p class="note section-note">Give a player a role by their SteamID64, the 17-digit number in their Steam profile link. Extra allow entries name exact nodes; extra deny entries may use patterns.</p>
+            <p class="note section-note">Give a player a role by their SteamID64, the 17-digit number in their Steam profile link. Extra allow entries name exact nodes; extra deny entries may use patterns. An expired entry counts for nothing. While a player's game role is Guest, for example after a quarantine, their role and extra allow entries here are set aside, but the extra denies still apply.</p>
+            <p class="note section-note">Staff with <code>permissions.assign</code> can also give roles in F7: only roles ranked below their own whose nodes they hold, only to players ranked below them, and never to themselves.</p>
             {#each shown as { assignment, index } (index)}
                 <div class="assignment" class:expired={expired(assignment)}>
                     <div class="assignment-fields">
