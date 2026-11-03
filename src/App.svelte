@@ -10,6 +10,7 @@
   import OperationStatus from "./lib/OperationStatus.svelte";
   import ServerDirectory from "./lib/ServerDirectory.svelte";
   import { receiveCommunityLinks } from "./lib/serverDirectory";
+  import { errorMessage } from "./lib/format";
   import LucideMinus from "~icons/lucide/minus";
   import LucideSquare from "~icons/lucide/square";
   import LucideCopy from "~icons/lucide/copy";
@@ -94,10 +95,6 @@
     const nextTab = tabs[nextIndex].id;
     selectTab(nextTab);
     tabButtons[nextTab]?.focus();
-  }
-
-  function pageLoadError(error: unknown) {
-    return error instanceof Error ? error.message : String(error);
   }
 
   async function minimizeWindow() {
@@ -276,14 +273,14 @@
     {#if activeTab === "installed" && installedPage}
       {#await installedPage}<div class="page-status" role="status">Loading installed mods…</div>
       {:then module}<module.default on:navigate={(event) => selectTab(event.detail.id)} on:changed={() => catalogRevision++} />
-      {:catch error}<div class="page-status" role="alert"><p>{pageLoadError(error)}</p><button on:click={() => installedPage = import("./pages/InstalledMods.svelte")}>Retry</button></div>{/await}
+      {:catch error}<div class="page-status" role="alert"><p>{errorMessage(error)}</p><button on:click={() => installedPage = import("./pages/InstalledMods.svelte")}>Retry</button></div>{/await}
     {/if}
   </div>
   <div class="container" id="panel-servers" role="tabpanel" aria-labelledby="tab-servers" hidden={activeTab !== "servers"} tabindex="0">
     {#if activeTab === "servers" && serversPage}
       {#await serversPage}<div class="page-status" role="status">Loading dedicated servers…</div>
       {:then module}<module.default />
-      {:catch error}<div class="page-status" role="alert"><p>{pageLoadError(error)}</p><button on:click={() => serversPage = import("./pages/Servers.svelte")}>Retry</button></div>{/await}
+      {:catch error}<div class="page-status" role="alert"><p>{errorMessage(error)}</p><button on:click={() => serversPage = import("./pages/Servers.svelte")}>Retry</button></div>{/await}
     {/if}
   </div>
   <div class="container" id="panel-directory" role="tabpanel" aria-labelledby="tab-directory" hidden={activeTab !== "directory"} tabindex="0">
@@ -298,7 +295,7 @@
       {:catch error}
         <div class="page-status" role="alert">
           <strong>The mod library could not be loaded.</strong>
-          <p>{pageLoadError(error)}</p>
+          <p>{errorMessage(error)}</p>
           <button type="button" on:click={() => { modsPage = import("./pages/ModHub.svelte"); }}>Retry loading library</button>
         </div>
       {/await}
@@ -313,7 +310,7 @@
       {:catch error}
         <div class="page-status" role="alert">
           <strong>Creator tools could not be loaded.</strong>
-          <p>{pageLoadError(error)}</p>
+          <p>{errorMessage(error)}</p>
           <button type="button" on:click={() => { moddingPage = import("./pages/Modding.svelte"); }}>Retry loading creator tools</button>
         </div>
       {/await}

@@ -5,6 +5,8 @@
     import type { Mod, ModCategory, ModVersion } from "../lib/mods";
     import { ModDatabase, modDependencies, modPreviewUrls, Sorting } from "../lib/mods";
     import { renderStoreRichText } from "../lib/richText";
+    import { clampNumber, cssPixels, formatCount } from "../lib/format";
+    import type { SourceSummary } from "../lib/sourceSummary";
     import { openWebLink } from "../lib/utils";
     import { fallbackPreviewUrl } from "../lib/modPreview";
     import { modalFocus } from "../lib/modalFocus";
@@ -29,14 +31,6 @@
     };
 
     type SotfCatalogSort = "updated" | "downloads" | "favorites" | "comments" | "rating" | "name";
-    type SourceSummaryEvent = {
-        visible: number;
-        total: number;
-        mode: string;
-        note: string;
-        activeFilters: boolean;
-        attention: number;
-    };
 
     export let sharedSearchTerm = "";
     export let sharedSearchVersion = 0;
@@ -44,7 +38,7 @@
     export let embeddedStorePreview = false;
     export let embeddedControlsExpanded = false;
 
-    const dispatch = createEventDispatcher<{ searchChange: string; summaryChange: SourceSummaryEvent }>();
+    const dispatch = createEventDispatcher<{ searchChange: string; summaryChange: SourceSummary }>();
 
     let filtered: Mod[] = [];
     let filterTerm: string = "";
@@ -320,15 +314,6 @@
         page.style.setProperty("--sotf-scroller-target-height", `${Math.round(targetScrollerHeight)}px`);
         page.style.setProperty("--sotf-thumb-width", `${Math.round(targetThumbWidth)}px`);
         page.style.setProperty("--sotf-thumb-height", `${Math.round(targetThumbHeight)}px`);
-    }
-
-    function cssPixels(value: string): number {
-        const parsed = Number.parseFloat(value);
-        return Number.isFinite(parsed) ? parsed : 0;
-    }
-
-    function clampNumber(value: number, min: number, max: number): number {
-        return Math.min(max, Math.max(min, value));
     }
 
     const debouncedReloadOnline = debounce(async () => {
@@ -775,8 +760,7 @@
     }
 
     function detailVersionDownloads(version: ModVersion): string {
-        const downloads = version._count?.downloads;
-        return typeof downloads === "number" ? downloads.toLocaleString() : "-";
+        return formatCount(version._count?.downloads);
     }
 
     function detailVersionChangelogHtml(version: ModVersion): string {
@@ -862,15 +846,15 @@
 
     function rowSortMetricValue(mod: Mod, sort: SotfCatalogSort): string {
         if (sort === "downloads") {
-            return detailCount(mod.downloads ?? mod.lastWeekDownloads);
+            return formatCount(mod.downloads ?? mod.lastWeekDownloads);
         }
 
         if (sort === "favorites") {
-            return detailCount(mod.favoritesCount);
+            return formatCount(mod.favoritesCount);
         }
 
         if (sort === "comments") {
-            return detailCount(mod.commentsCount);
+            return formatCount(mod.commentsCount);
         }
 
         if (sort === "rating") {
@@ -894,10 +878,6 @@
         }
 
         return onlineSelected ? "Live store" : "Local inventory";
-    }
-
-    function detailCount(value?: number): string {
-        return typeof value === "number" ? value.toLocaleString() : "-";
     }
 
     function detailRatingLabel(value?: number): string {
@@ -1189,16 +1169,16 @@
                                 <span>Updated <b>{selectedDetailMod.lastReleasedAt ? formatDetailDate(selectedDetailMod.lastReleasedAt) : "-"}</b></span>
                                 <span>Category <b>{detailCategoryLabel(selectedDetailMod)}</b></span>
                                 <span>Compatibility <b>{detailCompatibilityLabel(selectedDetailMod)}</b></span>
-                                <span>Downloads <b>{detailCount(selectedDetailMod.downloads ?? selectedDetailMod.lastWeekDownloads)}</b></span>
+                                <span>Downloads <b>{formatCount(selectedDetailMod.downloads ?? selectedDetailMod.lastWeekDownloads)}</b></span>
                                 <span>Author <b>{detailAuthorName(selectedDetailMod)}</b></span>
                             </div>
 
                             <div class="sotf-detail-community">
                                 <span class="sotf-detail-section-title">Community</span>
                                 <div class="sotf-detail-community-grid">
-                                    <span>Comments <b>{detailCount(selectedDetailMod.commentsCount)}</b></span>
-                                    <span>Favorites <b>{detailCount(selectedDetailMod.favoritesCount)}</b></span>
-                                    <span>Reviews <b>{detailCount(selectedDetailMod.reviewsCount)}</b></span>
+                                    <span>Comments <b>{formatCount(selectedDetailMod.commentsCount)}</b></span>
+                                    <span>Favorites <b>{formatCount(selectedDetailMod.favoritesCount)}</b></span>
+                                    <span>Reviews <b>{formatCount(selectedDetailMod.reviewsCount)}</b></span>
                                     <span>Rating <b>{detailRatingLabel(selectedDetailMod.averageRating)}</b></span>
                                     <span>Author Status <b>{trustedAuthorLabel(selectedDetailMod)}</b></span>
                                     <span>Store Page <b>SOTF Mods</b></span>

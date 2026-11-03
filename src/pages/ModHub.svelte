@@ -5,6 +5,8 @@
     import NativePackages from "../lib/NativePackages.svelte";
     import { selectedInstallation } from "../lib/installationProfiles";
     import { gameExePath } from "../lib/store";
+    import { clampNumber, cssPixels } from "../lib/format";
+    import type { SourceSummary } from "../lib/sourceSummary";
     import LucideCloudDownload from "~icons/lucide/cloud-download";
     import LucideLayoutGrid from "~icons/lucide/layout-grid";
     import LucideMaximize2 from "~icons/lucide/maximize-2";
@@ -15,14 +17,6 @@
     import LucideX from "~icons/lucide/x";
 
     type ModHubSource = "all" | "sotf" | "nexus" | "native";
-    type SourceSummary = {
-        visible: number;
-        total: number;
-        mode: string;
-        note: string;
-        activeFilters: boolean;
-        attention: number;
-    };
 
     export let isActive = false;
 
@@ -248,15 +242,6 @@
 
         panel.style.setProperty("--all-sotf-preview-height", `${Math.round(sotfHeight)}px`);
         panel.style.setProperty("--all-nexus-preview-height", `${Math.round(nexusHeight)}px`);
-    }
-
-    function cssPixels(value: string): number {
-        const parsed = Number.parseFloat(value);
-        return Number.isFinite(parsed) ? parsed : 0;
-    }
-
-    function clampNumber(value: number, min: number, max: number): number {
-        return Math.min(max, Math.max(min, value));
     }
 </script>
 

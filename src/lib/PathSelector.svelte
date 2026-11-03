@@ -3,6 +3,7 @@
     import LucidePlus from "~icons/lucide/plus";
     import LucideFolder from "~icons/lucide/folder";
     import { processing } from "./store";
+    import { errorMessage } from "./format";
     import { installationProfiles, selectedInstallation, installationProfileError, profilesReady,
         addInstallationProfile, selectInstallationProfile, renameInstallationProfile,
         removeInstallationProfile, refreshInstallationProfiles } from "./installationProfiles";
@@ -23,7 +24,7 @@
         busy = true;
         error = "";
         try { await action(); }
-        catch (cause) { error = cause instanceof Error ? cause.message : String(cause); }
+        catch (cause) { error = errorMessage(cause); }
         finally { busy = false; }
     }
 

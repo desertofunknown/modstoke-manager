@@ -1,3 +1,4 @@
+import { errorMessage } from "./format";
 import { fetchNexusFileDependencies, type NexusModDependency, type NexusRateLimit } from "./nexus";
 
 export const NESTED_DEPENDENCY_BATCH_SIZE = 8;
@@ -158,7 +159,7 @@ export async function advanceNestedDependencyTraversal(
             return null;
         }
         traversal.status = "failed";
-        traversal.error = error instanceof Error ? error.message : String(error);
+        traversal.error = errorMessage(error);
         return traversal;
     }
 

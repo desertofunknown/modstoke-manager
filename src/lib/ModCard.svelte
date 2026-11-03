@@ -3,6 +3,7 @@
     import { createEventDispatcher, onDestroy } from 'svelte';
     import { ModDatabase, modPreviewUrls, type Mod } from './mods';
     import { storeRichTextPlainText } from './richText';
+    import { errorMessage, formatCount } from './format';
     import { fallbackPreviewUrl } from './modPreview';
     import StatusButton from './StatusButton.svelte';
     import * as dialog from "@tauri-apps/plugin-dialog"
@@ -142,7 +143,7 @@
         await operation(selectedMod);
       } catch (error) {
         if (isCurrentSelection()) {
-          operationError = `${selectedMod.name}: ${error instanceof Error ? error.message : String(error)}`;
+          operationError = `${selectedMod.name}: ${errorMessage(error)}`;
           try {
             await dialog.message(operationError, { title: `${selectedMod.name} operation failed`, kind: "error" });
           } catch {
@@ -213,10 +214,6 @@
           kind: "info"
         }
       );
-    }
-
-    function formatCount(value?: number) {
-      return typeof value === "number" ? value.toLocaleString() : "-";
     }
 
     function showDetails() {

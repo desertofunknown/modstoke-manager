@@ -61,6 +61,8 @@
         type InstalledInventoryEntry
     } from "../lib/modInventory";
     import { gameExePath, getDirectoryPath, isPathValid } from "../lib/store";
+    import { clampNumber, cssPixels, errorMessage, formatCount } from "../lib/format";
+    import type { SourceSummary } from "../lib/sourceSummary";
     import * as dialog from "@tauri-apps/plugin-dialog"
     import * as shell from "@tauri-apps/plugin-shell"
     import { invoke } from "@tauri-apps/api/core";
@@ -74,16 +76,7 @@
     export let embeddedStorePreview = false;
     export let embeddedControlsExpanded = false;
 
-    type SourceSummaryEvent = {
-        visible: number;
-        total: number;
-        mode: string;
-        note: string;
-        activeFilters: boolean;
-        attention: number;
-    };
-
-    const dispatch = createEventDispatcher<{ searchChange: string; summaryChange: SourceSummaryEvent }>();
+    const dispatch = createEventDispatcher<{ searchChange: string; summaryChange: SourceSummary }>();
 
     type CatalogMode = "online" | "installed";
     type InstallFilter = "all" | "attention" | "installed" | "missing" | "updates" | "disabled" | "vortex" | "native" | "manual" | "tracked" | "endorsements" | "conflicts";
@@ -907,16 +900,6 @@
         nexusCatalogVeryTight = shouldVeryTightenCatalog;
     }
 
-    function cssPixels(value: string): number {
-        const parsed = Number.parseFloat(value);
-        return Number.isFinite(parsed) ? parsed : 0;
-    }
-
-    function clampNumber(value: number, min: number, max: number): number {
-        return Math.min(max, Math.max(min, value));
-    }
-
-
     async function initializeNexusAccount() {
         nexusInitialized = true;
         isLoading = true;
@@ -963,7 +946,7 @@
     }
 
     function nexusRequestError(error: unknown): string {
-        const message = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").trim();
+        const message = errorMessage(error).replace(/\s+/g, " ").trim();
         return message.length > 280 ? `${message.slice(0, 277)}...` : message || "The request could not be completed. Try again.";
     }
 
@@ -4596,7 +4579,7 @@
         if (hasActiveNexusFilters && loadedCount > 0) {
             return {
                 title: isOnline ? "No Nexus mods match these filters" : "No installed mods match these filters",
-                detail: `${formatNumber(loadedCount)} ${isOnline ? "catalog" : "installed"} ${loadedCount === 1 ? "row is" : "rows are"} loaded, but the active filters hide every result. Clear filters or adjust the chips below.`,
+                detail: `${formatCount(loadedCount)} ${isOnline ? "catalog" : "installed"} ${loadedCount === 1 ? "row is" : "rows are"} loaded, but the active filters hide every result. Clear filters or adjust the chips below.`,
                 chips
             };
         }
@@ -4651,11 +4634,11 @@
         const parts = [`Official metadata cached for ${NEXUS_CACHE_TTL_MINUTES} minutes. Account snapshots expire after 24 hours; use Refresh to sync.`];
 
         if (nexusLocalCatalogCount > 0) {
-            parts.push(`${formatNumber(nexusLocalCatalogCount)} saved for this account.`);
+            parts.push(`${formatCount(nexusLocalCatalogCount)} saved for this account.`);
         }
 
         if (nexusLatestApiRowCount > 0) {
-            parts.push(`${formatNumber(nexusLatestApiRowCount)} refreshed from Nexus.`);
+            parts.push(`${formatCount(nexusLatestApiRowCount)} refreshed from Nexus.`);
         }
 
         if (nexusCatalogUsedLocalFallback) {
@@ -5286,10 +5269,6 @@
         }
 
         return `Loaded ${new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
-    }
-
-    function formatNumber(value?: number): string {
-        return typeof value === "number" ? value.toLocaleString() : "-";
     }
 
     function rateLimitLabel(remaining?: string, limit?: string): string {
@@ -8067,7 +8046,7 @@
                 <div class="notice request-error catalog-request-error" role="status">
                     <div class="request-error-copy">
                         <strong>{mods.length > 0 ? "Nexus refresh failed" : "Nexus catalog unavailable"}</strong>
-                        <span>{mods.length > 0 ? `${formatNumber(mods.length)} cached mods remain available. These results may predate changes to your Nexus preferences.` : "No results are available for this feed yet."}</span>
+                        <span>{mods.length > 0 ? `${formatCount(mods.length)} cached mods remain available. These results may predate changes to your Nexus preferences.` : "No results are available for this feed yet."}</span>
                         <small>{catalogError}</small>
                     </div>
                     <button type="button" disabled={isCatalogLoading || isDisconnecting || refreshCooldownSeconds > 0} title={manualRefreshButtonTitle} on:click={() => loadMods(selectedView, true)}>
@@ -8338,8 +8317,8 @@
                                     <span>Version <b>{mod.version ?? "-"}</b></span>
                                     <span>State <b title={updateVerdict.reason} class:update-state-update={updateVerdict.tone === "update"} class:update-state-current={updateVerdict.tone === "current"} class:update-state-tracked={updateVerdict.tone === "tracked"} class:update-state-review={updateVerdict.tone === "review"}>{updateVerdict.label}</b></span>
                                     <span>Updated <b>{formatTimestamp(mod.updated_timestamp, mod.updated_time)}</b></span>
-                                    <span>Downloads <b>{formatNumber(mod.mod_downloads)}</b></span>
-                                    <span>Endorsements <b>{formatNumber(mod.endorsement_count)}</b></span>
+                                    <span>Downloads <b>{formatCount(mod.mod_downloads)}</b></span>
+                                    <span>Endorsements <b>{formatCount(mod.endorsement_count)}</b></span>
                                 </div>
 
                                 <div class="nexus-card-footer">
@@ -8693,7 +8672,7 @@
                         <span>Update <b title={selectedModUpdateReason()} class:update-state-update={selectedModUpdateTone() === "update"} class:update-state-current={selectedModUpdateTone() === "current"} class:update-state-tracked={selectedModUpdateTone() === "tracked"} class:update-state-review={selectedModUpdateTone() === "review"}>{selectedModUpdateLabel()}</b></span>
                         <span>Tracked <b>{isNexusModTracked(selectedMod.mod_id) ? "Yes" : "No"}</b></span>
                         <span>Updated <b>{formatTimestamp(selectedModDetails?.updated_timestamp, selectedModDetails?.updated_time)}</b></span>
-                        <span>Downloads <b>{formatNumber(selectedModDetails?.mod_downloads)}</b></span>
+                        <span>Downloads <b>{formatCount(selectedModDetails?.mod_downloads)}</b></span>
                         <span>Installed <b>{describeInstallSource(installedMatch(selectedMod))}</b></span>
                         <span>Dependencies <b class:update-state-update={totalDependencyIssueCount > 0} class:update-state-tracked={(totalDependencyReviewCount > 0 || nestedDependencyCheckPending || apiDependencyNeedsReview) && totalDependencyIssueCount === 0} class:update-state-current={(resolvedDependencies.length > 0 || resolvedNestedDependencies.length > 0 || authorRequirementDetectedCount > 0) && totalDependencyIssueCount === 0 && totalDependencyReviewCount === 0 && !nestedDependencyCheckPending && !apiDependencyNeedsReview}>{dependencySummaryText}</b></span>
                     </div>
