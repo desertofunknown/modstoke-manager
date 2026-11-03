@@ -96,15 +96,9 @@ export class GithubInfo {
         return this._releases[0];
     }
 
-    public async getReleases(): Promise<string[]> {
-        await this.fetch();
-        return [...this._releases];
-    }
-
     public isInitialised(): boolean {
         return this._initialised;
     }
 }
 
-export let redLoaderInfo = new GithubInfo("ToniMacaroni/RedLoader", "RedLoader.zip");
 export let unityExplorerInfo = new GithubInfo("ToniMacaroni/UnityExplorer_Sons", "UnityExplorer.zip");

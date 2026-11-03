@@ -1,8 +1,8 @@
 import * as path from "@tauri-apps/api/path";
 import { invoke } from '@tauri-apps/api/core';
-import { gameExePath, getDirectoryPath, getLibsDir, getModsDir, isPathValid, processName, processProgress } from './store';
+import { gameExePath, getDirectoryPath, isPathValid, processName } from './store';
 import { get } from 'svelte/store';
-import { downloadAndInstall, showMessageBox } from './utils';
+import { downloadAndInstall } from './utils';
 import { assertCurrentGameRoot, scanInstalledInventory, type InstallSource, type LoaderType } from './modInventory';
 import { resolveInstallPlan, type InstallPlan } from './modInstallPlan';
 import { applyProfilePackage, completedPackage, discardModProfileRollback, freshPlanInventory, mergeRequestedRoots, pinArchive, readModProfile, rollbackModProfile, saveModProfile, type ModProfile, type ProfileState } from './modProfile';
@@ -49,11 +49,7 @@ export type Mod = {
     shortDescription: string;
     description?: string;
     isApproved: boolean;
-    // category_name: string;
-    // category_slug: string;
     category: ModCategory;
-    // user_name: string;
-    // user_slug: string;
     user: ModAuthor;
     imageUrl: string;
     images?: ModImage[];
@@ -190,10 +186,6 @@ type FsDirEntry = {
     path?: string;
 }
 
-export type ModList = {
-    mods: any[];
-}
-
 export enum Sorting {
     newest = "newest",
 }
@@ -204,9 +196,6 @@ const MAX_MANIFEST_SCAN_DEPTH = 4;
 
 export class ModDatabase {
 
-    private static mods: Mod[] = [];
-    private static unapprovedMods: Mod[] | null;
-    private static nsfwMods: Mod[] | null;
     private static installedMods: InstalledMod[] = [];
     private static installedModsExePath: string | null = null;
     private static installedModsRequest: { exePath: string; promise: Promise<void> } | null = null;
@@ -255,34 +244,6 @@ export class ModDatabase {
         return this.normalizeMod(resultData.data as Mod);
     }
 
-    public static async fetchAllMods(sorting: Sorting = Sorting.newest, approved: boolean = true, nsfw: boolean = false): Promise<Mod[]> {
-        processName.set("Getting initial mod page");
-        processProgress.set(0);
-        let result = await this.fetchMods(1, sorting, approved, nsfw);
-        let meta = result.meta;
-        let mods = result.data as Mod[];
-
-        if(meta.pages > 1) {
-            for(let i = 2; i <= meta.pages; i++) {
-                try {
-                    processName.set(`Getting mod page ${i}/${meta.pages}`);
-                    let pageResult = await this.fetchMods(i, sorting, approved, nsfw);
-                    mods = mods.concat(pageResult.data);
-                    processProgress.set(i / meta.pages * 100);
-                } catch (error) {
-                    showMessageBox("Error", `Failed to load mods page ${i}: ${error}!`);
-                    break;
-                }
-            }
-        }
-
-        return mods;
-    }
-
-    public static getMods(): Mod[] {
-        return this.mods;
-    }
-
     public static async getInstalledMods(): Promise<Mod[]> {
         await this.initDatabase();
         return await Promise.all(this.currentInstalledMods().map(async m=>{
@@ -299,15 +260,6 @@ export class ModDatabase {
                 return remoteMod;
             }
 
-
-            // return {
-            //     name: m.modName,
-            //     mod_id: m.manifest.id,
-            //     user_name: m.manifest.author,
-            //     latestVersion: m.manifest.version,
-            //     isInstalled: true,
-            //     installedMod: m
-            // } as Mod
             return {
                 name: m.modName,
                 mod_id: m.manifest.id,
@@ -321,30 +273,6 @@ export class ModDatabase {
                 installedMod: m
             } as Mod
         }));
-    }
-
-    public static async getUnapprovedMods(force: boolean = false): Promise<Mod[]> {
-        if(!this.unapprovedMods || this.unapprovedMods.length === 0 || force) {
-            let mods = await this.fetchAllMods(Sorting.newest, false);
-            this.unapprovedMods = mods;
-        }
-
-        return this.unapprovedMods;
-    }
-
-    public static async getNsfwMods(force: boolean = false): Promise<Mod[]> {
-        if(!this.nsfwMods || this.nsfwMods.length === 0 || force) {
-            let mods = await this.fetchAllMods(Sorting.newest, true, true);
-            this.nsfwMods = mods;
-        }
-
-        return this.nsfwMods;
-    }
-
-    public static async loadMods(force: boolean = false): Promise<void> {
-        if (!this.mods || this.mods.length === 0 || force) {
-            this.mods = await this.fetchAllMods();
-        }
     }
 
     public static openModPage(mod: Mod): void {
@@ -687,23 +615,6 @@ export class ModDatabase {
         return mods;
     }
 
-    public static async refreshAll(forceRefresh: boolean): Promise<void> {
-
-        // making sure the mods and libs directory exists
-        processName.set("Checking mods directory");
-        await getModsDir();
-        await getLibsDir();
-
-        processName.set("Retrieving mods");
-        await this.loadMods(forceRefresh);
-        
-        processName.set("Checking installed mods");
-        await this.loadInstalledMods();
-
-        processName.set("Updating mod list");
-        this.initModList(this.mods);
-    }
-
     public static async initDatabase(): Promise<void> {
         if (get(isPathValid) && this.installedModsExePath === get(gameExePath)) {
             return;
@@ -722,16 +633,6 @@ export class ModDatabase {
                 || this.pendingProfileRoot?.modId.toLowerCase() === mod.mod_id.toLowerCase()
                     && this.normalizePath(this.pendingProfileRoot.gameRoot) === this.normalizePath(installedMod!.gameRoot));
         });
-    }
-
-    public static async loadPage(page: number): Promise<void> {
-        await this.initDatabase();
-        let res = await this.fetchMods(page);
-        
-    }
-
-    public static getInstalledMod(modId: string): InstalledMod | undefined {
-        return this.currentInstalledMods().find(mod => mod.modName === modId);
     }
 
     public static async installMod(mod: Mod): Promise<void> {
@@ -873,8 +774,6 @@ export class ModDatabase {
 
         if(modDllPath && await fs.exists(modDllPath)) await fs.remove(modDllPath);
         if(modFolder && await fs.exists(modFolder)) await fs.remove(modFolder, { recursive: true });
-
-        //await this.refreshAll(false);
     }
 
     public static async toggleMod(mod: InstalledMod, shouldEnable: boolean): Promise<void> {

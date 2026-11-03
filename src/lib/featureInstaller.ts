@@ -1,10 +1,9 @@
-import { DebugInstaller } from "./debugInstaller";
 import type { BaseInstaller } from "./baseInstaller";
 import { getDirectoryPath, processName } from "./store";
 import { BaseUninstaller } from "./baseUninstaller";
 import { get } from "svelte/store";
 import { GithubInstaller } from "./githubInstaller";
-import { redLoaderInfo, unityExplorerInfo } from "./githubInfo";
+import { unityExplorerInfo } from "./githubInfo";
 import { invoke } from "@tauri-apps/api/core";
 import * as path from "@tauri-apps/api/path";
 import { gameExePath } from "./store";
@@ -34,7 +33,6 @@ export class FeatureInstaller {
     private _isInstalled = false;
 
     public currentMode: InstallMode = InstallMode.Install;
-    public currentModeState: string = "Install";
     public description: string | null = null;
     public displayName: string | null = null;
     public releaseWarning: string | null = null;
@@ -103,10 +101,6 @@ export class FeatureInstaller {
         await this.refreshMode();
     }
 
-    public async handleCurrentMode(): Promise<void> {
-        await this.handle(this.getMode());
-    }
-
     public getName(): string {
         if (this.displayName) {
             return this.displayName;
@@ -126,18 +120,6 @@ export class FeatureInstaller {
 
     private setMode(mode: InstallMode){
         this.currentMode = mode;
-        this.currentModeState = this.getModeString();
-    }
-
-    public getModeString(): string {
-        switch (this.getMode()) {
-            case InstallMode.Install:
-                return "Install";
-            case InstallMode.Update:
-                return "Update";
-            case InstallMode.Uninstall:
-                return "Uninstall";
-        }
     }
 
     public async refreshMode(): Promise<InstallMode> {
@@ -153,8 +135,7 @@ export class FeatureInstaller {
         if (this._installer) {
             try {
                 remoteVersion = await this._installer.getTargetVersion();
-                // Local debug installers do not have a release version.
-                installAvailable = !!remoteVersion || this._installer instanceof DebugInstaller;
+                installAvailable = !!remoteVersion;
                 if (!installAvailable) {
                     releaseWarning = `Latest ${this.getName()} release information is unavailable.`;
                 } else if (installed && await this.checkRemoteVersion(gameRoot, remoteVersion) === VersionResult.Greater) {
@@ -195,9 +176,6 @@ export class FeatureInstaller {
             return null;
         }
 
-        console.log("Local version:",localVersion);
-        console.log("Remote version:",remoteVersion);
-
         if(semver.gt(remoteVersion, localVersion)) {
             return VersionResult.Greater;
         }else if(semver.lt(remoteVersion, localVersion)) {
@@ -229,7 +207,7 @@ export class FeatureInstaller {
                 path: exeDir + "\\" + this._versionCheckPath
             });
         } catch (error) {
-            console.log(error);
+            console.warn("Could not read the installed version", error);
         }
 
         return null;
@@ -254,15 +232,6 @@ export class FeatureInstaller {
     }
 }
 
-let loaderUninstaller = new BaseUninstaller([
-    "_RedLoader"
-], [
-    "dobby.dll",
-    "version.dll",
-], "RedLoader");
-
-let loaderDebugInstaller = new DebugInstaller("I:\\repos\\MelonLoader\\RedLoader.zip", "RedLoader");
-let loaderInstaller = new GithubInstaller(redLoaderInfo, "RedLoader");
 let openAcaiLoaderInstaller = new OpenAcaiLoaderInstaller();
 
 let ueUninstaller = new BaseUninstaller([
@@ -272,11 +241,6 @@ let ueUninstaller = new BaseUninstaller([
     "Mods\\UnityExplorer.dll",
 ], "UnityExplorer");
 let ueInstaller = new GithubInstaller(unityExplorerInfo, "UnityExplorer");
-
-export let debugInstaller = new FeatureInstaller(loaderDebugInstaller, loaderUninstaller);
-
-export let loaderFeature = new FeatureInstaller(loaderInstaller, loaderUninstaller, "_RedLoader\\net6\\RedLoader.dll");
-loaderFeature.additionalFoldersToCreate = ["Mods"];
 
 let openAcaiLoaderUninstaller = new BaseUninstaller([
     // Remove the pre-rebrand bridge folder so repaired installs cannot load both runtimes.
@@ -302,14 +266,6 @@ openAcaiLoaderFeature.description = "Installs or repairs Modstoke Loader from a 
 
 export let ueFeature = new FeatureInstaller(ueInstaller, ueUninstaller);
 ueFeature.description = "UnityExplorer is a modding tool which lets you analyze and manipulate the game at runtime."
-
-let bieUninstaller = new BaseUninstaller([
-    "BepInEx"
-], [
-    "winhttp.dll"
-], "BepInEx");
-export let bieFeature = new FeatureInstaller(null, bieUninstaller);
-bieFeature.expectedMode = InstallMode.Uninstall;
 
 let melonUninstaller = new BaseUninstaller([
     "MelonLoader",

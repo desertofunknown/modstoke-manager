@@ -330,31 +330,6 @@
         return Math.min(max, Math.max(min, value));
     }
 
-    // async function filter() {
-    //     let modBucket: Mod[] = [];
-    //     if(filterTerm.startsWith("unapproved:"))
-    //     {
-    //         modBucket = await ModDatabase.getUnapprovedMods();
-    //     }
-    //     else if(filterTerm.startsWith("nsfw:"))
-    //     {
-    //         modBucket = await ModDatabase.getNsfwMods();
-    //     }
-    //     else
-    //     {
-    //         modBucket = await ModDatabase.getMods();
-    //     }
-
-    //     let split =  filterTerm.split(":");
-    //     let term = split[split.length - 1];
-
-    //     filtered = modBucket.filter((mod) => {
-    //         let passesTerm = mod.name.toLowerCase().includes(term.toLowerCase());
-    //         let passesScope = (onlineSelected && !mod.isInstalled) || (installedSelected && mod.isInstalled);
-    //         return passesTerm && passesScope;
-    //     });
-    // }
-
     const debouncedReloadOnline = debounce(async () => {
         if (onlineSelected && !isDestroyed) {
             await reloadOnline();
@@ -431,15 +406,10 @@
     }
 
     async function toggleOnline() {
-        // onlineSelected = !onlineSelected;
-
         await reloadOnline();
-        //await filter();
     }
 
     async function toggleInstalled() {
-        // installedSelected = !installedSelected;
-
         debouncedReloadOnline.cancel();
         const generation = ++onlineCatalogGeneration;
         onlineSelected = false;
@@ -460,10 +430,6 @@
         } finally {
             if (isCurrentCatalogRequest(generation) && installedSelected) isLoading = false;
         }
-        // page = 1;
-        // filtered = [];
-        // await fetchData();
-        //await filter();
     }
 
     async function refreshInstalledState() {

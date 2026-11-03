@@ -3,7 +3,6 @@ import { exists } from '@tauri-apps/plugin-fs';
 import { processName, processProgress } from './store';
 import { TempFileCache } from './tempFileCache';
 import { download } from '@tauri-apps/plugin-upload';
-import * as dialog from "@tauri-apps/plugin-dialog"
 
 export async function unzip(sourcePath: string, destinationPath: string) {
     const src = sourcePath.replace(/\\/g, '/');
@@ -54,6 +53,3 @@ export async function downloadAndInstall(
     }
   }
 
-  export async function showMessageBox(title: string, message: string): Promise<void> {
-    await dialog.message(message, { title: title});
-  }
