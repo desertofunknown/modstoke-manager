@@ -532,6 +532,7 @@
                 <button type="button" disabled={busy || $processing || !editable || draft.roles.length >= 32} on:click={addRole}><LucidePlus aria-hidden="true" /> Add role</button>
             </div>
             <p class="note section-note">Staff can only act on players ranked below them. Deny always beats allow. A pattern like <code>moderate.*</code> or <code>*</code> also covers nodes a later Admin version adds{sensitive.length ? `, but never the sensitive nodes ${sensitive.join(", ")}, which have to be named exactly` : ", but never sensitive nodes, which have to be named exactly"}.</p>
+            <p class="note section-note">From Admin 0.5.217, staff with <code>permissions.edit</code> can also edit roles in F7: only roles ranked below their own that no game role or the role for every player uses, and only with nodes their own lasting role holds. Admin refuses to delete a role anything still uses; here, removing a role also clears its mappings and inheritance.</p>
             {#each draft.roles as role, index}
                 <details class="role">
                     <summary><strong>{role.name || "Unnamed role"}</strong> <code>{role.id}</code><span>Rank {role.rank} · {role.allow.length} allowed · {role.deny.length} denied{role.inherits.length ? ` · inherits ${role.inherits.join(", ")}` : ""}</span></summary>

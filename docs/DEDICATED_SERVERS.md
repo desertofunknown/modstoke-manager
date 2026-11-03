@@ -162,7 +162,10 @@ operators from `settings.ini` into it; until then there is nothing to edit.
   they inherit, and allow and deny lists. A pattern like `moderate.*` or `*`
   also covers nodes a later Admin version adds, but never the sensitive nodes,
   which have to be named exactly. Deny always beats allow, and staff can only
-  act on players ranked below them.
+  act on players ranked below them. From Admin 0.5.217, staff with
+  `permissions.edit` can also edit roles in F7, but only roles ranked below
+  their own that no game role or the role for every player uses, and only with
+  nodes their own lasting role holds.
 - **Staff** gives a SteamID64 a role, with optional extra nodes, a note and an
   expiry time. An expired entry counts for nothing. While a player's game role
   is Guest, for example after a quarantine, their role and extra allow entries
