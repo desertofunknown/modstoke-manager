@@ -37,7 +37,7 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["modstoke"]
+        "schemes": ["modstoke", "modstoke-manager"]
       }
     },
     "fs": {

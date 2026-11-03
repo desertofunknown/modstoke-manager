@@ -35,14 +35,14 @@ The application is **Modstoke Manager**, published **by OpenACAI**. It replaces 
 | --- | --- |
 | Application | Public desktop application for Windows, using PKCE |
 | Client ID | `modstoke_manager` |
-| Callback | `modstoke://oauth/nexus/callback` |
+| Callback | `modstoke-manager://oauth/callback` |
 | Scopes | `openid public` |
 | Purpose | Nexus API access on behalf of the signed-in player |
 
 The sign-in follows the Nexus [OAuth 2.0 and PKCE guide](https://modding.wiki/en/api/oauth2-guide):
 
 - The Manager creates a random 43-character code verifier and a state value for each attempt. It opens `users.nexusmods.com/oauth/authorize` with the S256 code challenge in the player's default browser.
-- After approval, Nexus redirects to the `modstoke://` callback. Windows hands that link to the running Manager. The installer registers the scheme, and portable and development builds register it for the current user when they start.
+- After approval, Nexus redirects to the `modstoke-manager://` callback. Windows hands that link to the running Manager. The installer registers the scheme, and portable and development builds register it for the current user when they start.
 - The callback must carry the state of the waiting attempt and arrive within ten minutes. It is accepted once. A callback with any other state is ignored.
 - The code and verifier are exchanged at `users.nexusmods.com/oauth/token`. The access token goes in the `Authorization: Bearer` header for API v1 and v2 requests. `users/validate.json` confirms the account and reports the rate limits.
 

@@ -74,8 +74,9 @@ fn main() {
             nexus_auth::remember_app(app.handle());
             server::directory::receive_arguments(app.handle(), &args);
             nexus_auth::receive_arguments(app.handle(), &args);
-            // The installer registers modstoke:// for installed copies. Portable and development
-            // builds register it here, so the Nexus Mods sign-in and join links reach them too.
+            // The installer registers the modstoke:// and modstoke-manager:// schemes for installed copies.
+            // Portable and development builds register them here, so join links and the Nexus Mods
+            // sign-in reach them too.
             #[cfg(windows)]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
