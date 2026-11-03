@@ -54,13 +54,14 @@
         "shadow": false,
         "title": "Modstoke Manager by OpenACAI",
         "transparent": true,
+        "visible": false,
         "width": 1280,
         "height": 820,
         "useHttpsScheme": true
       }
     ],
     "security": {
-      "csp": "default-src 'self' asset: http://asset.localhost ipc: http://ipc.localhost; connect-src 'self' ipc: http://ipc.localhost https://api.sotf-mods.com https://sotf-mods.com https://api.nexusmods.com https://api.github.com https://github.com https://release-assets.githubusercontent.com https://objects.githubusercontent.com https://raw.githubusercontent.com https://gitlab.com wss://sso.nexusmods.com; img-src 'self' asset: http://asset.localhost https: data:; style-src 'self' 'unsafe-inline'; font-src 'self' asset: http://asset.localhost; script-src 'self'"
+      "csp": "default-src 'self' asset: http://asset.localhost ipc: http://ipc.localhost; connect-src 'self' ipc: http://ipc.localhost https://api.sotf-mods.com https://sotf-mods.com https://api.nexusmods.com https://api.github.com https://github.com https://release-assets.githubusercontent.com https://objects.githubusercontent.com https://raw.githubusercontent.com https://gitlab.com wss://sso.nexusmods.com; img-src 'self' asset: http://asset.localhost https: data:; style-src 'self' 'unsafe-inline'; font-src 'self' asset: http://asset.localhost https://gameskin.localhost; script-src 'self'"
     }
   }
 }

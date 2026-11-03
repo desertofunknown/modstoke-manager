@@ -158,12 +158,12 @@ struct NexusActionResponse {
     rate_limit: NexusRateLimit,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn is_dotnet10_installed() -> Result<bool, String> {
     is_dotnet_major_installed("10.")
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn is_dotnet11_installed() -> Result<bool, String> {
     is_dotnet_major_installed("11.")
 }
@@ -940,13 +940,13 @@ fn read_nexus_api_key() -> Result<Option<String>, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_file_version(path: String) -> Result<String, String> {
     let desc = get_file_description(path).map_err(|e| e.to_string())?;
     Ok(desc)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn sha256_file(path: String) -> Result<String, String> {
     let mut file = File::open(path).map_err(|e| e.to_string())?;
     let mut hasher = Sha256::new();
@@ -1121,7 +1121,7 @@ fn normalize_zip_entry(name: &str) -> String {
         .to_ascii_lowercase()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn inspect_openacai_loader_zip(source: String) -> Result<LoaderZipInspection, String> {
     let reader = File::open(source).map_err(|e| e.to_string())?;
     let mut archive = ZipArchive::new(reader).map_err(|e| e.to_string())?;
@@ -1190,9 +1190,28 @@ fn inspect_openacai_loader_zip(source: String) -> Result<LoaderZipInspection, St
     Ok(inspection)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn unzip_handler(source: String, destination: String) -> Result<(), String> {
     mod_update::install_zip_archive(source, destination)
+}
+
+// The window starts hidden. It is sized for its monitor before it appears and shown once the page has
+// loaded, so it never sits empty or jumps to a new size.
+fn fit_to_monitor(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    let Some(monitor) = window.current_monitor()?.or(window.primary_monitor()?) else {
+        return Ok(());
+    };
+    let area = monitor.work_area().size.to_logical::<f64>(monitor.scale_factor());
+    let min_width = 980f64.min((area.width - 24.0).max(760.0));
+    let min_height = 680f64.min((area.height - 24.0).max(600.0));
+    let max_width = min_width.max(1920f64.min(area.width - 16.0));
+    let max_height = min_height.max(1240f64.min(area.height - 16.0));
+    window.set_min_size(Some(tauri::LogicalSize::new(min_width.round(), min_height.round())))?;
+    window.set_size(tauri::LogicalSize::new(
+        (area.width * 0.9).clamp(min_width, max_width).round(),
+        (area.height * 0.94).clamp(min_height, max_height).round(),
+    ))?;
+    window.center()
 }
 
 fn main() {
@@ -1200,6 +1219,7 @@ fn main() {
         .manage(server_directory::PendingJoin::default())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
@@ -1209,8 +1229,24 @@ fn main() {
         .setup(|app| {
             let args: Vec<String> = std::env::args_os().map(|arg| arg.to_string_lossy().into_owned()).collect();
             server_directory::receive_arguments(app.handle(), &args);
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = fit_to_monitor(&window);
+                // Shown anyway if the page never reports that it loaded.
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    if !window.is_visible().unwrap_or(true) {
+                        let _ = window.show();
+                    }
+                });
+            }
             Ok(())
         })
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                let _ = webview.window().show();
+            }
+        })
+        .register_asynchronous_uri_scheme_protocol("gameskin", game_skin::serve)
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())

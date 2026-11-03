@@ -27,7 +27,7 @@
   import { gameSkin, resolveSkin, skinChoice } from "./lib/skins";
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { currentMonitor, getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
 
   type TabId = "main" | "installed" | "mods" | "loaders" | "servers" | "multiplayer" | "modding" | "directory" | "settings";
   type Tab = { id: TabId; label: string; group: string };
@@ -54,11 +54,6 @@
   let installedPage: Promise<typeof import("./pages/InstalledMods.svelte")> | null = null;
   let serversPage: Promise<typeof import("./pages/Servers.svelte")> | null = null;
   let isWindowMaximized = false;
-
-  const MIN_WINDOW_WIDTH = 980;
-  const MIN_WINDOW_HEIGHT = 680;
-  const MAX_WINDOW_WIDTH = 1920;
-  const MAX_WINDOW_HEIGHT = 1240;
 
   function selectTab(tab: TabId) {
     if (!tabs.some(item => item.id === tab)) return;
@@ -153,52 +148,6 @@
     }
   }
 
-  function clampNumber(value: number, min: number, max: number) {
-    return Math.min(max, Math.max(min, value));
-  }
-
-  function logicalWorkAreaSize(monitor: Awaited<ReturnType<typeof currentMonitor>>) {
-    if (!monitor) {
-      return null;
-    }
-
-    const scale = monitor.scaleFactor || 1;
-    const area = monitor.workArea?.size ?? monitor.size;
-
-    return {
-      width: area.width / scale,
-      height: area.height / scale,
-    };
-  }
-
-  async function fitWindowToMonitor() {
-    try {
-      const monitor = await currentMonitor();
-      const workArea = logicalWorkAreaSize(monitor);
-      if (!workArea) {
-        return;
-      }
-
-      const appWindow = getCurrentWindow();
-      const minWidth = Math.min(MIN_WINDOW_WIDTH, Math.max(760, workArea.width - 24));
-      const minHeight = Math.min(MIN_WINDOW_HEIGHT, Math.max(600, workArea.height - 24));
-      const maxWidth = Math.max(minWidth, Math.min(MAX_WINDOW_WIDTH, workArea.width - 16));
-      const maxHeight = Math.max(minHeight, Math.min(MAX_WINDOW_HEIGHT, workArea.height - 16));
-
-      const targetWidth = Math.round(clampNumber(workArea.width * 0.9, minWidth, maxWidth));
-      const targetHeight = Math.round(clampNumber(workArea.height * 0.94, minHeight, maxHeight));
-
-      await appWindow.setSizeConstraints({
-        minWidth: Math.round(minWidth),
-        minHeight: Math.round(minHeight),
-      });
-      await appWindow.setSize(new LogicalSize(targetWidth, targetHeight));
-      await appWindow.center();
-    } catch (error) {
-      console.log("Failed to fit window to monitor", error);
-    }
-  }
-
   onMount(() => {
     let destroyed = false;
     let stopCommunityLinks: (() => void) | undefined;
@@ -223,25 +172,14 @@
     window.addEventListener("resize", onResize);
     document.addEventListener("contextmenu", onContextMenu);
 
+    // The window is sized in Rust before it appears. Nothing here blocks the workspace: the
+    // installation selector shows its own loading state.
     async function initialize() {
-      await fitWindowToMonitor();
-      await refreshMaximizedState();
-
-      processing.set(true);
-      processName.set("Initializing...");
-      processProgress.set(0);
-
-      await initializeInstallationProfiles();
-
-      try {
-        isDotnetInstalled.set(await invoke<boolean>("is_dotnet11_installed"));
-      } catch (err) {
-        console.log(err);
-      } finally {
-        processing.set(false);
-        processName.set("");
-        processProgress.set(0);
-      }
+      void refreshMaximizedState();
+      await Promise.all([
+        initializeInstallationProfiles(),
+        invoke<boolean>("is_dotnet11_installed").then(installed => isDotnetInstalled.set(installed), error => console.log(error)),
+      ]);
     }
 
     void initialize();

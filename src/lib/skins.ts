@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { derived, get, writable } from "svelte/store";
 import { installationProfiles, profilesReady, type InstallationRegistryState } from "./installationProfiles";
 
@@ -23,23 +23,45 @@ function savedChoice(): SkinChoice {
 export const skinChoice = writable<SkinChoice>(savedChoice());
 skinChoice.subscribe(choice => localStorage.setItem(SKIN_KEY, choice));
 
-type GameSkinFiles = { frameMask: string; backdrop: string; font: string | null };
+type GameSkinFiles = { revision: string; font: boolean };
 export type GameSkinState = { status: "waiting" | "reading" | "ready" | "unavailable"; problem: string };
 
 // The Manager ships none of Endnight's art: the Sons skin's frame and backdrop, and the Roboto font
-// the game ships with, come from the player's own installation.
+// the game ships with, are read from the player's own installation into a cache that Rust serves at
+// gameskin://, so the webview loads them like any image or font.
 export const gameSkin = writable<GameSkinState>({ status: "waiting", problem: "" });
-const SOURCE_KEY = "openacai-manager-game-skin-source";
-// The installation read last time, so the skin can load before the installation profiles do.
-const remembered = localStorage.getItem(SOURCE_KEY);
+const SKIN_FILES_KEY = "openacai-manager-game-skin";
+type RememberedSkin = GameSkinFiles & { executable: string };
+// What was read last time, so the skin shows at once and is checked against the game afterwards.
+const remembered = rememberedSkin();
+const skinSheet = new CSSStyleSheet();
+document.adoptedStyleSheets = [...document.adoptedStyleSheets, skinSheet];
 let source = "";
+let applied = "";
+
+function rememberedSkin(): RememberedSkin | null {
+    try {
+        const value = JSON.parse(localStorage.getItem(SKIN_FILES_KEY) ?? "null");
+        return typeof value?.executable === "string" && typeof value.revision === "string" ? value : null;
+    } catch {
+        return null;
+    }
+}
 
 export function resolveSkin(choice: SkinChoice, status: GameSkinState["status"]): Skin {
     const skin = choice === "game" ? GAME_SKIN : choice;
     if (skin !== "sons" || status === "ready") return skin;
     // Without the game's files there is no frame to draw. A launch that read them last time keeps
-    // the Sons layout while they load, rather than switching skins once they arrive.
+    // the Sons skin while they are checked, rather than switching skins once they are.
     return remembered && status !== "unavailable" ? "sons" : "modstoke";
+}
+
+function applySkin(files: GameSkinFiles) {
+    if (applied === files.revision) return;
+    applied = files.revision;
+    const url = (file: string) => `${convertFileSrc(file, "gameskin")}?v=${files.revision}`;
+    skinSheet.replaceSync(`:root { --sons-frame-mask: url("${url("frame-mask.png")}"); --sons-backdrop: url("${url("title-backdrop.png")}"); }`);
+    if (files.font) document.fonts.add(new FontFace("SonsRoboto", `url("${url("roboto.ttf")}")`, { weight: "400 900" }));
 }
 
 async function readGameSkin(executable: string): Promise<void> {
@@ -48,14 +70,8 @@ async function readGameSkin(executable: string): Promise<void> {
     try {
         const files = await invoke<GameSkinFiles>("read_game_skin", { executable });
         if (source !== executable) return;
-        const sheet = new CSSStyleSheet();
-        sheet.replaceSync(`:root { --sons-frame-mask: url("${files.frameMask}"); --sons-backdrop: url("${files.backdrop}"); }`);
-        document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
-        if (files.font) {
-            const font = Uint8Array.from(atob(files.font), character => character.charCodeAt(0));
-            document.fonts.add(new FontFace("SonsRoboto", font, { weight: "400 900" }));
-        }
-        localStorage.setItem(SOURCE_KEY, executable);
+        applySkin(files);
+        localStorage.setItem(SKIN_FILES_KEY, JSON.stringify({ executable, ...files }));
         gameSkin.set({ status: "ready", problem: "" });
     } catch (error) {
         if (source !== executable) return;
@@ -72,7 +88,10 @@ function playerExecutable(state: InstallationRegistryState | null): string | und
         : state?.registry.targets.find(target => target.kind === "player")?.executable;
 }
 
-if (remembered) void readGameSkin(remembered);
+if (remembered) {
+    applySkin(remembered);
+    void readGameSkin(remembered.executable);
+}
 
 derived([installationProfiles, profilesReady], values => values).subscribe(([state, ready]) => {
     if (!ready || get(gameSkin).status === "ready") return;

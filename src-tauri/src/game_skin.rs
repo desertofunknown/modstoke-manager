@@ -1,20 +1,22 @@
 use crate::installation_profiles::{self, TargetKind};
-use base64::engine::general_purpose::STANDARD as BASE64;
-use base64::Engine;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 
 // Endnight asked that the Manager ship no copy of the game's art, so the Sons of the Forest skin
 // reads its frame, backdrop and font from the player's own installation. The decoded files are
-// cached for this user only and rebuilt when the game's files change.
+// cached for this user only, rebuilt when the game's files change, and served to the webview at
+// gameskin://.
 const DATA_FOLDER: &str = "SonsOfTheForest_Data";
 const CACHE_FOLDER: &str = "game-skin";
 const MANIFEST_FILE: &str = "sources.json";
+// Raise when the cached files change shape, so existing caches are rebuilt.
+const CACHE_FORMAT: u32 = 2;
 const MAX_METADATA: usize = 64 * 1024 * 1024;
 const MAX_ASSET: usize = 64 * 1024 * 1024;
 const MAX_SIDE: usize = 16384;
@@ -58,9 +60,9 @@ const ROBOTO: Asset = Asset {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameSkin {
-    frame_mask: String,
-    backdrop: String,
-    font: Option<String>,
+    // Changes whenever the cached files do, so the webview never keeps an old copy.
+    revision: String,
+    font: bool,
 }
 
 struct Files {
@@ -69,14 +71,15 @@ struct Files {
     font: Option<Vec<u8>>,
 }
 
-// Names the game files a cache was built from and the Manager that built it, so a Manager update
-// rereads the game as well as a game update does.
+// Names the game files a cache was built from and the format it was written in.
 #[derive(Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Manifest {
-    manager: String,
+    format: u32,
     sources: Vec<Stamp>,
     font: bool,
+    // When the copy was written, so a rebuild from unchanged game files still gets a new revision.
+    built: u64,
 }
 
 #[derive(Deserialize, Serialize, PartialEq)]
@@ -99,15 +102,41 @@ pub async fn read_game_skin(app: tauri::AppHandle, executable: String) -> Result
         }
         let root = inspected.root
             .ok_or_else(|| inspected.problem.unwrap_or_else(|| "The game installation is unavailable.".into()))?;
-        let files = cached_files(&cache, &Path::new(&root).join(DATA_FOLDER))?;
-        Ok(GameSkin {
-            frame_mask: format!("data:image/png;base64,{}", BASE64.encode(&files.frame_mask)),
-            backdrop: format!("data:image/png;base64,{}", BASE64.encode(&files.backdrop)),
-            font: files.font.map(|font| BASE64.encode(font)),
-        })
+        cached_skin(&cache, &Path::new(&root).join(DATA_FOLDER))
     })
     .await
     .map_err(|error| format!("Could not read the Sons of the Forest skin: {error}"))?
+}
+
+/// Serves the cached skin files at gameskin://, so the webview loads them like any image or font.
+pub fn serve<R: tauri::Runtime>(
+    context: tauri::UriSchemeContext<'_, R>,
+    request: tauri::http::Request<Vec<u8>>,
+    responder: tauri::UriSchemeResponder,
+) {
+    let cache = context.app_handle().path().app_local_data_dir().map(|folder| folder.join(CACHE_FOLDER));
+    let name = request.uri().path().trim_start_matches('/').to_owned();
+    tauri::async_runtime::spawn_blocking(move || {
+        let found = [(&FRAME_MASK, "image/png"), (&BACKDROP, "image/png"), (&ROBOTO, "font/ttf")]
+            .into_iter()
+            .find(|(asset, _)| asset.cache_file == name)
+            .zip(cache.ok())
+            .and_then(|((asset, kind), cache)| Some((fs::read(cache.join(asset.cache_file)).ok()?, kind)));
+        let response = match found {
+            // Masks and fonts are fetched with CORS from the app's own origin.
+            Some((bytes, kind)) => tauri::http::Response::builder()
+                .header("Content-Type", kind)
+                .header("Access-Control-Allow-Origin", "*")
+                .header("Cache-Control", "no-cache")
+                .body(bytes),
+            None => tauri::http::Response::builder().status(404).body(Vec::new()),
+        };
+        responder.respond(response.unwrap_or_default());
+    });
+}
+
+fn revision(manifest: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(manifest))[..16].to_owned()
 }
 
 fn stamps(data: &Path) -> Vec<Stamp> {
@@ -129,27 +158,26 @@ fn stamps(data: &Path) -> Vec<Stamp> {
         .collect()
 }
 
-fn cached_files(cache: &Path, data: &Path) -> Result<Files, String> {
+fn cached_skin(cache: &Path, data: &Path) -> Result<GameSkin, String> {
     let sources = stamps(data);
-    let manifest = fs::read(cache.join(MANIFEST_FILE)).ok()
-        .and_then(|bytes| serde_json::from_slice::<Manifest>(&bytes).ok())
-        .filter(|manifest| manifest.manager == env!("CARGO_PKG_VERSION") && manifest.sources == sources);
-    if let Some(manifest) = manifest {
-        let read = |asset: &Asset| fs::read(cache.join(asset.cache_file)).ok();
-        if let (Some(frame_mask), Some(backdrop)) = (read(&FRAME_MASK), read(&BACKDROP)) {
-            let font = if manifest.font { read(&ROBOTO) } else { None };
-            if font.is_some() == manifest.font {
-                return Ok(Files { frame_mask, backdrop, font });
+    if let Ok(bytes) = fs::read(cache.join(MANIFEST_FILE)) {
+        let present = |asset: &Asset| cache.join(asset.cache_file).is_file();
+        if let Ok(manifest) = serde_json::from_slice::<Manifest>(&bytes) {
+            if manifest.format == CACHE_FORMAT && manifest.sources == sources
+                && present(&FRAME_MASK) && present(&BACKDROP) && manifest.font == present(&ROBOTO) {
+                return Ok(GameSkin { revision: revision(&bytes), font: manifest.font });
             }
         }
     }
     let files = extract(data)?;
-    // A cache that can't be written only means the files are read again next time.
-    let _ = store(cache, Manifest { manager: env!("CARGO_PKG_VERSION").into(), sources, font: files.font.is_some() }, &files);
-    Ok(files)
+    let built = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_millis() as u64);
+    let manifest = Manifest { format: CACHE_FORMAT, sources, font: files.font.is_some(), built };
+    let bytes = store(cache, &manifest, &files)
+        .map_err(|error| format!("Could not save the Sons of the Forest skin in Manager's data folder: {error}"))?;
+    Ok(GameSkin { revision: revision(&bytes), font: manifest.font })
 }
 
-fn store(cache: &Path, manifest: Manifest, files: &Files) -> std::io::Result<()> {
+fn store(cache: &Path, manifest: &Manifest, files: &Files) -> std::io::Result<Vec<u8>> {
     fs::create_dir_all(cache)?;
     let _ = fs::remove_file(cache.join(MANIFEST_FILE));
     let write = |name: &str, bytes: &[u8]| -> std::io::Result<()> {
@@ -165,26 +193,28 @@ fn store(cache: &Path, manifest: Manifest, files: &Files) -> std::io::Result<()>
         None => { let _ = fs::remove_file(cache.join(ROBOTO.cache_file)); }
     }
     // The manifest goes last, so a half-written cache is never taken as current.
-    write(MANIFEST_FILE, &serde_json::to_vec(&manifest).map_err(std::io::Error::other)?)
+    let bytes = serde_json::to_vec(manifest).map_err(std::io::Error::other)?;
+    write(MANIFEST_FILE, &bytes)?;
+    Ok(bytes)
 }
 
 fn extract(data: &Path) -> Result<Files, String> {
     let mut opened: HashMap<&str, AssetsFile> = HashMap::new();
-    let mut read = |asset: &Asset| -> Result<Vec<u8>, String> {
+    let mut read = |asset: &Asset, decode: fn(&AssetsFile, &Object) -> Result<Vec<u8>, &'static str>| -> Result<Vec<u8>, String> {
         if !opened.contains_key(asset.data_file) {
             opened.insert(asset.data_file, AssetsFile::open(&data.join(asset.data_file))?);
         }
         let file = &opened[asset.data_file];
         let object = file.find(asset)
             .ok_or_else(|| format!("{} has no {}.", asset.data_file, asset.name))?;
-        let decoded = if asset.class_id == FONT { file.font(object) } else { file.texture_png(object) };
-        decoded.map_err(|problem| format!("Could not read {} from {}: {problem}.", asset.name, asset.data_file))
+        decode(file, object).map_err(|problem| format!("Could not read {} from {}: {problem}.", asset.name, asset.data_file))
     };
     Ok(Files {
-        frame_mask: read(&FRAME_MASK)?,
-        backdrop: read(&BACKDROP)?,
+        // The frame is only used as a CSS mask, which needs its alpha and no more than half its size.
+        frame_mask: read(&FRAME_MASK, |file, object| file.texture(object)?.half_size_alpha_png())?,
+        backdrop: read(&BACKDROP, |file, object| file.texture(object)?.png())?,
         // Without the game's Roboto the Manager falls back to Segoe UI.
-        font: read(&ROBOTO).ok(),
+        font: read(&ROBOTO, AssetsFile::font).ok(),
     })
 }
 
@@ -285,7 +315,7 @@ impl AssetsFile {
             .or_else(|| self.objects.iter().find(matches))
     }
 
-    fn texture_png(&self, object: &Object) -> Result<Vec<u8>, &'static str> {
+    fn texture(&self, object: &Object) -> Result<Image, &'static str> {
         // Texture2D's fields as Unity 2022.2 and later write them, without a type tree.
         if self.unity < (2022, 2) {
             return Err(UNREADABLE);
@@ -339,21 +369,14 @@ impl AssetsFile {
             _ => texture2ddecoder::decode_bc7(&data, width, height, &mut pixels),
         }?;
         // Unity stores rows bottom up, and the decoder writes BGRA.
-        let mut rgba = Vec::with_capacity(width * height * 4);
-        for row in pixels.chunks_exact(width).rev() {
-            for pixel in row {
+        let mut rgba = vec![0u8; width * height * 4];
+        for (target, source) in rgba.chunks_exact_mut(width * 4).zip(pixels.chunks_exact(width).rev()) {
+            for (out, pixel) in target.chunks_exact_mut(4).zip(source) {
                 let [blue, green, red, alpha] = pixel.to_le_bytes();
-                rgba.extend_from_slice(&[red, green, blue, alpha]);
+                out.copy_from_slice(&[red, green, blue, alpha]);
             }
         }
-        let mut encoded = Vec::new();
-        let mut encoder = png::Encoder::new(&mut encoded, width as u32, height as u32);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder.write_header().map_err(|_| "the image could not be encoded")?;
-        writer.write_image_data(&rgba).map_err(|_| "the image could not be encoded")?;
-        writer.finish().map_err(|_| "the image could not be encoded")?;
-        Ok(encoded)
+        Ok(Image { width, height, rgba })
     }
 
     fn stream(&self, path: &str, offset: u64, size: usize) -> Result<Vec<u8>, &'static str> {
@@ -386,6 +409,45 @@ impl AssetsFile {
         }
         Ok(font.to_vec())
     }
+}
+
+/// A decoded texture, top row first.
+struct Image {
+    width: usize,
+    height: usize,
+    rgba: Vec<u8>,
+}
+
+impl Image {
+    fn png(&self) -> Result<Vec<u8>, &'static str> {
+        encode_png(self.width, self.height, png::ColorType::Rgba, &self.rgba)
+    }
+
+    fn half_size_alpha_png(&self) -> Result<Vec<u8>, &'static str> {
+        let (width, height) = ((self.width / 2).max(1), (self.height / 2).max(1));
+        let alpha = |x: usize, y: usize| u32::from(self.rgba[(y.min(self.height - 1) * self.width + x.min(self.width - 1)) * 4 + 3]);
+        let mut pixels = Vec::with_capacity(width * height * 2);
+        for y in 0..height {
+            for x in 0..width {
+                let sum = alpha(2 * x, 2 * y) + alpha(2 * x + 1, 2 * y) + alpha(2 * x, 2 * y + 1) + alpha(2 * x + 1, 2 * y + 1);
+                pixels.extend_from_slice(&[255, ((sum + 2) / 4) as u8]);
+            }
+        }
+        encode_png(width, height, png::ColorType::GrayscaleAlpha, &pixels)
+    }
+}
+
+fn encode_png(width: usize, height: usize, color: png::ColorType, data: &[u8]) -> Result<Vec<u8>, &'static str> {
+    let mut encoded = Vec::new();
+    let mut encoder = png::Encoder::new(&mut encoded, width as u32, height as u32);
+    encoder.set_color(color);
+    encoder.set_depth(png::BitDepth::Eight);
+    // The cache is local, so encoding speed matters more than size.
+    encoder.set_compression(png::Compression::Fast);
+    let mut writer = encoder.write_header().map_err(|_| "the image could not be encoded")?;
+    writer.write_image_data(data).map_err(|_| "the image could not be encoded")?;
+    writer.finish().map_err(|_| "the image could not be encoded")?;
+    Ok(encoded)
 }
 
 struct Reader<'a> {
