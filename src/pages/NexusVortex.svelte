@@ -14,7 +14,7 @@
     import { fallbackPreviewUrl } from "../lib/mods/modPreview";
     import { modalFocus } from "../lib/modalFocus";
     import {
-        clearNexusApiKey,
+        beginNexusSignIn,
         endorseNexusSotfMod,
         fetchNexusFileDependencies,
         fetchNexusModChangelogs,
@@ -28,8 +28,10 @@
         getNexusModPageUrl,
         getNexusSession,
         NEXUS_CACHE_TTL_MINUTES,
+        onNexusSignInFinished,
         pickRecommendedNexusFile,
-        saveNexusApiKey,
+        reloadNexusSessionAfterSignIn,
+        signOutOfNexus,
         trackNexusSotfMod,
         untrackNexusSotfMod,
         type NexusCategory,
@@ -173,7 +175,9 @@
     let session: NexusSession = { is_connected: false };
     let nexusSessionGeneration = 0;
     let isDisconnecting = false;
-    let apiKey = "";
+    let signInPending = false;
+    let signInLink = "";
+    let stopSignInListener: (() => void) | null = null;
     let mods: NexusMod[] = [];
     let knownNexusDetails: Record<number, NexusMod> = {};
     let knownNexusPreviewUrls: Record<number, string[]> = {};
@@ -299,8 +303,6 @@
     let activeNexusTrackId: number | null = null;
     let activeConflictEntryKey: string | null = null;
     let isRefreshingInventory = false;
-    let ssoSocket: WebSocket | null = null;
-    let ssoTimeout: number | null = null;
     let refreshCooldownSeconds = 0;
     let refreshCooldownTimer: number | null = null;
     let nexusUiPreferencesLoaded = false;
@@ -317,18 +319,11 @@
     let detailChangelogSectionElement: HTMLDivElement | null = null;
     let detailFooterElement: HTMLDivElement | null = null;
 
-    const NEXUS_SSO_URL = "wss://sso.nexusmods.com";
-    const NEXUS_SSO_APPLICATION_SLUG = "openacai-mod-manager";
-    const NEXUS_SSO_PROTOCOL = 2;
-    const NEXUS_SSO_UUID_KEY = "openacai-nexus-sso-request-id";
-    const NEXUS_SSO_TOKEN_KEY = "openacai-nexus-sso-connection-token";
     const NEXUS_UI_PREFERENCES_KEY = "openacai-nexus-ui-preferences";
     const NEXUS_LOCAL_CATALOG_KEY = "openacai-nexus-sotf-catalog-v1";
     const NEXUS_LOCAL_CATALOG_SCHEMA = 2;
     const NEXUS_LOCAL_CATALOG_MAX_MODS = 5000;
     const NEXUS_LOCAL_CATALOG_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-    // The retained legacy SSO implementation is not the pending OAuth integration.
-    const NEXUS_BROWSER_SIGN_IN_AVAILABLE = false;
     const NEXUS_MANUAL_REFRESH_COOLDOWN_MS = 60_000;
     const NEXUS_PLACEHOLDER_IMAGE = fallbackPreviewUrl;
     const NEXUS_DETAIL_PLACEHOLDER_IMAGE = fallbackPreviewUrl;
@@ -773,6 +768,9 @@
             lastAppliedSharedSearchVersion = sharedSearchVersion;
         }
         isMounted = true;
+        const stop = await onNexusSignInFinished(error => void finishNexusSignIn(error));
+        if (isDestroyed) stop();
+        else stopSignInListener = stop;
         await refreshInventory();
         if (isDestroyed) return;
 
@@ -786,7 +784,7 @@
         inventoryRequestId += 1;
         detailGeneration += 1;
         clearNestedDependencyCheck();
-        cleanupSso();
+        stopSignInListener?.();
         cleanupManualRefreshCooldown();
         clearNxmCopyFeedback();
         cleanupNexusLayoutObserver();
@@ -1176,165 +1174,58 @@
     }
 
     async function connectWithNexus() {
-        if (!NEXUS_BROWSER_SIGN_IN_AVAILABLE) return;
-        cleanupSso();
-        isLoading = true;
-        status = "Opening Nexus login...";
-
-        const requestId = getOrCreateSsoRequestId();
-        const token = localStorage.getItem(NEXUS_SSO_TOKEN_KEY);
-
-        try {
-            ssoSocket = new WebSocket(NEXUS_SSO_URL);
-            ssoSocket.onopen = async () => {
-                ssoSocket?.send(JSON.stringify({
-                    id: requestId,
-                    token,
-                    protocol: NEXUS_SSO_PROTOCOL
-                }));
-
-                await shell.open(`https://www.nexusmods.com/sso?id=${encodeURIComponent(requestId)}&application=${encodeURIComponent(NEXUS_SSO_APPLICATION_SLUG)}`);
-                status = "Approve the Nexus connection in your browser.";
-            };
-
-            ssoSocket.onmessage = async (event) => {
-                await handleSsoMessage(event.data);
-            };
-
-            ssoSocket.onerror = async () => {
-                await finishSsoWithError("Nexus login failed before approval. The Modstoke Manager app slug must be registered with Nexus Mods before browser SSO can complete. Browser OAuth registration is pending; this legacy SSO flow is not OAuth.");
-            };
-
-            ssoSocket.onclose = () => {
-                if (isLoading && status.includes("Approve")) {
-                    status = "Nexus login closed before approval.";
-                    isLoading = false;
-                }
-            };
-
-            ssoTimeout = window.setTimeout(async () => {
-                await finishSsoWithError("Nexus login timed out. Try Login with Nexus again.");
-            }, 90000);
-        } catch (error) {
-            await finishSsoWithError(`${error}`);
-        }
-    }
-
-    async function connectWithManualKey() {
         if (isLoading || isDisconnecting) return;
-        if (!apiKey.trim()) {
-            await dialog.message("Paste your personal Nexus Mods API key for development review or testing.", {
-                title: "Nexus account",
-                kind: "info"
-            });
+        isLoading = true;
+        signInPending = true;
+        signInLink = "";
+        status = "Approve Modstoke Manager on Nexus Mods, then let your browser open the Manager.";
+        try {
+            const started = await beginNexusSignIn();
+            if (!isDestroyed && !started.opened) signInLink = started.url;
+        } catch (error) {
+            if (isDestroyed) return;
+            cancelSignIn();
+            await dialog.message(`${error}`, { title: "Nexus sign-in", kind: "error" });
+        }
+    }
+
+    // The Manager keeps the sign-in open for ten minutes; this only stops the page waiting for it.
+    function cancelSignIn() {
+        signInPending = false;
+        signInLink = "";
+        isLoading = false;
+        status = "";
+    }
+
+    async function finishNexusSignIn(error: string | null) {
+        if (isDestroyed) return;
+        signInPending = false;
+        signInLink = "";
+        if (error) {
+            isLoading = false;
+            status = "";
+            await dialog.message(error, { title: "Nexus sign-in", kind: "error" });
             return;
         }
 
         isLoading = true;
-        status = "Validating Nexus account...";
+        status = "Checking your Nexus Mods account...";
         const generation = ++nexusSessionGeneration;
-
         try {
-            const nextSession = await saveNexusApiKey(apiKey);
+            const nextSession = await reloadNexusSessionAfterSignIn();
             if (isDestroyed || generation !== nexusSessionGeneration) return;
-            if (!nexusAccountId(nextSession)) throw new Error("Nexus did not return a valid account identity.");
+            if (!nexusAccountId(nextSession)) throw new Error(nextSession.error ?? "Nexus did not return a valid account identity.");
             clearNexusAccountState();
             session = nextSession;
-            apiKey = "";
             await loadMods();
-        } catch (error) {
+        } catch (failure) {
             if (isDestroyed || generation !== nexusSessionGeneration) return;
-            await dialog.message(`${error}`, {
-                title: "Nexus account error",
-                kind: "error"
-            });
+            await dialog.message(`${failure}`, { title: "Nexus sign-in", kind: "error" });
         } finally {
             if (!isDestroyed && generation === nexusSessionGeneration) {
                 status = "";
                 isLoading = false;
             }
-        }
-    }
-
-    function getOrCreateSsoRequestId(): string {
-        const requestId = crypto.randomUUID();
-        localStorage.setItem(NEXUS_SSO_UUID_KEY, requestId);
-        return requestId;
-    }
-
-    async function handleSsoMessage(rawMessage: string) {
-        let payload: any;
-        try {
-            payload = JSON.parse(rawMessage);
-        } catch {
-            return;
-        }
-
-        if (!payload.success) {
-            await finishSsoWithError(payload.error ?? "Nexus login was not approved.");
-            return;
-        }
-
-        if (payload.data?.connection_token) {
-            localStorage.setItem(NEXUS_SSO_TOKEN_KEY, payload.data.connection_token);
-        }
-
-        if (!payload.data?.api_key) {
-            return;
-        }
-
-        status = "Validating approved Nexus session...";
-        const generation = nexusSessionGeneration;
-
-        try {
-            const nextSession = await saveNexusApiKey(payload.data.api_key);
-            if (isDestroyed || generation !== nexusSessionGeneration) return;
-            if (!nexusAccountId(nextSession)) throw new Error("Nexus did not return a valid account identity.");
-            clearNexusAccountState();
-            session = nextSession;
-            await loadMods();
-        } catch (error) {
-            if (isDestroyed || generation !== nexusSessionGeneration) return;
-            await dialog.message(`${error}`, {
-                title: "Nexus account error",
-                kind: "error"
-            });
-        } finally {
-            if (!isDestroyed && generation === nexusSessionGeneration) {
-                cleanupSso();
-                status = "";
-                isLoading = false;
-            }
-        }
-    }
-
-    async function finishSsoWithError(message: string) {
-        cleanupSso();
-        status = "";
-        isLoading = false;
-        await dialog.message(message, {
-            title: "Nexus login",
-            kind: "error"
-        });
-    }
-
-    function cleanupSso() {
-        if (ssoTimeout !== null) {
-            window.clearTimeout(ssoTimeout);
-            ssoTimeout = null;
-        }
-
-        if (ssoSocket) {
-            ssoSocket.onopen = null;
-            ssoSocket.onmessage = null;
-            ssoSocket.onerror = null;
-            ssoSocket.onclose = null;
-
-            if (ssoSocket.readyState === WebSocket.OPEN || ssoSocket.readyState === WebSocket.CONNECTING) {
-                ssoSocket.close();
-            }
-
-            ssoSocket = null;
         }
     }
 
@@ -1397,11 +1288,11 @@
         activeCatalogPreviewLoadId = null;
         catalogPreviewLoadNotices = {};
         closeModDetails();
-        cleanupSso();
+        cancelSignIn();
         cleanupManualRefreshCooldown();
         nextManualRefreshAt = 0;
         try {
-            await clearNexusApiKey();
+            await signOutOfNexus();
             if (isDestroyed) return;
             session = { is_connected: false };
             clearNexusAccountState();
@@ -1758,10 +1649,6 @@
         }
 
         return null;
-    }
-
-    async function openApiKeys() {
-        await shell.open("https://www.nexusmods.com/users/myaccount?tab=api%20access");
     }
 
     async function openNexusGame() {
@@ -4878,19 +4765,15 @@
         {:else}
             <div class="connect-column">
                 <div class="connect-row">
-                    <button class="install login-button" disabled={!NEXUS_BROWSER_SIGN_IN_AVAILABLE || isLoading} on:click={connectWithNexus}>Sign in with Nexus</button>
+                    <button class="install login-button" disabled={isLoading || isDisconnecting} on:click={connectWithNexus}>{signInPending ? "Waiting for Nexus..." : "Sign in with Nexus"}</button>
+                    {#if signInPending}
+                        <button on:click={cancelSignIn}>Cancel</button>
+                    {/if}
                     <button on:click={openNexusGame}>Open Nexus <LucideExternalLink aria-hidden="true" /></button>
                 </div>
-                <span class="manual-warning">Browser OAuth sign-in is unavailable while app registration is pending.</span>
-                <details class="manual-key">
-                    <summary>Development testing</summary>
-                    <button on:click={openApiKeys}>Personal API keys <LucideExternalLink aria-hidden="true" /></button>
-                    <div class="connect-row manual-row">
-                        <input class="generic-input key-input" bind:value={apiKey} type="password" aria-label="Personal Nexus API key" autocomplete="off" spellcheck={false} placeholder="Nexus API key" />
-                        <button disabled={isLoading || isDisconnecting} on:click={connectWithManualKey}>Use personal key</button>
-                    </div>
-                    <span class="manual-warning">Personal API keys are for development review and testing only, not production app sign-in.</span>
-                </details>
+                {#if signInLink}
+                    <span class="manual-warning">Your browser did not open. <a href={signInLink}>Open the Nexus Mods sign-in page</a>.</span>
+                {/if}
             </div>
         {/if}
     </section>
@@ -6358,22 +6241,6 @@
         white-space: nowrap;
     }
 
-    .manual-key {
-        color: #9da6b6;
-        font-size: 11px;
-        text-align: right;
-        width: 100%;
-    }
-
-    .manual-key summary {
-        cursor: pointer;
-        line-height: 1.6;
-    }
-
-    .manual-row {
-        margin-top: 10px;
-    }
-
     .manual-warning {
         color: #c6a77e;
         display: block;
@@ -6723,8 +6590,7 @@
     .nexus-filter-row .key-input { grid-column: 1 / -1; }
 
     .nexus-filter-row select,
-    .nexus-filter-row .key-input,
-    .connect-row .key-input {
+    .nexus-filter-row .key-input {
         background: #15181e;
         border: 1px solid #343a45;
         border-radius: 7px;
@@ -7227,7 +7093,6 @@
     }
 
     .nexus-embedded-store-preview .connect-row { justify-content: flex-start; }
-    .nexus-embedded-store-preview .manual-key { text-align: left; }
     .nexus-embedded-store-preview .catalog-panel { gap: 8px; }
     .nexus-embedded-store-preview .api-note { font-size: 10px; }
 
@@ -9740,7 +9605,6 @@
         .account-panel { align-items: flex-start; flex-wrap: wrap; }
         .connect-column { align-items: flex-start; flex-basis: 100%; min-width: 0; }
         .connect-row { justify-content: flex-start; }
-        .manual-key { text-align: left; }
         .catalog-toolbar { flex-wrap: wrap; }
         .view-buttons { order: 3; flex-basis: 100%; justify-content: flex-start; }
         .feed-hidden { display: none; }

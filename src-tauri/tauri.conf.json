@@ -67,7 +67,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' ipc: http://ipc.localhost; connect-src 'self' ipc: http://ipc.localhost https://api.github.com wss://sso.nexusmods.com; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; font-src 'self' https://gameskin.localhost; script-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+      "csp": "default-src 'self' ipc: http://ipc.localhost; connect-src 'self' ipc: http://ipc.localhost https://api.github.com; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; font-src 'self' https://gameskin.localhost; script-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
     }
   }
 }

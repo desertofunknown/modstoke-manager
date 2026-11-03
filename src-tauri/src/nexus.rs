@@ -4,15 +4,13 @@ use serde::Serialize;
 const NEXUS_API_BASE: &str = "https://api.nexusmods.com";
 const NEXUS_GRAPHQL_ENDPOINT: &str = "https://api.nexusmods.com/v2/graphql";
 const NEXUS_GAME_DOMAIN: &str = "sonsoftheforest";
-const NEXUS_CREDENTIAL_SERVICE: &str = "OpenACAI Mod Manager";
-const NEXUS_CREDENTIAL_ACCOUNT: &str = "nexusmods-api-key";
-const NEXUS_USER_AGENT: &str = concat!(
-    "OpenACAI-Mod-Manager/",
+pub(crate) const NEXUS_USER_AGENT: &str = concat!(
+    "Modstoke-Manager/",
     env!("CARGO_PKG_VERSION"),
     " (SonsOfTheForest; Windows; Publisher=OpenACAI)"
 );
-const NEXUS_APPLICATION_NAME: &str = "OpenACAI Mod Manager";
-const NEXUS_APPLICATION_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub(crate) const NEXUS_APPLICATION_NAME: &str = "Modstoke Manager";
+pub(crate) const NEXUS_APPLICATION_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Serialize)]
 pub struct NexusUser {
@@ -125,44 +123,23 @@ pub struct NexusActionResponse {
 }
 
 #[tauri::command]
-pub async fn nexus_save_api_key(api_key: String) -> Result<NexusSession, String> {
-    let cleaned = api_key.trim().to_string();
-    if cleaned.len() < 16 {
-        return Err("Nexus API key is too short.".to_string());
-    }
-
-    let (user, rate_limit) = validate_nexus_key(&cleaned).await?;
-    nexus_credential_entry()?
-        .set_password(&cleaned)
-        .map_err(|e| e.to_string())?;
-
-    Ok(NexusSession::connected(user, rate_limit))
-}
-
-#[tauri::command]
 pub async fn nexus_get_session() -> Result<NexusSession, String> {
-    let Some(key) = read_nexus_api_key()? else {
-        return Ok(NexusSession::disconnected(None));
+    crate::nexus_auth::forget_legacy_api_key();
+    let token = match crate::nexus_auth::access_token().await {
+        Ok(Some(token)) => token,
+        Ok(None) => return Ok(NexusSession::disconnected(None)),
+        Err(error) => return Ok(NexusSession::disconnected(Some(error))),
     };
 
-    Ok(match validate_nexus_key(&key).await {
+    Ok(match validate_nexus_session(&token).await {
         Ok((user, rate_limit)) => NexusSession::connected(user, rate_limit),
         Err(error) => NexusSession::disconnected(Some(error)),
     })
 }
 
 #[tauri::command]
-pub fn nexus_clear_api_key() -> Result<(), String> {
-    match nexus_credential_entry()?.delete_password() {
-        Ok(_) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(error) => Err(error.to_string()),
-    }
-}
-
-#[tauri::command]
 pub async fn nexus_fetch_sotf_mods(view: String) -> Result<NexusModsResponse, String> {
-    let key = require_nexus_api_key()?;
+    let key = require_nexus_token().await?;
     let url = match view.as_str() {
         "latest_added" => {
             format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/latest_added.json")
@@ -187,7 +164,7 @@ pub async fn nexus_fetch_sotf_mods_graphql(
     offset: u64,
     count: u64,
 ) -> Result<NexusGraphqlModsResponse, String> {
-    let key = require_nexus_api_key()?;
+    let key = require_nexus_token().await?;
     let query = r#"
         query OpenAcaiSotfMods($filter: ModsFilter, $sort: [ModsSort!], $offset: Int, $count: Int) {
             mods(filter: $filter, sort: $sort, offset: $offset, count: $count) {
@@ -282,7 +259,7 @@ pub async fn nexus_fetch_sotf_mods_graphql(
 
 #[tauri::command]
 pub async fn nexus_fetch_sotf_game_info() -> Result<NexusGameInfoResponse, String> {
-    let key = require_nexus_api_key()?;
+    let key = require_nexus_token().await?;
     let url = format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}.json");
     let (game, rate_limit) =
         nexus_json(nexus_client(&key)?.get(url), "Nexus game metadata request").await?;
@@ -291,7 +268,7 @@ pub async fn nexus_fetch_sotf_game_info() -> Result<NexusGameInfoResponse, Strin
 
 #[tauri::command]
 pub async fn nexus_fetch_mod_details(mod_id: u64) -> Result<NexusModDetailsResponse, String> {
-    let key = require_nexus_api_key()?;
+    let key = require_nexus_token().await?;
     let url = format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/{mod_id}.json");
     let (details, rate_limit) =
         nexus_json(nexus_client(&key)?.get(url), "Nexus mod details request").await?;
@@ -303,7 +280,7 @@ pub async fn nexus_fetch_mod_details(mod_id: u64) -> Result<NexusModDetailsRespo
 
 #[tauri::command]
 pub async fn nexus_fetch_mod_files(mod_id: u64) -> Result<NexusModFilesResponse, String> {
-    let key = require_nexus_api_key()?;
+    let key = require_nexus_token().await?;
     let url = format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/{mod_id}/files.json");
     let (mut value, rate_limit) =
         nexus_json(nexus_client(&key)?.get(url), "Nexus mod files request").await?;
@@ -319,7 +296,7 @@ pub async fn nexus_fetch_file_dependencies(
     file_id: u64,
     nexus_file_id: Option<String>,
 ) -> Result<NexusModDependenciesResponse, String> {
-    let key = require_nexus_api_key()?;
+    let key = require_nexus_token().await?;
     let client = nexus_client(&key)?;
     let supplied_version_id = nexus_file_id
         .as_deref()
@@ -507,7 +484,7 @@ async fn nexus_request_dependency_route(
 
 #[tauri::command]
 pub async fn nexus_fetch_mod_changelogs(mod_id: u64) -> Result<NexusModChangelogsResponse, String> {
-    let key = require_nexus_api_key()?;
+    let key = require_nexus_token().await?;
     let url =
         format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/{mod_id}/changelogs.json");
     let (changelogs, rate_limit) =
@@ -520,7 +497,7 @@ pub async fn nexus_fetch_mod_changelogs(mod_id: u64) -> Result<NexusModChangelog
 
 #[tauri::command]
 pub async fn nexus_fetch_user_endorsements() -> Result<NexusEndorsementsResponse, String> {
-    let key = require_nexus_api_key()?;
+    let key = require_nexus_token().await?;
     let (endorsements, rate_limit) = nexus_json(
         nexus_client(&key)?.get(format!("{NEXUS_API_BASE}/v1/user/endorsements.json")),
         "Nexus endorsements request",
@@ -534,7 +511,7 @@ pub async fn nexus_fetch_user_endorsements() -> Result<NexusEndorsementsResponse
 
 #[tauri::command]
 pub async fn nexus_fetch_user_tracked_mods() -> Result<NexusTrackedModsResponse, String> {
-    let key = require_nexus_api_key()?;
+    let key = require_nexus_token().await?;
     let (tracked_mods, rate_limit) = nexus_json(
         nexus_client(&key)?.get(format!("{NEXUS_API_BASE}/v1/user/tracked_mods.json")),
         "Nexus tracked mods request",
@@ -551,7 +528,7 @@ pub async fn nexus_endorse_sotf_mod(
     mod_id: u64,
     version: Option<String>,
 ) -> Result<NexusActionResponse, String> {
-    let key = require_nexus_api_key()?;
+    let key = require_nexus_token().await?;
     let url = format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/{mod_id}/endorse.json");
     let mut form: Vec<(&str, String)> = Vec::new();
     if let Some(version) = version
@@ -584,7 +561,7 @@ async fn nexus_set_sotf_tracking(
     mod_id: u64,
     should_track: bool,
 ) -> Result<NexusActionResponse, String> {
-    let key = require_nexus_api_key()?;
+    let key = require_nexus_token().await?;
     let form = vec![("mod_id", mod_id.to_string())];
     let request = nexus_client(&key)?
         .request(
@@ -603,9 +580,10 @@ async fn nexus_set_sotf_tracking(
     Ok(NexusActionResponse { result, rate_limit })
 }
 
-async fn validate_nexus_key(api_key: &str) -> Result<(NexusUser, NexusRateLimit), String> {
+// Nexus checks the access token itself here, including whether the player has revoked it.
+async fn validate_nexus_session(access_token: &str) -> Result<(NexusUser, NexusRateLimit), String> {
     let (value, rate_limit) = nexus_json(
-        nexus_client(api_key)?.get(format!("{NEXUS_API_BASE}/v1/users/validate.json")),
+        nexus_client(access_token)?.get(format!("{NEXUS_API_BASE}/v1/users/validate.json")),
         "Nexus account validation",
     )
     .await?;
@@ -637,15 +615,12 @@ async fn validate_nexus_key(api_key: &str) -> Result<(NexusUser, NexusRateLimit)
     Ok((user, rate_limit))
 }
 
-fn nexus_client(api_key: &str) -> Result<reqwest::Client, String> {
+fn nexus_client(access_token: &str) -> Result<reqwest::Client, String> {
     let mut headers = HeaderMap::new();
-    if api_key.trim().is_empty() {
-        return Err("The Nexus API key is empty. Reconnect your account.".to_string());
-    }
-    let mut key_header = HeaderValue::from_str(api_key)
-        .map_err(|_| "The Nexus API key contains invalid characters.".to_string())?;
-    key_header.set_sensitive(true);
-    headers.insert("apikey", key_header);
+    let mut authorization = HeaderValue::from_str(&format!("Bearer {access_token}"))
+        .map_err(|_| "Nexus Mods returned an unusable sign-in. Sign in again.".to_string())?;
+    authorization.set_sensitive(true);
+    headers.insert("Authorization", authorization);
     headers.insert("User-Agent", HeaderValue::from_static(NEXUS_USER_AGENT));
     headers.insert(
         "Application-Name",
@@ -672,6 +647,10 @@ async fn nexus_send(
     let response = request.send().await.map_err(|e| e.to_string())?;
     let rate_limit = read_rate_limit(response.headers());
 
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        crate::nexus_auth::forget_access_token().await;
+        return Err(format!("{context} failed: Nexus Mods did not accept the sign-in. Try again, or sign in again if this keeps happening."));
+    }
     if !response.status().is_success() {
         return Err(format!("{context} failed: {}", response.status()));
     }
@@ -718,21 +697,8 @@ async fn read_json_or_empty(response: reqwest::Response) -> Result<serde_json::V
     serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
-fn nexus_credential_entry() -> Result<keyring::Entry, String> {
-    keyring::Entry::new(NEXUS_CREDENTIAL_SERVICE, NEXUS_CREDENTIAL_ACCOUNT)
-        .map_err(|e| e.to_string())
-}
-
-fn read_nexus_api_key() -> Result<Option<String>, String> {
-    match nexus_credential_entry()?.get_password() {
-        Ok(value) => Ok(Some(value)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(error) => Err(error.to_string()),
-    }
-}
-
-fn require_nexus_api_key() -> Result<String, String> {
-    read_nexus_api_key()?.ok_or_else(|| "Connect a Nexus Mods account first.".to_string())
+async fn require_nexus_token() -> Result<String, String> {
+    crate::nexus_auth::access_token().await?.ok_or_else(|| "Sign in with Nexus Mods first.".to_string())
 }
 
 // Hands a Nexus file link to the mod manager the player registered for nxm links, such as Vortex.

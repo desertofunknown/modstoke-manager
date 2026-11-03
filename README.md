@@ -31,7 +31,7 @@ These steps describe the current app, built from source.
 
 **Loader install and repair do not work yet.** A source build requests `OpenACAILoader.manifest.json` from [modstoke.com](https://modstoke.com/releases/loader/latest/OpenACAILoader.manifest.json), where no loader release has been published yet. The signed 0.2.0 downloads request an old GitHub address that is no longer available. The loader cannot be installed from a local ZIP. In a source build, install and repair will work once a compatible loader release is published on modstoke.com. See [troubleshooting](docs/TROUBLESHOOTING.md#loader-install-says-the-manifest-is-unavailable) for the errors you may see.
 
-Nexus account sign-in is awaiting application registration. Personal API keys are available only for development testing and review. See the [Nexus integration notes](docs/NEXUS_API_REVIEW.md) for account handling, review instructions and the proposed OAuth registration.
+Sign in with your Nexus Mods account through your browser. The Manager uses Nexus's OAuth sign-in with PKCE and never asks for a personal API key. See the [Nexus integration notes](docs/NEXUS_API_REVIEW.md) for account handling and the OAuth registration.
 
 ## Develop on Windows
 

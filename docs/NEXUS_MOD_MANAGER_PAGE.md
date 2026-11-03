@@ -10,7 +10,7 @@ The Nexus workspace provides catalog search and filters, mod details, file selec
 
 Catalog requests use the connected account. A refresh replaces the previous catalog instead of retaining rows omitted by Nexus. Account changes discard cached requests, and the local catalog snapshot is restricted to its account and expires after 24 hours. Cached results are labelled and can predate changes to account preferences.
 
-Public account sign-in is awaiting Nexus application registration. Personal API keys are available only for development testing and review, stored locally in the operating system's credential vault. See the [Nexus integration notes](https://github.com/desertofunknown/modstoke-manager/blob/openacai-tauri2-svelte5-shell/docs/NEXUS_API_REVIEW.md) for the registration proposal and review steps.
+Sign in with your Nexus Mods account through your browser. The Manager uses Nexus's OAuth sign-in, never asks for an API key, and keeps only a refresh token in Windows Credential Manager. See the [Nexus integration notes](https://github.com/desertofunknown/modstoke-manager/blob/openacai-tauri2-svelte5-shell/docs/NEXUS_API_REVIEW.md) for how sign-in and account data are handled.
 
 ## Requirements
 
@@ -27,7 +27,6 @@ Run the Manager and select `SonsOfTheForest.exe`. The tabs are **Overview**, **I
 
 ## Current limitations
 
-- Public Nexus OAuth sign-in is not implemented or approved yet.
 - Loader install and repair are unavailable until a loader release is published at modstoke.com, where the Manager looks for it. The loader can't be installed from a local ZIP; native mod ZIPs can, under **Native packages**.
 - Vortex conflict rules and deployment remain in Vortex. Dependency information does not replace its deployment checks.
 - Features not exposed by the supported Nexus APIs link to the Nexus website.

@@ -2814,6 +2814,8 @@ dependencies = [
 name = "openacai-mod-manager"
 version = "0.2.0"
 dependencies = [
+ "base64 0.22.1",
+ "getrandom 0.2.10",
  "keyring",
  "png 0.17.10",
  "regex",

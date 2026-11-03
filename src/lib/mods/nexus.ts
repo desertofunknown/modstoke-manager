@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export type NexusUser = {
     user_id?: number;
@@ -357,17 +358,27 @@ export async function getNexusSession(options: { force?: boolean } = {}): Promis
     return session;
 }
 
-export async function saveNexusApiKey(apiKey: string): Promise<NexusSession> {
+// Opens the Nexus Mods sign-in page in the browser. When it could not be opened, the page shows url.
+export async function beginNexusSignIn(): Promise<{ url: string; opened: boolean }> {
+    return await invoke<{ url: string; opened: boolean }>("nexus_begin_sign_in");
+}
+
+// Nexus sends the browser back to the Manager, which finishes the sign-in and reports here.
+export async function onNexusSignInFinished(handler: (error: string | null) => void): Promise<UnlistenFn> {
+    return await listen<{ error: string | null }>("nexus-sign-in", event => handler(event.payload.error ?? null));
+}
+
+// A finished sign-in may be a different account, so every cached request goes before the session is read.
+export async function reloadNexusSessionAfterSignIn(): Promise<NexusSession> {
     currentNexusGeneration();
     clearNexusClientCache();
     const generation = authGeneration;
     credentialTransitionPending = true;
     let session: NexusSession;
     try {
-        session = await invoke<NexusSession>("nexus_save_api_key", { apiKey });
+        session = await invoke<NexusSession>("nexus_get_session");
         assertCurrentNexusRequest(generation);
     } finally {
-        // A failed save may retain the previous credential. Reload it on the next request.
         credentialTransitionPending = false;
         clearNexusClientCache();
     }
@@ -375,13 +386,13 @@ export async function saveNexusApiKey(apiKey: string): Promise<NexusSession> {
     return session;
 }
 
-export async function clearNexusApiKey(): Promise<void> {
+export async function signOutOfNexus(): Promise<void> {
     currentNexusGeneration();
     clearNexusClientCache();
     const generation = authGeneration;
     credentialTransitionPending = true;
     try {
-        await invoke("nexus_clear_api_key");
+        await invoke("nexus_sign_out");
         assertCurrentNexusRequest(generation);
     } finally {
         credentialTransitionPending = false;

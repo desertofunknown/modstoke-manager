@@ -22,6 +22,8 @@ winreg = "0.55"
 keyring = "2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.10"
+base64 = "0.22"
+getrandom = "0.2"
 png = "0.17"
 texture2ddecoder = "0.1"
 tempfile = "3"

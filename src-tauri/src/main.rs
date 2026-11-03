@@ -13,6 +13,7 @@ mod mod_profile;
 mod mod_update;
 mod native_inventory;
 mod nexus;
+mod nexus_auth;
 mod safe_fs;
 mod server;
 mod steam;
@@ -65,11 +66,19 @@ fn main() {
                 let _ = window.set_focus();
             }
             server::directory::receive_arguments(app, &args);
+            nexus_auth::receive_arguments(app, &args);
         }))
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             let args: Vec<String> = std::env::args_os().map(|arg| arg.to_string_lossy().into_owned()).collect();
             server::directory::receive_arguments(app.handle(), &args);
+            // The installer registers modstoke:// for installed copies. Portable and development
+            // builds register it here, so the Nexus Mods sign-in and join links reach them too.
+            #[cfg(windows)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let _ = app.deep_link().register_all();
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let _ = fit_to_monitor(&window);
                 // Shown anyway if the page never reports that it loaded.
@@ -145,9 +154,9 @@ fn main() {
             loader_package::inspect_openacai_loader_zip,
             steam::get_steam_path,
             system::is_dotnet11_installed,
-            nexus::nexus_save_api_key,
             nexus::nexus_get_session,
-            nexus::nexus_clear_api_key,
+            nexus_auth::nexus_begin_sign_in,
+            nexus_auth::nexus_sign_out,
             nexus::nexus_fetch_sotf_mods,
             nexus::nexus_fetch_sotf_mods_graphql,
             nexus::nexus_fetch_sotf_game_info,
