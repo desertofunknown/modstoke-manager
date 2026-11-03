@@ -2,7 +2,7 @@
     import { onDestroy } from "svelte";
     import { get } from "svelte/store";
     import { open as chooseFolder } from "@tauri-apps/plugin-dialog";
-    import { open } from "@tauri-apps/plugin-shell";
+    import { openFolder } from "./utils";
     import LucidePlay from "~icons/lucide/play";
     import LucideSquare from "~icons/lucide/square";
     import LucideRotateCw from "~icons/lucide/rotate-cw";
@@ -275,7 +275,7 @@
         const key = keyOf(installation);
         const request = ++generation;
         beginOperation("Opening dedicated-server data folder...");
-        try { await open(folder); }
+        try { await openFolder(folder); }
         catch (failure) {
             if (current(request, key)) error = `Could not open data folder: ${failure}`;
         } finally { endOperation(); }

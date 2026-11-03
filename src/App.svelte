@@ -28,6 +28,7 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { openWebLink } from "./lib/utils";
 
   type TabId = "main" | "installed" | "mods" | "loaders" | "servers" | "multiplayer" | "modding" | "directory" | "settings";
   type Tab = { id: TabId; label: string; group: string };
@@ -169,8 +170,16 @@
         event.preventDefault();
       }
     };
+    // Links in descriptions and notes open in the browser rather than inside the Manager.
+    const onLinkClick = (event: MouseEvent) => {
+      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (!(link instanceof HTMLAnchorElement) || !/^https?:$/.test(link.protocol)) return;
+      event.preventDefault();
+      openWebLink(link.href);
+    };
     window.addEventListener("resize", onResize);
     document.addEventListener("contextmenu", onContextMenu);
+    document.addEventListener("click", onLinkClick);
 
     // The window is sized in Rust before it appears. Nothing here blocks the workspace: the
     // installation selector shows its own loading state.
@@ -188,6 +197,7 @@
       stopCommunityLinks?.();
       window.removeEventListener("resize", onResize);
       document.removeEventListener("contextmenu", onContextMenu);
+      document.removeEventListener("click", onLinkClick);
     };
   });
 </script>

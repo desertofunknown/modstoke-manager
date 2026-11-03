@@ -63,7 +63,9 @@
     import { gameExePath, getDirectoryPath, isPathValid } from "../lib/store";
     import * as dialog from "@tauri-apps/plugin-dialog"
     import * as shell from "@tauri-apps/plugin-shell"
-    import { Command } from "@tauri-apps/plugin-shell";
+    import { invoke } from "@tauri-apps/api/core";
+    import { dirname } from "@tauri-apps/api/path";
+    import { openFolder } from "../lib/utils";
 
     export let isActive = false;
     export let sharedSearchTerm = "";
@@ -349,6 +351,8 @@
     const NEXUS_PLACEHOLDER_IMAGE = fallbackPreviewUrl;
     const NEXUS_DETAIL_PLACEHOLDER_IMAGE = fallbackPreviewUrl;
     const NEXUS_DESCRIPTION_FALLBACK = "No directions or description are available through the Nexus API for this mod. Open the Nexus page to review author instructions before installing.";
+    // Tags nested deeper than this are shown as text, so a hostile description can't exhaust the stack.
+    const NEXUS_RICH_MAX_NESTING = 32;
     const NEXUS_RICH_BB_TAGS = new Set(["b", "i", "u", "s", "strike", "strikethrough", "del", "sub", "sup", "small", "big", "mark", "abbr", "acronym", "cite", "q", "url", "img", "image", "thumb", "thumbnail", "color", "colour", "background", "bgcolor", "bgcolour", "backgroundcolour", "bcolor", "highlight", "size", "center", "centre", "left", "right", "justify", "align", "indent", "code", "pre", "tt", "kbd", "samp", "var", "quote", "spoiler", "collapse", "details", "accordion", "accordionitem", "font", "heading", "h", "header", "title", "subtitle", "caption", "h1", "h2", "h3", "h4", "h5", "h6", "float", "clear", "anchor", "bookmark", "target", "goto", "jump", "youtube", "video", "media", "embed", "columns", "cols", "column", "col", "nextcol", "tabs", "tab", "dl", "dt", "dd", "note", "info", "warning", "important", "tip", "box", "panel", "fieldset", "notice", "success", "danger", "error"]);
     const NEXUS_SAFE_COLOR_NAMES = new Set(["black", "white", "gray", "grey", "silver", "red", "maroon", "orange", "yellow", "olive", "lime", "green", "aqua", "cyan", "teal", "blue", "navy", "fuchsia", "magenta", "purple", "pink"]);
     const CATALOG_MODES: CatalogMode[] = ["online", "installed"];
@@ -1796,23 +1800,16 @@
         await shell.open("https://www.nexusmods.com/games/sonsoftheforest");
     }
 
+    // Web links open in the browser, Nexus file links go to the registered mod manager, and anything
+    // else has to be a local folder.
     async function openExternalTarget(target: string) {
-        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(target)) {
+        if (/^https?:\/\//i.test(target)) {
             await shell.open(target);
-            return;
+        } else if (target.startsWith("nxm://")) {
+            await invoke("open_nxm_link", { url: target });
+        } else {
+            await openFolder(target);
         }
-
-        try {
-            const cmd = Command.create("open-explorer", [target]);
-            const result = await cmd.execute();
-            if (result.code === 0) {
-                return;
-            }
-        } catch {
-            // Fall back to Tauri's shell opener below.
-        }
-
-        await shell.open(target);
     }
 
     async function openVortexStaging() {
@@ -2648,7 +2645,7 @@
     }
 
     async function openInventoryLocation(entry: InstalledInventoryEntry) {
-        const target = entry.packagePath ?? entry.assemblyPath ?? await getDirectoryPath();
+        const target = entry.packagePath ?? (entry.assemblyPath ? await dirname(entry.assemblyPath) : await getDirectoryPath());
         await openExternalTarget(target);
     }
 
@@ -3224,7 +3221,12 @@
     }
 
     async function sendFileToVortex(mod: NexusMod, file: NexusModFile) {
-        await openExternalTarget(getNexusNxmUrl(mod, file));
+        try {
+            await openExternalTarget(getNexusNxmUrl(mod, file));
+        } catch (error) {
+            status = `Could not send ${mod.name} to Vortex: ${error}`;
+            return;
+        }
         status = `Sent ${mod.name} (${file.name}) to Vortex. Finish deployment in Vortex, then refresh inventory.`;
         window.setTimeout(() => {
             if (status.startsWith("Sent ")) {
@@ -5386,17 +5388,36 @@
     }
 
     function renderNexusRichText(value?: string, fallback = ""): string {
-        const normalized = normalizeNexusMarkup(value);
-        if (!normalized) {
-            return `<p>${escapeHtml(fallback)}</p>`;
-        }
+        try {
+            const normalized = normalizeNexusMarkup(value);
+            if (!normalized) {
+                return `<p>${escapeHtml(fallback)}</p>`;
+            }
 
-        return renderNexusBlocks(normalized, 0);
+            return renderNexusBlocks(normalized, 0);
+        } catch (error) {
+            console.warn("Could not render Nexus text", error);
+            return `<p>${escapeHtml(plainTextOr(value, fallback))}</p>`;
+        }
     }
 
     function renderOptionalNexusRichText(value?: string): string {
-        const normalized = normalizeNexusMarkup(value);
-        return normalized ? renderNexusBlocks(normalized, 0) : "";
+        try {
+            const normalized = normalizeNexusMarkup(value);
+            return normalized ? renderNexusBlocks(normalized, 0) : "";
+        } catch (error) {
+            console.warn("Could not render Nexus text", error);
+            const plain = plainTextOr(value, "");
+            return plain ? `<p>${escapeHtml(plain)}</p>` : "";
+        }
+    }
+
+    function plainTextOr(value: string | undefined, fallback: string): string {
+        try {
+            return plainText(value) || fallback;
+        } catch {
+            return fallback;
+        }
     }
 
     function normalizeNexusMarkup(value?: string): string {
@@ -6615,7 +6636,7 @@
             const rawAttrs = match[3] ?? "";
             const isSelfClosing = /\/\s*$/.test(rawAttrs) || isNexusVoidRichTag(name, rawAttrs);
 
-            if (!NEXUS_RICH_BB_TAGS.has(name)) {
+            if (!NEXUS_RICH_BB_TAGS.has(name) || (!isClosing && !isSelfClosing && stack.length > NEXUS_RICH_MAX_NESTING)) {
                 stack[stack.length - 1].children.push({ kind: "text", value: full });
             } else if (isClosing) {
                 if (stack.length > 1 && stack[stack.length - 1].name === name) {

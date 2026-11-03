@@ -3,7 +3,7 @@
     import { get } from "svelte/store";
     import { dirname } from "@tauri-apps/api/path";
     import { confirm } from "@tauri-apps/plugin-dialog";
-    import { open } from "@tauri-apps/plugin-shell";
+    import { openFolder } from "../lib/utils";
     import LucideSearch from "~icons/lucide/search";
     import LucideRefreshCw from "~icons/lucide/refresh-cw";
     import LucideFolderOpen from "~icons/lucide/folder-open";
@@ -360,7 +360,7 @@
         try {
             const folder = location === entry.assemblyPath ? await dirname(location) : location;
             await assertCurrent(request);
-            await open(folder);
+            await openFolder(folder);
         } catch (failure) {
             if (isCurrent(request)) folderError = String(failure);
         } finally {

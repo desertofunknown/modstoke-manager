@@ -16,7 +16,6 @@ tauri = { version = "2", features = [] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["raw_value"] }
 zip = "0.5"
-tauri-plugin-upload = "2"
 tokio = { version = "1", features = ["net", "time", "io-util"] }
 regex = "1"
 winreg = "0.55"
@@ -39,9 +38,11 @@ features = [
     "alloc",
     "Win32_Foundation",
     "Win32_Storage_FileSystem",
+    "Win32_System_LibraryLoader",
     "Win32_System_Console",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_Threading",
+    "Win32_UI_Shell",
 ]
 
 [features]

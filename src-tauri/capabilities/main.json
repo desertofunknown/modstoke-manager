@@ -1,0 +1,38 @@
+{
+  "identifier": "main",
+  "description": "The Manager window's permissions. Files are limited to the downloads folder and the selected game or server folder, which Rust adds once it checks out. Opening folders, launching Steam and downloading go through the app's own commands.",
+  "local": true,
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-start-dragging",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-message",
+    "dialog:allow-confirm",
+    "shell:allow-open",
+    "fs:deny-default",
+    "fs:allow-exists",
+    "fs:allow-mkdir",
+    "fs:allow-read-dir",
+    "fs:allow-read-text-file",
+    "fs:allow-remove",
+    "fs:allow-rename",
+    "fs:allow-write-text-file",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "$APPCACHE/downloads" }, { "path": "$APPCACHE/downloads/**" }]
+    },
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://api.sotf-mods.com/*" },
+        { "url": "https://modstoke.com/releases/loader/*" }
+      ]
+    }
+  ]
+}

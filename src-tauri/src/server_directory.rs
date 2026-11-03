@@ -1,7 +1,6 @@
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{collections::HashSet, net::Ipv4Addr, path::Path, sync::Mutex, time::Duration};
 use tauri::{Emitter, Manager};
-use winreg::{enums::*, RegKey};
 
 const API: &str = "https://modstoke.com/api/community/v1";
 
@@ -261,27 +260,6 @@ pub fn take_pending_community_join(state: tauri::State<'_, PendingJoin>) -> Resu
     state.0.lock().map(|mut pending| pending.take()).map_err(|_| "Could not read the requested server.".into())
 }
 
-fn steam_executable() -> Result<std::path::PathBuf, String> {
-    let current = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(r"Software\Valve\Steam", KEY_READ);
-    let executable = current.as_ref().ok().and_then(|key| key.get_value::<String, _>("SteamExe").ok())
-        .map(std::path::PathBuf::from)
-        .or_else(|| current.as_ref().ok().and_then(|key| key.get_value::<String, _>("SteamPath").ok())
-            .map(|path| Path::new(&path).join("steam.exe")))
-        .or_else(|| {
-            let machine = RegKey::predef(HKEY_LOCAL_MACHINE);
-            [r"SOFTWARE\WOW6432Node\Valve\Steam", r"SOFTWARE\Valve\Steam"].iter().find_map(|path| {
-                machine.open_subkey_with_flags(path, KEY_READ).ok()
-                    .and_then(|key| key.get_value::<String, _>("InstallPath").ok())
-                    .map(|path| Path::new(&path).join("steam.exe"))
-            })
-        }).ok_or("Steam could not be located. Open Steam and try again.")?;
-    if !executable.is_absolute() || !executable.is_file()
-        || !executable.file_name().is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("steam.exe")) {
-        return Err("The registered Steam executable is unavailable.".into());
-    }
-    Ok(executable)
-}
-
 #[tauri::command]
 pub async fn join_community_server(app: tauri::AppHandle, expected_server: CommunityServer, game_root: String) -> Result<String, String> {
     validate_server(&expected_server)?;
@@ -301,7 +279,7 @@ pub async fn join_community_server(app: tauri::AppHandle, expected_server: Commu
         || selected.root.as_deref() != Some(game_root.as_str()) {
         return Err("The selected player installation changed or is unavailable. Review it before joining.".into());
     }
-    let steam_game = crate::get_steam_path().await.ok_or("Could not verify Steam's game installation. Open Steam and try again.")?;
+    let steam_game = crate::steam::get_steam_path().await.ok_or("Could not verify Steam's game installation. Open Steam and try again.")?;
     tauri::async_runtime::spawn_blocking(move || {
         let root = std::fs::canonicalize(&game_root).map_err(|_| "The player installation is unavailable.")?;
         let steam_root = Path::new(&steam_game).parent().and_then(|path| std::fs::canonicalize(path).ok())
@@ -323,8 +301,8 @@ pub async fn join_community_server(app: tauri::AppHandle, expected_server: Commu
                 }
             }
         }
-        let mut command = std::process::Command::new(steam_executable()?);
-        command.args(["-applaunch", crate::SOTF_APP_ID]);
+        let mut command = std::process::Command::new(crate::steam::steam_executable()?);
+        command.args(["-applaunch", crate::steam::SOTF_APP_ID]);
         match join {
             JoinTarget::Lobby { lobby_id } => { command.args(["+connect_lobby", &lobby_id]); }
             JoinTarget::Dedicated { address, port } => { command.args(["+connect", &format!("{address}:{port}")]); }

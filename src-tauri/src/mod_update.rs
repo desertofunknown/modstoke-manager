@@ -10,6 +10,10 @@ const LOCK_PATH: &str = ".openacai-native-update.lock";
 const MANIFEST_PATH: &str = "transaction.json";
 const FINISHED_MANIFEST_PATH: &str = "finished-transaction.json";
 const TRANSACTION_KIND: &str = "openacai-native-mod-update";
+// Native packages stop at 512 MiB decoded; catalog mods and the Loader get more room.
+const MAX_ARCHIVE_ENTRIES: usize = 8192;
+const MAX_EXTRACTED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+const MAX_LOADER_JSON_BYTES: u64 = 512 * 1024;
 const LOADER_DESCRIPTORS: [&str; 2] = [
     "OpenACAI/Runtime/openacai-loader.manifest.json",
     "BepInEx/plugins/OpenACAILoader/openacai-loader.manifest.json",
@@ -89,8 +93,22 @@ struct LoaderFile {
     size: u64,
 }
 
+// Archives handed over by the webview may only land in a game or dedicated server folder.
+fn installation_root(destination: &str) -> Result<PathBuf, String> {
+    let selected = Path::new(destination);
+    validate_directory(selected)?;
+    let root = fs::canonicalize(selected).map_err(|error| error.to_string())?;
+    if validate_target(&root, Path::new("SonsOfTheForest.exe"))?
+        || validate_target(&root, Path::new("SonsOfTheForestDS.exe"))?
+    {
+        Ok(root)
+    } else {
+        Err("Archives can only be installed into a Sons of the Forest game or dedicated server folder.".into())
+    }
+}
+
 pub fn install_zip_archive(source: String, destination: String) -> Result<(), String> {
-    let root = fs::canonicalize(Path::new(&destination)).map_err(|error| error.to_string())?;
+    let root = installation_root(&destination)?;
     let _lock = acquire_update_lock(&root)?;
     recover_pending_updates(&root)?;
     replace_archive_locked(source, destination, None, &mut |_, _| Ok(()))
@@ -155,7 +173,7 @@ fn replace_archive_locked_inner(
     if let Some(policy) = &native {
         validate_native_archive(&source, policy)?;
     }
-    super::unzip_file(&source, &staging.to_string_lossy()).map_err(|error| {
+    extract_archive(&source, &staging).map_err(|error| {
         format!(
             "Could not prepare the replacement archive. The installed mod was not changed. {error}"
         )
@@ -396,9 +414,17 @@ fn installed_path(root: &Path, value: Option<String>) -> Result<Option<PathBuf>,
 fn validate_archive(source: &str) -> Result<(), String> {
     let reader = File::open(source).map_err(|error| error.to_string())?;
     let mut archive = zip::ZipArchive::new(reader).map_err(|error| error.to_string())?;
+    if archive.len() > MAX_ARCHIVE_ENTRIES {
+        return Err("The archive contains more files than the Manager accepts.".into());
+    }
     let mut entries = HashMap::new();
+    let mut declared = 0u64;
     for index in 0..archive.len() {
         let file = archive.by_index(index).map_err(|error| error.to_string())?;
+        declared = declared.saturating_add(file.size());
+        if declared > MAX_EXTRACTED_BYTES {
+            return Err("The archive expands to more than the Manager accepts.".into());
+        }
         let relative = file
             .enclosed_name()
             .ok_or_else(|| format!("Unsafe path in zip entry: {}", file.name()))?;
@@ -419,6 +445,40 @@ fn validate_archive(source: &str) -> Result<(), String> {
                 return Err(format!("The archive uses a file as a folder: {}", path.display()));
             }
             parent = path.parent();
+        }
+    }
+    Ok(())
+}
+
+// Fills the empty staging folder. validate_archive has already checked every path and the declared
+// sizes, so this only has to stop an entry that decodes to more than it declares.
+fn extract_archive(source: &str, staging: &Path) -> Result<(), String> {
+    let reader = File::open(source).map_err(|error| error.to_string())?;
+    let mut archive = zip::ZipArchive::new(reader).map_err(|error| error.to_string())?;
+    for index in 0..archive.len() {
+        let mut file = archive.by_index(index).map_err(|error| error.to_string())?;
+        let relative = file
+            .enclosed_name()
+            .ok_or_else(|| format!("Unsafe path in zip entry: {}", file.name()))?
+            .to_owned();
+        let target = staging.join(relative);
+        if file.is_dir() {
+            fs::create_dir_all(&target).map_err(|error| error.to_string())?;
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        let mut output = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&target)
+            .map_err(|error| error.to_string())?;
+        let size = file.size();
+        let written = std::io::copy(&mut (&mut file).take(size + 1), &mut output)
+            .map_err(|error| error.to_string())?;
+        if written != size {
+            return Err(format!("{} does not match the size the archive declares for it.", file.name()));
         }
     }
     Ok(())
@@ -565,8 +625,13 @@ fn plan_native_removals(
 }
 
 fn read_loader_json<T: serde::de::DeserializeOwned>(root: &Path, path: &str) -> Result<T, String> {
-    let bytes = fs::read(root.join(path))
+    let mut bytes = Vec::new();
+    File::open(root.join(path))
+        .and_then(|file| file.take(MAX_LOADER_JSON_BYTES + 1).read_to_end(&mut bytes))
         .map_err(|error| format!("Could not read {}: {error}", root.join(path).display()))?;
+    if bytes.len() as u64 > MAX_LOADER_JSON_BYTES {
+        return Err(format!("{} is too large to be a Loader manifest.", root.join(path).display()));
+    }
     let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes);
     serde_json::from_slice(bytes)
         .map_err(|error| format!("Invalid Loader manifest at {}: {error}", root.join(path).display()))
@@ -1096,11 +1161,32 @@ pub(crate) fn recover_pending_updates(root: &Path) -> Result<(), String> {
             .map_err(|error| retained_error(&workspace, &error))?
         {
             recover_workspace(root, &workspace)?;
+        } else if abandoned_preparation(&workspace)? {
+            // Preparation stopped before the transaction was written, so no live file changed.
+            // A folder that can't be removed now is tried again next time.
+            let _ = fs::remove_dir_all(&workspace);
         }
-        // Older, unjournaled workspaces and interrupted archive preparation have
-        // no recognized transaction. Never guess how to restore their contents.
+        // Older, unjournaled workspaces with backups have no recognized transaction.
+        // Never guess how to restore their contents.
     }
     Ok(())
+}
+
+// Interrupted archive preparation leaves only a staging folder and an empty backup folder.
+fn abandoned_preparation(workspace: &Path) -> Result<bool, String> {
+    for entry in fs::read_dir(workspace).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let metadata = fs::symlink_metadata(entry.path()).map_err(|error| error.to_string())?;
+        if !metadata.is_dir() || reject_linked_path(&entry.path(), &metadata).is_err() {
+            return Ok(false);
+        }
+        match entry.file_name().to_string_lossy().to_lowercase().as_str() {
+            "staging" => {}
+            "backup" if fs::read_dir(entry.path()).map_err(|error| error.to_string())?.next().is_none() => {}
+            _ => return Ok(false),
+        }
+    }
+    Ok(true)
 }
 
 pub(crate) fn require_no_pending_updates(root: &Path) -> Result<(), String> {

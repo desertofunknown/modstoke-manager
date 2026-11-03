@@ -1,22 +1,14 @@
-import * as path from "@tauri-apps/api/path";
 import * as fs from "@tauri-apps/plugin-fs"
 
+// Downloads land in the app's downloads folder. This remembers them so they can be removed once installed.
 export class TempFileCache {
   private static _cache: string[] = [];
 
-  // This creates a temporary file and returns its path. It also keeps the path in an internal cache.
-  public static async createFile(): Promise<string> {
-    try {
-      const tempFilePath = await path.join(await path.appCacheDir(), `${Date.now()}.tmp`);
-      this._cache.push(tempFilePath);
-      return tempFilePath;
-    } catch (error) {
-      console.error('Error creating temp file:', error);
-      throw error;
-    }
+  public static track(filePath: string): void {
+    this._cache.push(filePath);
   }
 
-  // This clears all temporary files that have been created by the createFile method.
+  // Removes every file tracked since the last clear.
   public static async clearCache(): Promise<void> {
     for (const filePath of this._cache) {
       try {

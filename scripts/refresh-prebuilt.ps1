@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.2.0",
+    [string]$Version = "",
     [switch]$Build,
     [switch]$Sign
 )
@@ -9,7 +9,22 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 $PrebuiltDir = Join-Path $RepoRoot "prebuilt"
 $LocalTestDir = Join-Path $RepoRoot "local-test"
 
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $Version = (Get-Content -LiteralPath (Join-Path $RepoRoot "package.json") -Raw | ConvertFrom-Json).version
+}
+
+$BuildStarted = Get-Date
 if ($Build) {
+    # Local folder names (the checkout, the cargo cache, the user profile) stay out of the binary.
+    # The encoded form allows the spaces in this repository's path. Later prefixes win.
+    $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE ".cargo" }
+    $remaps = @(
+        "--remap-path-prefix=$env:USERPROFILE=~",
+        "--remap-path-prefix=$cargoHome=/cargo",
+        "--remap-path-prefix=$RepoRoot=/src"
+    )
+    $previousFlags = $env:CARGO_ENCODED_RUSTFLAGS
+    $env:CARGO_ENCODED_RUSTFLAGS = $remaps -join [char]0x1f
     Push-Location $RepoRoot
     try {
         npm run tauri build
@@ -19,6 +34,7 @@ if ($Build) {
     }
     finally {
         Pop-Location
+        $env:CARGO_ENCODED_RUSTFLAGS = $previousFlags
     }
 }
 
@@ -44,6 +60,9 @@ $Artifacts = @(
 foreach ($artifact in $Artifacts) {
     if (-not (Test-Path -LiteralPath $artifact.Source)) {
         throw "Missing build artifact: $($artifact.Source)"
+    }
+    if ($Build -and $artifact.Source -ne $IconSource -and (Get-Item -LiteralPath $artifact.Source).LastWriteTime -lt $BuildStarted) {
+        throw "Stale build artifact: $($artifact.Source)"
     }
 }
 

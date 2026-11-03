@@ -22,8 +22,6 @@
     import LucideShieldCheck from "~icons/lucide/shield-check";
     import LucideArrowUpRight from "~icons/lucide/arrow-up-right";
     import * as dialog from "@tauri-apps/plugin-dialog"
-    import * as shell from "@tauri-apps/plugin-shell"
-    import { Command } from "@tauri-apps/plugin-shell";
 
     export let view: "overview" | "loaders" | "multiplayer" = "overview";
     const dispatch = createEventDispatcher<{ navigate: { id: "installed" | "mods" | "loaders" | "servers" | "multiplayer" | "modding" } }>();
@@ -68,7 +66,11 @@
     }
 
     async function openFolder() {
-        await shell.open(await getDirectoryPath());
+        try {
+            await invoke("open_folder", { path: await getDirectoryPath() });
+        } catch (error) {
+            await dialog.message(`${error}`, { title: "Open folder", kind: "error" });
+        }
     }
 
     async function startGame() {
@@ -93,7 +95,7 @@
             await invoke("check_player_launch_ready", { gameRoot: selectedRoot });
             const installedVersion = await getInstalledLoaderVersion();
             if (installedVersion) {
-                loaderReport = await ensureLatestOpenAcaiLoader();
+                loaderReport = await ensureLatestOpenAcaiLoader(true);
                 updateLoaderStatus(loaderReport);
             }
             if ($isPathValid && $gameExePath === selectedExecutable && $selectedInstallation?.target.id === selectedId
@@ -112,20 +114,7 @@
     }
 
     async function launchGame() {
-        const steamUrl = "steam://rungameid/1326470";
-        try {
-            const cmd = Command.create("open-explorer", [steamUrl]);
-            const result = await cmd.execute();
-            if (result.code === 0) {
-                return;
-            }
-
-            console.log("explorer steam launch failed, falling back to shell.open", result.stderr);
-        } catch (error) {
-            console.log("explorer steam launch failed, falling back to shell.open", error);
-        }
-
-        await shell.open(steamUrl);
+        await invoke("launch_game_through_steam");
     }
 
     async function refreshLoaderStatus(showProgress = true) {

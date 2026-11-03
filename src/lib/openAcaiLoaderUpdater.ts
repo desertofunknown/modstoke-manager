@@ -1,11 +1,11 @@
 import * as path from "@tauri-apps/api/path";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { invoke } from "@tauri-apps/api/core";
-import { download } from "@tauri-apps/plugin-upload";
 import semver from "semver";
 import { BaseZipInstaller } from "./baseZipInstaller";
 import { getDirectoryPath, processName, processProgress } from "./store";
 import { TempFileCache } from "./tempFileCache";
+import { downloadToCache, unzip } from "./utils";
 import * as fs from "@tauri-apps/plugin-fs"
 
 export type LoaderManifestFile = {
@@ -61,7 +61,8 @@ export type LoaderIntegrityReport = {
 
 const LOADER_MANIFEST_URL = "https://modstoke.com/releases/loader/latest/OpenACAILoader.manifest.json";
 const INSTALLED_MANIFEST_PATH = "BepInEx/plugins/OpenACAILoader/openacai-loader.manifest.json";
-const CACHED_LATEST_MANIFEST_PATH = "BepInEx/plugins/OpenACAILoader/openacai-manager-latest-loader-manifest.json";
+// Kept with the downloads, where a mod archive installed into the game folder can't replace it.
+const CACHED_LATEST_MANIFEST_FILE = "loader-manifest.json";
 
 export class OpenAcaiLoaderInstaller extends BaseZipInstaller {
     private manifest: LoaderUpdateManifest | null = null;
@@ -171,10 +172,22 @@ export async function verifyInstalledLoader(manifest?: LoaderUpdateManifest): Pr
     };
 }
 
-export async function ensureLatestOpenAcaiLoader(): Promise<LoaderIntegrityReport> {
+// From Start game, files that drifted from the installed version are repaired, but a different version
+// is only installed when the player asks for it on the Loaders page. An older release is never installed
+// over a newer one.
+export async function ensureLatestOpenAcaiLoader(atLaunch = false): Promise<LoaderIntegrityReport> {
     const manifest = await fetchLatestLoaderManifest();
     const report = await verifyInstalledLoader(manifest);
     if (!report.needsUpdate) {
+        return report;
+    }
+
+    const installed = report.installedVersion;
+    if (installed && semver.valid(installed) && semver.valid(manifest.version) && semver.gt(installed, manifest.version)) {
+        if (atLaunch) return report;
+        throw new Error(`The published Modstoke Loader (${manifest.version}) is older than the installed one (${installed}). Nothing was changed.`);
+    }
+    if (atLaunch && installed !== manifest.version) {
         return report;
     }
 
@@ -185,30 +198,14 @@ export async function downloadVerifyAndInstallLoader(
     manifest: LoaderUpdateManifest
 ): Promise<LoaderIntegrityReport> {
     const gameRoot = await getDirectoryPath();
-    const tempPath = await TempFileCache.createFile();
 
     try {
         processName.set(`Downloading Modstoke Loader ${manifest.version}...`);
         processProgress.set(0);
-
-        let downloadProgress = 0;
-        await download(
-            manifest.package.downloadUrl,
-            tempPath,
-            ({ progress, total }) => {
-                downloadProgress += progress;
-                if (total > 0) {
-                    processProgress.set(downloadProgress / total * 100);
-                }
-            }
-        );
+        // The downloader checks the package hash against the bytes it saved, so nothing is re-read here.
+        const tempPath = await downloadToCache(manifest.package.downloadUrl, manifest.package.sha256);
 
         processName.set("Verifying Modstoke Loader package...");
-        const packageHash = await hashFile(tempPath);
-        if (packageHash.toUpperCase() !== manifest.package.sha256.toUpperCase()) {
-            throw new Error(`Downloaded loader package hash mismatch. Expected ${manifest.package.sha256}, got ${packageHash}.`);
-        }
-
         const inspection = await invoke<{ is_valid: boolean; errors: string[] }>("inspect_openacai_loader_zip", {
             source: tempPath
         });
@@ -217,7 +214,7 @@ export async function downloadVerifyAndInstallLoader(
         }
 
         processName.set(`Installing Modstoke Loader ${manifest.version}...`);
-        await thisUnzip(tempPath, gameRoot);
+        await unzip(tempPath, gameRoot);
 
         const report = await verifyInstalledLoader(manifest);
         if (report.needsUpdate) {
@@ -284,9 +281,8 @@ function validateLoaderManifest(manifest: LoaderUpdateManifest, source: LoaderMa
 
 async function writeCachedLatestManifest(manifest: LoaderUpdateManifest): Promise<void> {
     try {
-        const gameRoot = await getDirectoryPath();
-        const cacheDir = await path.join(gameRoot, "BepInEx/plugins/OpenACAILoader");
-        const cachePath = await path.join(gameRoot, CACHED_LATEST_MANIFEST_PATH);
+        const cacheDir = await path.join(await path.appCacheDir(), "downloads");
+        const cachePath = await path.join(cacheDir, CACHED_LATEST_MANIFEST_FILE);
         const cacheableManifest = { ...manifest };
         delete cacheableManifest.source;
 
@@ -299,7 +295,7 @@ async function writeCachedLatestManifest(manifest: LoaderUpdateManifest): Promis
 
 async function readCachedLatestManifest(): Promise<LoaderUpdateManifest | null> {
     try {
-        const cachePath = await path.join(await getDirectoryPath(), CACHED_LATEST_MANIFEST_PATH);
+        const cachePath = await path.join(await path.appCacheDir(), "downloads", CACHED_LATEST_MANIFEST_FILE);
         if (!await fs.exists(cachePath)) {
             return null;
         }
@@ -309,11 +305,4 @@ async function readCachedLatestManifest(): Promise<LoaderUpdateManifest | null> 
         console.log("Failed to read cached Modstoke Loader manifest", error);
         return null;
     }
-}
-
-async function thisUnzip(sourcePath: string, destinationPath: string): Promise<void> {
-    await invoke("unzip_handler", {
-        source: sourcePath.replace(/\\/g, "/"),
-        destination: destinationPath.replace(/\\/g, "/")
-    });
 }

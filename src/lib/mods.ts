@@ -2,7 +2,7 @@ import * as path from "@tauri-apps/api/path";
 import { invoke } from '@tauri-apps/api/core';
 import { gameExePath, getDirectoryPath, isPathValid, processName } from './store';
 import { get } from 'svelte/store';
-import { downloadAndInstall } from './utils';
+import { downloadAndInstall, openWebLink } from './utils';
 import { assertCurrentGameRoot, scanInstalledInventory, type InstallSource, type LoaderType } from './modInventory';
 import { resolveInstallPlan, type InstallPlan } from './modInstallPlan';
 import { applyProfilePackage, completedPackage, discardModProfileRollback, freshPlanInventory, mergeRequestedRoots, pinArchive, readModProfile, rollbackModProfile, saveModProfile, type ModProfile, type ProfileState } from './modProfile';
@@ -276,7 +276,7 @@ export class ModDatabase {
     }
 
     public static openModPage(mod: Mod): void {
-        window.open(this.getModPageUrl(mod));
+        openWebLink(this.getModPageUrl(mod));
     }
 
     public static getModPageUrl(mod: Mod): string {

@@ -2,7 +2,7 @@
     import { onDestroy } from "svelte";
     import { get } from "svelte/store";
     import { invoke } from "@tauri-apps/api/core";
-    import { open } from "@tauri-apps/plugin-shell";
+    import { openFolder as showFolder } from "./utils";
     import { processing, processName } from "./store";
     import { selectedInstallation, type InspectedInstallation } from "./installationProfiles";
     import { scanInstalledInventory, describeInstallSource, type InstalledInventoryEntry } from "./modInventory";
@@ -91,7 +91,7 @@
         if (destroyed || busy || get(processing) || !available || !installation.root) return;
         const requestKey = keyOf(installation);
         if (keyOf(get(selectedInstallation)) !== requestKey) return;
-        try { await open(installation.root); }
+        try { await showFolder(installation.root); }
         catch (error) {
             if (!destroyed && keyOf(installation) === requestKey && keyOf(get(selectedInstallation)) === requestKey) inventoryError = String(error);
         }

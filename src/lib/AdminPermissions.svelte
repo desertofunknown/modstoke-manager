@@ -1,11 +1,11 @@
 <script lang="ts">
     import { onDestroy, onMount } from "svelte";
     import { get } from "svelte/store";
-    import { Command } from "@tauri-apps/plugin-shell";
     import LucideRefreshCw from "~icons/lucide/refresh-cw";
     import LucideFolderOpen from "~icons/lucide/folder-open";
     import LucidePlus from "~icons/lucide/plus";
     import { processing, processName } from "./store";
+    import { openFolder as showFolder } from "./utils";
     import { selectedInstallation, type InspectedInstallation } from "./installationProfiles";
     import PermissionNodeList from "./PermissionNodeList.svelte";
     import {
@@ -382,8 +382,7 @@
     async function openFolder() {
         if (!state) return;
         try {
-            // Explorer's exit code says nothing about whether the window opened.
-            await Command.create("open-explorer", [state.folder]).execute();
+            await showFolder(state.folder);
         } catch (failure) {
             error = `Could not open the folder: ${failure}`;
         }

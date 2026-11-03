@@ -5,6 +5,7 @@
     import type { Mod, ModCategory, ModVersion } from "../lib/mods";
     import { ModDatabase, modDependencies, modPreviewUrls, Sorting } from "../lib/mods";
     import { renderStoreRichText } from "../lib/richText";
+    import { openWebLink } from "../lib/utils";
     import { fallbackPreviewUrl } from "../lib/modPreview";
     import { modalFocus } from "../lib/modalFocus";
     import InfiniteScroll from "../lib/InfiniteScroll.svelte";
@@ -928,7 +929,7 @@
     function openSelectedDetailSource() {
         const url = selectedDetailMod ? normalizedSourceUrl(selectedDetailMod) : "";
         if (url) {
-            window.open(url);
+            openWebLink(url);
         }
     }
 
@@ -1077,16 +1078,26 @@
         {/if}
 
         <div class="scroller" class:grid={isGrid} bind:this={catalogScroller}>
-            {#each visibleMods as mod (mod.mod_id ?? mod.slug ?? mod.name)}
-                <ModCard
-                    mod={mod}
-                    actionsDisabled={!inventoryReady}
-                    sortMetricLabel={activeSortMetricLabel}
-                    sortMetricValue={rowSortMetricValue(mod, selectedSort)}
-                    on:details={(event) => openModDetails(event.detail)}
-                    on:refreshMods={refreshMods}
-                />
-            {/each}
+            <!-- One malformed listing must not take the rest of the catalog with it. -->
+            <svelte:boundary onerror={(error) => console.warn("A catalog card failed to render", error)}>
+                {#each visibleMods as mod (mod.mod_id ?? mod.slug ?? mod.name)}
+                    <ModCard
+                        mod={mod}
+                        actionsDisabled={!inventoryReady}
+                        sortMetricLabel={activeSortMetricLabel}
+                        sortMetricValue={rowSortMetricValue(mod, selectedSort)}
+                        on:details={(event) => openModDetails(event.detail)}
+                        on:refreshMods={refreshMods}
+                    />
+                {/each}
+
+                {#snippet failed(_error, reset)}
+                    <div class="catalog-error" role="alert">
+                        <span>Some mods on this page could not be shown.</span>
+                        <button on:click={reset}>Try again</button>
+                    </div>
+                {/snippet}
+            </svelte:boundary>
 
             {#if isLoading}
                 <div class="catalog-loading" role="status">

@@ -1,4 +1,7 @@
 const STORE_LINK_BASE = "https://sotf-mods.com";
+// Mod descriptions come from authors, so their size and nesting are capped before rendering.
+const MAX_STORE_TEXT = 200_000;
+const MAX_STORE_NESTING = 8;
 
 type RichBlock =
     | { kind: "paragraph"; value: string }
@@ -15,19 +18,40 @@ type RichBlock =
     | { kind: "table"; value: string };
 
 export function renderStoreRichText(value?: string, fallback = ""): string {
+    try {
+        return renderStoreMarkup(value?.slice(0, MAX_STORE_TEXT), fallback, 0);
+    } catch (error) {
+        console.warn("Could not render a mod description", error);
+        return `<p>${escapeHtml(storeRichTextPlainText(value, fallback))}</p>`;
+    }
+}
+
+export function storeRichTextPlainText(value?: string, fallback = ""): string {
+    try {
+        return plainStoreText(value?.slice(0, MAX_STORE_TEXT)) || fallback;
+    } catch (error) {
+        console.warn("Could not read a mod description", error);
+        return fallback;
+    }
+}
+
+function renderStoreMarkup(value: string | undefined, fallback: string, depth: number): string {
     const normalized = normalizeStoreMarkup(value);
     if (!normalized) {
         return `<p>${escapeHtml(fallback)}</p>`;
     }
+    // Quotes and boxes nested deeper than any real description are shown as their text.
+    if (depth > MAX_STORE_NESTING) {
+        return `<p>${escapeHtml(plainStoreText(normalized))}</p>`;
+    }
 
     return storeRichBlocks(normalized)
-        .map(renderStoreBlock)
+        .map(block => renderStoreBlock(block, depth))
         .join("");
 }
 
-export function storeRichTextPlainText(value?: string, fallback = ""): string {
-    const normalized = normalizeStoreMarkup(value);
-    const plain = normalized
+function plainStoreText(value?: string): string {
+    return normalizeStoreMarkup(value)
         .replace(/\[img[^\]]*\]([\s\S]*?)\[\/img\]/gi, " ")
         .replace(/\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi, "$2 ($1)")
         .replace(/\[url\]([\s\S]*?)\[\/url\]/gi, "$1")
@@ -38,8 +62,6 @@ export function storeRichTextPlainText(value?: string, fallback = ""): string {
         .replace(/\n\s+/g, "\n")
         .replace(/\n{3,}/g, "\n\n")
         .trim();
-
-    return plain || fallback;
 }
 
 function normalizeStoreMarkup(value?: string): string {
@@ -291,7 +313,7 @@ function plainListBlock(value: string): RichBlock | null {
     };
 }
 
-function renderStoreBlock(block: RichBlock): string {
+function renderStoreBlock(block: RichBlock, depth: number): string {
     switch (block.kind) {
         case "list": {
             const items = listItems(block.value);
@@ -304,21 +326,21 @@ function renderStoreBlock(block: RichBlock): string {
             return `<${tag}${start}>${items.map(item => `<li>${renderStoreInline(item)}</li>`).join("")}</${tag}>`;
         }
         case "quote":
-            return `<blockquote>${renderStoreRichText(block.value)}</blockquote>`;
+            return `<blockquote>${renderStoreMarkup(block.value, "", depth + 1)}</blockquote>`;
         case "code":
             return `<pre${block.label ? ` data-store-label="${escapeAttribute(block.label)}"` : ""}><code>${escapeHtml(block.value)}</code></pre>`;
         case "heading":
             return `<p class="store-rich-heading store-rich-heading-${block.level}">${renderStoreInline(block.value)}</p>`;
         case "align":
-            return `<div class="store-rich-align store-rich-align-${block.align}">${renderStoreRichText(block.value)}</div>`;
+            return `<div class="store-rich-align store-rich-align-${block.align}">${renderStoreMarkup(block.value, "", depth + 1)}</div>`;
         case "indent":
-            return `<div class="store-rich-indent store-rich-indent-${block.level}">${renderStoreRichText(block.value)}</div>`;
+            return `<div class="store-rich-indent store-rich-indent-${block.level}">${renderStoreMarkup(block.value, "", depth + 1)}</div>`;
         case "details":
-            return `<details class="store-rich-disclosure store-rich-disclosure-${block.tone}"><summary>${escapeHtml(block.label)}</summary><div>${renderStoreRichText(block.value)}</div></details>`;
+            return `<details class="store-rich-disclosure store-rich-disclosure-${block.tone}"><summary>${escapeHtml(block.label)}</summary><div>${renderStoreMarkup(block.value, "", depth + 1)}</div></details>`;
         case "callout":
-            return `<div class="store-rich-callout store-rich-callout-${block.tone}"><span>${escapeHtml(block.label)}</span>${renderStoreRichText(block.value)}</div>`;
+            return `<div class="store-rich-callout store-rich-callout-${block.tone}"><span>${escapeHtml(block.label)}</span>${renderStoreMarkup(block.value, "", depth + 1)}</div>`;
         case "definition":
-            return renderStoreDefinitionList(block.value);
+            return renderStoreDefinitionList(block.value, depth);
         case "table":
             return renderStoreTable(block.value);
         case "line":
@@ -433,17 +455,17 @@ function renderStoreInline(value: string, depth = 0): string {
     return text.replace(/\u0000(\d+)\u0000/g, (_match, index: string) => tokens[Number(index)] ?? "");
 }
 
-function renderStoreDefinitionList(value: string): string {
+function renderStoreDefinitionList(value: string, depth: number): string {
     const entries = Array.from(value.matchAll(/\[dt[^\]]*\]([\s\S]*?)\[\/dt\]\s*\[dd[^\]]*\]([\s\S]*?)\[\/dd\]/gi))
         .map(match => ({ term: match[1].trim(), detail: match[2].trim() }))
         .filter(entry => entry.term || entry.detail);
 
     if (entries.length === 0) {
-        return renderStoreRichText(value);
+        return renderStoreMarkup(value, "", depth + 1);
     }
 
     return `<dl class="store-rich-definition-list">${entries.map(entry => {
-        return `<div><dt>${renderStoreInline(entry.term)}</dt><dd>${renderStoreRichText(entry.detail)}</dd></div>`;
+        return `<div><dt>${renderStoreInline(entry.term)}</dt><dd>${renderStoreMarkup(entry.detail, "", depth + 1)}</dd></div>`;
     }).join("")}</dl>`;
 }
 
@@ -776,14 +798,10 @@ function decodeHtmlEntities(value: string): string {
 
     return value.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, entity: string) => {
         const lower = entity.toLowerCase();
-        if (lower.startsWith("#x")) {
-            const code = Number.parseInt(lower.slice(2), 16);
-            return Number.isFinite(code) ? String.fromCodePoint(code) : match;
-        }
-
         if (lower.startsWith("#")) {
-            const code = Number.parseInt(lower.slice(1), 10);
-            return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+            const code = lower.startsWith("#x") ? Number.parseInt(lower.slice(2), 16) : Number.parseInt(lower.slice(1), 10);
+            // Anything past the last Unicode code point becomes the replacement character.
+            return code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "\ufffd";
         }
 
         return named[lower] ?? match;

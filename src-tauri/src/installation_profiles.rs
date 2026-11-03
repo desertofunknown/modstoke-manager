@@ -6,6 +6,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use tauri::Manager;
+use tauri_plugin_fs::FsExt;
 
 const REGISTRY_FILE: &str = "installation-profiles.json";
 const LOCK_FILE: &str = ".installation-profiles.lock";
@@ -280,6 +281,14 @@ fn state(registry: Registry, revision: Option<String>) -> RegistryState {
     }
 }
 
+// The webview's file access starts at the app cache. The selected game or server folder is added
+// once it checks out, so a script can't reach the rest of the disk through the fs plugin.
+fn allow_selected_folder(app: &tauri::AppHandle, state: &RegistryState) {
+    if let Some(root) = state.selected.as_ref().filter(|selected| selected.available).and_then(|selected| selected.root.as_ref()) {
+        let _ = app.fs_scope().allow_directory(root, true);
+    }
+}
+
 fn config_folder(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_config_dir()
@@ -318,10 +327,12 @@ fn acquire_lock(folder: &Path) -> Result<File, String> {
 #[tauri::command]
 pub async fn read_installation_profiles(app: tauri::AppHandle) -> Result<RegistryState, String> {
     let folder = config_folder(&app)?;
-    tauri::async_runtime::spawn_blocking(move || {
+    let state = tauri::async_runtime::spawn_blocking(move || {
         let (registry, revision) = read_registry(&folder)?;
-        Ok(state(registry, revision))
-    }).await.map_err(|error| error.to_string())?
+        Ok::<_, String>(state(registry, revision))
+    }).await.map_err(|error| error.to_string())??;
+    allow_selected_folder(&app, &state);
+    Ok(state)
 }
 
 #[tauri::command]
@@ -369,8 +380,10 @@ pub async fn write_installation_profiles(
     registry: Registry,
 ) -> Result<RegistryState, String> {
     let folder = config_folder(&app)?;
-    tauri::async_runtime::spawn_blocking(move || write_registry(&folder, expected_revision, registry))
-        .await.map_err(|error| error.to_string())?
+    let state = tauri::async_runtime::spawn_blocking(move || write_registry(&folder, expected_revision, registry))
+        .await.map_err(|error| error.to_string())??;
+    allow_selected_folder(&app, &state);
+    Ok(state)
 }
 
 fn write_registry(folder: &Path, expected_revision: Option<String>, registry: Registry) -> Result<RegistryState, String> {

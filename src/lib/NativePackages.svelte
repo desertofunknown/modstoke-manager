@@ -1,7 +1,7 @@
 <script lang="ts">
     import { createEventDispatcher, onDestroy } from "svelte";
     import { get } from "svelte/store";
-    import { open } from "@tauri-apps/plugin-shell";
+    import { openFolder } from "./utils";
     import { processing } from "./store";
     import NativePackageInstall from "./NativePackageInstall.svelte";
     import NativePackPrepare from "./NativePackPrepare.svelte";
@@ -67,7 +67,7 @@
         if (busy || get(processing) || !inventory?.packages.includes(entry)) return;
         const root = gameRoot;
         folderError = "";
-        try { await open(entry.packagePath); }
+        try { await openFolder(entry.packagePath); }
         catch (failure) {
             if (!destroyed && root === gameRoot) folderError = String(failure);
         }
