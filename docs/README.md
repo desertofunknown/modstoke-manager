@@ -15,6 +15,6 @@
 - [Branding](BRANDING.md): product names and artwork sources.
 - [Code signing](SIGNING.md): signing and publishing Windows builds.
 - [Local testing](LOCAL_TESTING.md): testing a build before it is signed.
-- [Nexus integration](NEXUS_API_REVIEW.md): account handling and the OAuth registration proposal.
+- [Nexus integration](NEXUS_API_REVIEW.md): account handling and the OAuth sign-in.
 - [Source and build](NEXUS_SOURCE_AND_BUILD.md): building the Manager and the loader package.
 - [Nexus page](NEXUS_MOD_MANAGER_PAGE.md): the text published on the Nexus Mods page.

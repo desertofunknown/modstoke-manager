@@ -29,12 +29,12 @@ The API implementation is in [nexus.rs](../src-tauri/src/nexus.rs), the request 
 
 ## OAuth registration
 
-The application is **Modstoke Manager**, published **by OpenACAI**. It replaces the earlier OpenACAI Mod Manager name and its `openacai-mod-manager` slug.
+The application is **Modstoke Manager**, published **by OpenACAI**. It replaces the earlier OpenACAI Mod Manager name and its `openacai-mod-manager` slug. It is a public client: each sign-in is proven with PKCE, and the Manager carries no client secret, since anyone could read one out of the executable.
 
 | Item | Value |
 | --- | --- |
 | Application | Public desktop application for Windows, using PKCE |
-| Client ID | `modstoke-manager` |
+| Client ID | `modstoke_manager` |
 | Callback | `modstoke://oauth/nexus/callback` |
 | Scopes | `openid public` |
 | Purpose | Nexus API access on behalf of the signed-in player |
@@ -46,7 +46,7 @@ The sign-in follows the Nexus [OAuth 2.0 and PKCE guide](https://modding.wiki/en
 - The callback must carry the state of the waiting attempt and arrive within ten minutes. It is accepted once. A callback with any other state is ignored.
 - The code and verifier are exchanged at `users.nexusmods.com/oauth/token`. The access token goes in the `Authorization: Bearer` header for API v1 and v2 requests. `users/validate.json` confirms the account and reports the rate limits.
 
-These values need to match the registration Nexus Mods issues. If Nexus assigns a different client ID or callback, the constants in [nexus_auth.rs](../src-tauri/src/nexus_auth.rs) change with it.
+These values are set in [nexus_auth.rs](../src-tauri/src/nexus_auth.rs). A refresh token Nexus refuses ends the sign-in, while throttling and network failures are retried on the next request.
 
 Unauthenticated browsing on the Nexus website will not apply the user's blocked categories or other account preferences.
 

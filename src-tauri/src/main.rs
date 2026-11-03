@@ -71,7 +71,9 @@ fn main() {
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             let args: Vec<String> = std::env::args_os().map(|arg| arg.to_string_lossy().into_owned()).collect();
+            nexus_auth::remember_app(app.handle());
             server::directory::receive_arguments(app.handle(), &args);
+            nexus_auth::receive_arguments(app.handle(), &args);
             // The installer registers modstoke:// for installed copies. Portable and development
             // builds register it here, so the Nexus Mods sign-in and join links reach them too.
             #[cfg(windows)]

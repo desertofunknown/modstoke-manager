@@ -42,7 +42,6 @@
   - Add a Dedicated servers workspace: add an existing `SonsOfTheForestDS.exe`, choose its data folder, change its name and player limit, install packages, and back up and restore worlds.
   - Install local native mod ZIPs and portable native packs from Installed mods or a server's Packages tab, with a review before anything is installed.
   - Add Multiplayer tools for server requirement lists, Modstoke Client participation and package recovery.
-  - Move personal Nexus API keys under Development testing while Nexus account sign-in awaits application registration.
   - Merged the SOTF Mods and Nexus/Vortex storefronts into one top-level Mods workspace with a local source switch.
   - Added an All Stores Mods workspace mode that stacks SOTF Mods and Nexus/Vortex in one shared search surface while keeping each source's download/install actions reachable.
   - Made All Stores the fresh-launch Mods workspace default, while dedicated SOTF Mods or Nexus/Vortex source choices stay session-local instead of persisting across app restarts.
@@ -57,7 +56,7 @@
   - Kept the embedded All Stores SOTF Mods preview compact when only the shared Mods search is active, hiding duplicate SOTF-local controls until source-specific facets, sort, or installed mode need attention.
   - Promoted SOTF Mods row page links into the same action column as Install and Details, with denser native row spacing so both storefronts expose page/open actions consistently in All Stores without giving up list visibility.
   - Compacted the All Stores Nexus/Vortex preview by hiding low-priority account actions, rate meters, summary cards, feed/filter controls, and empty queue chrome so the merged workspace shows actionable Nexus rows sooner while keeping the full controls in the dedicated Nexus/Vortex source.
-  - Hid the redundant connected Nexus account panel only in the All Stores embedded preview so Nexus rows start higher while disconnected previews still show login/API access controls.
+  - Hid the redundant connected Nexus account panel only in the All Stores embedded preview so Nexus rows start higher while disconnected previews still show the sign-in controls.
   - Tightened embedded Nexus/Vortex catalog rows so All Stores previews show the Nexus mod identity, preview image, install/detail/open actions, and local install state without pushing primary row actions below the lower frame.
   - Switched the Nexus/Vortex `All` catalog to an official paged GraphQL metadata sync for Sons Of The Forest, backed by a compact local catalog cache that remembers known rows, refreshes quietly on the 10-minute cache window, and keeps legacy REST feeds/details as targeted fallback/action support instead of relying on the small live feed merge.
   - Added bottom safe-area spacing to the Mods workspace and catalog scrollers so the last visible rows and action buttons can scroll above the ragged lower frame edge instead of being clipped by the transparent window bleed.

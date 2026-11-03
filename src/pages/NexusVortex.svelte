@@ -28,6 +28,7 @@
         getNexusModPageUrl,
         getNexusSession,
         NEXUS_CACHE_TTL_MINUTES,
+        onNexusSignedOut,
         onNexusSignInFinished,
         pickRecommendedNexusFile,
         reloadNexusSessionAfterSignIn,
@@ -177,7 +178,9 @@
     let isDisconnecting = false;
     let signInPending = false;
     let signInLink = "";
+    let signInLinkCopied = false;
     let stopSignInListener: (() => void) | null = null;
+    let stopSignedOutListener: (() => void) | null = null;
     let mods: NexusMod[] = [];
     let knownNexusDetails: Record<number, NexusMod> = {};
     let knownNexusPreviewUrls: Record<number, string[]> = {};
@@ -768,9 +771,15 @@
             lastAppliedSharedSearchVersion = sharedSearchVersion;
         }
         isMounted = true;
-        const stop = await onNexusSignInFinished(error => void finishNexusSignIn(error));
-        if (isDestroyed) stop();
-        else stopSignInListener = stop;
+        const stopSignIn = await onNexusSignInFinished(error => void finishNexusSignIn(error));
+        const stopSignedOut = await onNexusSignedOut(handleNexusSignedOut);
+        if (isDestroyed) {
+            stopSignIn();
+            stopSignedOut();
+        } else {
+            stopSignInListener = stopSignIn;
+            stopSignedOutListener = stopSignedOut;
+        }
         await refreshInventory();
         if (isDestroyed) return;
 
@@ -785,6 +794,7 @@
         detailGeneration += 1;
         clearNestedDependencyCheck();
         stopSignInListener?.();
+        stopSignedOutListener?.();
         cleanupManualRefreshCooldown();
         clearNxmCopyFeedback();
         cleanupNexusLayoutObserver();
@@ -1197,13 +1207,36 @@
         status = "";
     }
 
+    async function copySignInLink() {
+        try {
+            await navigator.clipboard.writeText(signInLink);
+            signInLinkCopied = true;
+            window.setTimeout(() => signInLinkCopied = false, 2000);
+        } catch (error) {
+            await dialog.message(`Select the link and copy it with Ctrl+C. ${error}`, { title: "Nexus sign-in", kind: "warning" });
+        }
+    }
+
+    function handleNexusSignedOut() {
+        if (isDestroyed || !session.is_connected) return;
+        nexusSessionGeneration += 1;
+        catalogRequestId += 1;
+        closeModDetails();
+        clearNexusAccountState();
+        session = { is_connected: false, error: "Nexus Mods ended the sign-in. Sign in again to keep using your account." };
+    }
+
     async function finishNexusSignIn(error: string | null) {
         if (isDestroyed) return;
+        const wasWaiting = signInPending;
         signInPending = false;
         signInLink = "";
         if (error) {
-            isLoading = false;
-            status = "";
+            // A sign-in the page stopped waiting for must not end whatever it is doing now.
+            if (wasWaiting) {
+                isLoading = false;
+                status = "";
+            }
             await dialog.message(error, { title: "Nexus sign-in", kind: "error" });
             return;
         }
@@ -1217,6 +1250,8 @@
             if (!nexusAccountId(nextSession)) throw new Error(nextSession.error ?? "Nexus did not return a valid account identity.");
             clearNexusAccountState();
             session = nextSession;
+            // A sign-in finished while the page was hidden loads the catalog when it is shown again.
+            if (!isActive) nexusInitialized = false;
             await loadMods();
         } catch (failure) {
             if (isDestroyed || generation !== nexusSessionGeneration) return;
@@ -4677,7 +4712,7 @@
             <span class="panel-title nexus-heading"><LucideCompass aria-hidden="true" /> Nexus Mods</span>
             {#if session.is_connected}
                 <span class="panel-subtitle">Connected as {session.user?.name ?? "Nexus user"} · {nexusMembershipLabel()}</span>
-                <span class="panel-subtitle">Development connection · Catalog requests use this account.</span>
+                <span class="panel-subtitle">Signed in with Nexus Mods · Catalog requests use this account.</span>
             {:else}
                 <span class="panel-subtitle">Discover Sons Of The Forest mods and manage your Vortex deployments.</span>
                 <span class="panel-subtitle">Public Nexus website results without sign-in do not apply your blocked categories or authors.</span>
@@ -4772,7 +4807,11 @@
                     <button on:click={openNexusGame}>Open Nexus <LucideExternalLink aria-hidden="true" /></button>
                 </div>
                 {#if signInLink}
-                    <span class="manual-warning">Your browser did not open. <a href={signInLink}>Open the Nexus Mods sign-in page</a>.</span>
+                    <span class="manual-warning">Your browser did not open. Paste this link into it to sign in.</span>
+                    <div class="connect-row manual-row">
+                        <input class="generic-input key-input" readonly value={signInLink} aria-label="Nexus Mods sign-in link" on:focus={(event) => event.currentTarget.select()} />
+                        <button on:click={copySignInLink}>{signInLinkCopied ? "Copied" : "Copy link"}</button>
+                    </div>
                 {/if}
             </div>
         {/if}
@@ -6241,6 +6280,10 @@
         white-space: nowrap;
     }
 
+    .manual-row {
+        margin-top: 8px;
+    }
+
     .manual-warning {
         color: #c6a77e;
         display: block;
@@ -6590,7 +6633,8 @@
     .nexus-filter-row .key-input { grid-column: 1 / -1; }
 
     .nexus-filter-row select,
-    .nexus-filter-row .key-input {
+    .nexus-filter-row .key-input,
+    .connect-row .key-input {
         background: #15181e;
         border: 1px solid #343a45;
         border-radius: 7px;

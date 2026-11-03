@@ -4,6 +4,7 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::Emitter;
@@ -11,8 +12,9 @@ use tauri::Emitter;
 const AUTHORIZE_URL: &str = "https://users.nexusmods.com/oauth/authorize";
 const TOKEN_URL: &str = "https://users.nexusmods.com/oauth/token";
 const REVOKE_URL: &str = "https://users.nexusmods.com/oauth/revoke";
-// The application's registration at Nexus Mods.
-const CLIENT_ID: &str = "modstoke-manager";
+// The registration Nexus Mods issued. The Manager is a public client: it proves each sign-in with
+// PKCE and carries no client secret, which anyone could read out of the executable.
+const CLIENT_ID: &str = "modstoke_manager";
 const REDIRECT_URI: &str = "modstoke://oauth/nexus/callback";
 const SCOPE: &str = "openid public";
 const CREDENTIAL_SERVICE: &str = "Modstoke Manager";
@@ -29,10 +31,14 @@ struct PendingSignIn {
     state: String,
     verifier: String,
     started: Instant,
+    sign_outs: u64,
 }
 
-struct AccessToken {
-    value: String,
+// The refresh token is kept here as well as in Credential Manager, so a rotated token still works
+// for this session if saving it fails.
+struct Session {
+    access_token: String,
+    refresh_token: String,
     refresh_after: Instant,
 }
 
@@ -50,7 +56,7 @@ struct OAuthError {
 }
 
 enum TokenFailure {
-    // Nexus answered with a 4xx, with its reason: the code, refresh token or client was not accepted.
+    // Nexus refused the code, the refresh token or the client, with its reason.
     Refused(String),
     Failed(String),
 }
@@ -67,11 +73,19 @@ struct SignInFinished {
 }
 
 static PENDING: Mutex<Option<PendingSignIn>> = Mutex::new(None);
+// Counts sign-outs, so a sign-in that finishes after one is thrown away.
+static SIGN_OUTS: AtomicU64 = AtomicU64::new(0);
+static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
 
-// The access token lives only in memory; Windows Credential Manager holds the refresh token.
-fn access() -> &'static tauri::async_runtime::Mutex<Option<AccessToken>> {
-    static ACCESS: OnceLock<tauri::async_runtime::Mutex<Option<AccessToken>>> = OnceLock::new();
-    ACCESS.get_or_init(|| tauri::async_runtime::Mutex::new(None))
+// One lock covers the session and the saved refresh token, for sign-in, refresh and sign-out alike.
+fn session() -> &'static tauri::async_runtime::Mutex<Option<Session>> {
+    static SESSION: OnceLock<tauri::async_runtime::Mutex<Option<Session>>> = OnceLock::new();
+    SESSION.get_or_init(|| tauri::async_runtime::Mutex::new(None))
+}
+
+// Lets the Nexus page hear when Nexus ends the sign-in, for example after the player revokes access.
+pub fn remember_app(app: &tauri::AppHandle) {
+    let _ = APP.set(app.clone());
 }
 
 // Opens the Nexus Mods sign-in page in the player's browser. Nexus sends them back through the
@@ -95,7 +109,12 @@ pub fn nexus_begin_sign_in() -> Result<SignInStarted, String> {
         ],
     )
     .map_err(|error| error.to_string())?;
-    *PENDING.lock().map_err(|_| busy())? = Some(PendingSignIn { state, verifier, started: Instant::now() });
+    *PENDING.lock().map_err(|_| busy())? = Some(PendingSignIn {
+        state,
+        verifier,
+        started: Instant::now(),
+        sign_outs: SIGN_OUTS.load(Ordering::SeqCst),
+    });
     let opened = crate::system::shell_execute("open", std::ffi::OsStr::new(url.as_str())).is_ok();
     Ok(SignInStarted { url: url.into(), opened })
 }
@@ -111,29 +130,28 @@ pub fn receive_arguments(app: &tauri::AppHandle, arguments: &[String]) {
         return;
     }
     let query: HashMap<String, String> = callback.query_pairs().into_owned().collect();
+    let Some(pending) = take_pending(&query) else { return };
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let error = complete_sign_in(query).await.err();
+        let error = complete_sign_in(pending, &query).await.err();
         let _ = app.emit("nexus-sign-in", SignInFinished { error });
     });
 }
 
-async fn complete_sign_in(query: HashMap<String, String>) -> Result<(), String> {
-    let pending = {
-        let mut pending = PENDING.lock().map_err(|_| busy())?;
-        match pending.as_ref() {
-            None => return Err("This sign-in is no longer waiting. Start it again from the Manager.".into()),
-            Some(waiting) if waiting.started.elapsed() > SIGN_IN_WINDOW => {
-                *pending = None;
-                return Err("The sign-in took too long. Start it again from the Manager.".into());
-            }
-            // A callback for some other request leaves the real one waiting.
-            Some(waiting) if query.get("state") != Some(&waiting.state) => {
-                return Err("The sign-in response did not match the request. Start it again from the Manager.".into());
-            }
-            Some(_) => pending.take().expect("checked above"),
-        }
-    };
+// Only a callback carrying the waiting attempt's state counts. Anything else, such as a stale
+// browser tab or a link from a web page, is ignored and the real attempt keeps waiting.
+fn take_pending(query: &HashMap<String, String>) -> Option<PendingSignIn> {
+    let mut pending = PENDING.lock().ok()?;
+    if query.get("state") != Some(&pending.as_ref()?.state) {
+        return None;
+    }
+    pending.take()
+}
+
+async fn complete_sign_in(pending: PendingSignIn, query: &HashMap<String, String>) -> Result<(), String> {
+    if pending.started.elapsed() > SIGN_IN_WINDOW {
+        return Err("The sign-in took too long. Start it again from the Manager.".into());
+    }
     if let Some(error) = query.get("error") {
         return Err(if error == "access_denied" {
             "Sign-in was cancelled on Nexus Mods.".into()
@@ -155,21 +173,39 @@ async fn complete_sign_in(query: HashMap<String, String>) -> Result<(), String> 
         TokenFailure::Refused(reason) => format!("Nexus Mods did not accept the sign-in: {reason}"),
         TokenFailure::Failed(error) => error,
     })?;
-    let refresh_token = tokens.refresh_token.as_deref().ok_or("Nexus Mods did not return a refresh token.")?;
-    refresh_token_entry()?.set_password(refresh_token).map_err(credential_error)?;
-    *access().lock().await = Some(AccessToken::from(&tokens));
+    let refresh_token = tokens.refresh_token.clone().ok_or("Nexus Mods did not return a refresh token.")?;
+
+    let mut session = session().lock().await;
+    if SIGN_OUTS.load(Ordering::SeqCst) != pending.sign_outs {
+        tauri::async_runtime::spawn(revoke(refresh_token));
+        return Err("You signed out before the sign-in finished.".into());
+    }
+    let replaced = match session.as_ref() {
+        Some(current) => Some(current.refresh_token.clone()),
+        None => read_refresh_token().ok().flatten(),
+    };
+    refresh_token_entry()?.set_password(&refresh_token).map_err(credential_error)?;
+    *session = Some(Session::new(&tokens, refresh_token.clone()));
+    drop(session);
+    // Signing in again, possibly as someone else, retires the token it replaces.
+    if let Some(replaced) = replaced.filter(|replaced| *replaced != refresh_token) {
+        tauri::async_runtime::spawn(revoke(replaced));
+    }
     Ok(())
 }
 
 // The current access token, refreshed first when it is close to expiry. None means signed out.
 pub(crate) async fn access_token() -> Result<Option<String>, String> {
-    let mut access = access().lock().await;
-    if let Some(token) = access.as_ref().filter(|token| Instant::now() < token.refresh_after) {
-        return Ok(Some(token.value.clone()));
+    let mut session = session().lock().await;
+    if let Some(current) = session.as_ref().filter(|current| Instant::now() < current.refresh_after) {
+        return Ok(Some(current.access_token.clone()));
     }
-    let Some(refresh_token) = read_refresh_token()? else {
-        *access = None;
-        return Ok(None);
+    let refresh_token = match session.as_ref() {
+        Some(current) => current.refresh_token.clone(),
+        None => match read_refresh_token()? {
+            Some(token) => token,
+            None => return Ok(None),
+        },
     };
     match request_tokens(&[
         ("grant_type", "refresh_token"),
@@ -179,18 +215,24 @@ pub(crate) async fn access_token() -> Result<Option<String>, String> {
     .await
     {
         Ok(tokens) => {
-            if let Some(next) = tokens.refresh_token.as_deref().filter(|next| *next != refresh_token) {
-                refresh_token_entry()?.set_password(next).map_err(credential_error)?;
+            let next = tokens.refresh_token.clone().unwrap_or_else(|| refresh_token.clone());
+            if next != refresh_token {
+                // If this fails, the rotated token still works from memory until the Manager closes.
+                let _ = refresh_token_entry().and_then(|entry| entry.set_password(&next).map_err(credential_error));
             }
-            let token = AccessToken::from(&tokens);
-            let value = token.value.clone();
-            *access = Some(token);
+            let current = Session::new(&tokens, next);
+            let value = current.access_token.clone();
+            *session = Some(current);
             Ok(Some(value))
         }
         // Nexus refuses the refresh token once the player revokes the Manager's access.
         Err(TokenFailure::Refused(_)) => {
-            *access = None;
+            *session = None;
             delete_refresh_token()?;
+            drop(session);
+            if let Some(app) = APP.get() {
+                let _ = app.emit("nexus-signed-out", ());
+            }
             Ok(None)
         }
         Err(TokenFailure::Failed(error)) => Err(error),
@@ -199,25 +241,25 @@ pub(crate) async fn access_token() -> Result<Option<String>, String> {
 
 // After Nexus rejects an access token, the next request refreshes it instead of reusing it.
 pub(crate) async fn forget_access_token() {
-    *access().lock().await = None;
+    if let Some(current) = session().lock().await.as_mut() {
+        current.refresh_after = Instant::now();
+    }
 }
 
 #[tauri::command]
 pub async fn nexus_sign_out() -> Result<(), String> {
+    SIGN_OUTS.fetch_add(1, Ordering::SeqCst);
     if let Ok(mut pending) = PENDING.lock() {
         *pending = None;
     }
-    let mut access = access().lock().await;
-    let refresh_token = read_refresh_token()?;
-    *access = None;
+    let mut session = session().lock().await;
+    let stored = read_refresh_token()?;
+    let refresh_token = session.take().map(|current| current.refresh_token).or(stored);
     delete_refresh_token()?;
+    drop(session);
     // Revoking is a courtesy to Nexus; the token is already gone from this machine.
-    if let (Some(token), Ok(client)) = (refresh_token, client()) {
-        let _ = client
-            .post(REVOKE_URL)
-            .form(&[("token", token.as_str()), ("client_id", CLIENT_ID), ("token_type_hint", "refresh_token")])
-            .send()
-            .await;
+    if let Some(token) = refresh_token {
+        tauri::async_runtime::spawn(revoke(token));
     }
     Ok(())
 }
@@ -229,11 +271,12 @@ pub(crate) fn forget_legacy_api_key() {
     }
 }
 
-impl From<&TokenResponse> for AccessToken {
-    fn from(tokens: &TokenResponse) -> Self {
+impl Session {
+    fn new(tokens: &TokenResponse, refresh_token: String) -> Self {
         let lifetime = Duration::from_secs(tokens.expires_in.unwrap_or(3600));
         Self {
-            value: tokens.access_token.clone(),
+            access_token: tokens.access_token.clone(),
+            refresh_token,
             refresh_after: Instant::now() + lifetime.saturating_sub(EXPIRY_MARGIN),
         }
     }
@@ -245,16 +288,33 @@ async fn request_tokens(form: &[(&str, &str)]) -> Result<TokenResponse, TokenFai
         .map_err(|error| TokenFailure::Failed(format!("Could not reach Nexus Mods: {error}")))?;
     let status = response.status();
     if status.is_client_error() {
-        let reason = response.json::<OAuthError>().await.ok()
+        let refusal = response.json::<OAuthError>().await.ok();
+        let code = refusal.as_ref().and_then(|refusal| refusal.error.clone()).unwrap_or_default();
+        let reason = refusal
             .and_then(|refusal| refusal.error_description.or(refusal.error))
             .unwrap_or_else(|| status.to_string());
-        return Err(TokenFailure::Refused(reason));
+        // Only an OAuth refusal ends a sign-in. Throttling, timeouts and proxy pages are worth retrying.
+        return Err(if matches!(code.as_str(), "invalid_grant" | "invalid_client" | "unauthorized_client") {
+            TokenFailure::Refused(reason)
+        } else {
+            TokenFailure::Failed(format!("Nexus Mods sign-in failed: {reason}"))
+        });
     }
     if !status.is_success() {
         return Err(TokenFailure::Failed(format!("Nexus Mods sign-in failed: {status}")));
     }
     response.json::<TokenResponse>().await
         .map_err(|_| TokenFailure::Failed("Nexus Mods returned an unreadable sign-in response.".into()))
+}
+
+async fn revoke(token: String) {
+    if let Ok(client) = client() {
+        let _ = client
+            .post(REVOKE_URL)
+            .form(&[("token", token.as_str()), ("client_id", CLIENT_ID), ("token_type_hint", "refresh_token")])
+            .send()
+            .await;
+    }
 }
 
 fn client() -> Result<reqwest::Client, String> {

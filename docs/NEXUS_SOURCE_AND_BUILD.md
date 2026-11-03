@@ -3,7 +3,7 @@
 This document is for Nexus Mods review of Modstoke Manager, by OpenACAI, and the
 Modstoke Loader package it installs for Sons Of The Forest.
 
-For the Manager's API behavior, account handling and pending OAuth registration,
+For the Manager's API behavior, account handling and OAuth sign-in,
 start with the [Nexus integration notes](NEXUS_API_REVIEW.md). The signed 0.2.0
 downloads predate these changes; build the current Manager branch for review.
 

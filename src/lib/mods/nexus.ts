@@ -368,6 +368,15 @@ export async function onNexusSignInFinished(handler: (error: string | null) => v
     return await listen<{ error: string | null }>("nexus-sign-in", event => handler(event.payload.error ?? null));
 }
 
+// Nexus ended the sign-in, for example after the player revoked the Manager's access.
+export async function onNexusSignedOut(handler: () => void): Promise<UnlistenFn> {
+    return await listen("nexus-signed-out", () => {
+        clearNexusClientCache();
+        sessionCache = null;
+        handler();
+    });
+}
+
 // A finished sign-in may be a different account, so every cached request goes before the session is read.
 export async function reloadNexusSessionAfterSignIn(): Promise<NexusSession> {
     currentNexusGeneration();

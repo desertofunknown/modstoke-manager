@@ -15,12 +15,15 @@ These values stay unchanged so existing installations and integrations remain re
 | Uninstall registry key | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenACAI Mod Manager` |
 | Installer location and language registry key | `HKCU\Software\alexcooper\OpenACAI Mod Manager` |
 | Desktop and Start Menu shortcut filenames | `OpenACAI Mod Manager.lnk` |
-| Nexus credential service | `OpenACAI Mod Manager` |
-| Nexus SSO slug | `openacai-mod-manager` |
 
 The NSIS installer displays **Modstoke Manager**, with **OpenACAI** as publisher. Its custom template keeps the old install directory, registry keys and shortcut filenames. It still reads a previously selected installation directory. Existing shortcuts keep their names; newly created shortcuts have a Modstoke description. The executable target and AppUserModelID stay the same.
 
-WebView's HTTPS origin, `openacai-mod-hub-*` and `openacai-nexus-*` preferences, credential account and Nexus application name stay unchanged. The Nexus version header and user agent follow the package version; the user agent identifies OpenACAI as publisher without claiming that a local build is signed. No settings migration is required. Ownerless Nexus catalog caches are discarded and rebuilt for the connected account.
+WebView's HTTPS origin and the `openacai-mod-hub-*` and `openacai-nexus-*` preferences stay unchanged.
+
+The Nexus integration moved to the new name when it moved to OAuth:
+- The Nexus Mods client ID is `modstoke_manager`, replacing the old `openacai-mod-manager` SSO slug.
+- Requests send `Application-Name: Modstoke Manager` and a `Modstoke-Manager/<version>` user agent. The version follows the package version, and the user agent names OpenACAI as publisher without claiming that a local build is signed.
+- The Nexus refresh token is stored under the `Modstoke Manager` credential service as `nexusmods-refresh-token`. A personal API key left by an earlier build under `OpenACAI Mod Manager` / `nexusmods-api-key` is deleted. No settings migration is required. Ownerless Nexus catalog caches are discarded and rebuilt for the connected account.
 
 The source-built installer is named `Modstoke Manager_<version>_x64-setup.exe`. Published download aliases and the existing signed 0.2.0 files keep their old names. Those signed files still contain the earlier branding; they have not been rebuilt or re-signed as part of this rename.
 
@@ -33,7 +36,7 @@ Upstream projects keep their own names: BepInEx, RedLoader, SonsSdk and `RedLoad
 ## Coordination with other projects
 
 - Apply the same display names and **by OpenACAI** credit in the loader, admin and SDK repositories. Their releases and assembly identities are outside this manager change. Keep existing runtime paths and package contracts, or provide explicit migrations and aliases before replacing them.
-- Coordinate the manager's display name with Nexus Mods while retaining the existing integration identifiers until registration and any replacements are approved. See the [Nexus integration notes](NEXUS_API_REVIEW.md).
+- The Manager is registered with Nexus Mods as Modstoke Manager, client `modstoke_manager`. See the [Nexus integration notes](NEXUS_API_REVIEW.md).
 - Set up the modstoke.com website and catalog services separately. The Manager already reads the community server list and the loader release feed from modstoke.com, because the feed's old GitHub address is no longer available. No loader release has been published there yet. Mod catalog addresses are unchanged. Before changing any other endpoint, verify manifest schemas, download integrity and support for older clients, and keep old endpoints or redirects available for released clients.
 - Sign every new manager build before uploading it, as described in [code signing](SIGNING.md). New signed releases are on hold, so the repository still offers only the signed 0.2.0 files. The repository was renamed from `openacai-mod-manager` to `modstoke-manager`; GitHub redirects the old web, clone and download addresses. A download filename change or release relocation also needs stable redirects or aliases for existing links.
 
