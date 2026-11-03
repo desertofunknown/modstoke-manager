@@ -105,7 +105,7 @@ export async function readVortexDeployment(gameRoot: string): Promise<VortexDepl
             }
         }
     } catch (error) {
-        console.log("Failed to read Vortex deployment metadata", error);
+        console.warn("Failed to read Vortex deployment metadata", error);
     }
 
     return deployment;
@@ -420,7 +420,7 @@ async function readManifest(manifestPath: string): Promise<ManifestData> {
     try {
         return JSON.parse(await fs.readTextFile(manifestPath));
     } catch (error) {
-        console.log(`Failed to read manifest ${manifestPath}`, error);
+        console.warn(`Failed to read manifest ${manifestPath}`, error);
         return {};
     }
 }

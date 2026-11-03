@@ -86,7 +86,7 @@ export class OpenAcaiLoaderInstaller extends BaseZipInstaller {
         try {
             return (this.manifest ?? await fetchLatestLoaderManifest()).version;
         } catch (error) {
-            console.log("Failed to get latest Modstoke Loader version", error);
+            console.warn("Failed to get latest Modstoke Loader version", error);
             return null;
         }
     }
@@ -289,7 +289,7 @@ async function writeCachedLatestManifest(manifest: LoaderUpdateManifest): Promis
         await fs.mkdir(cacheDir, { recursive: true });
         await fs.writeTextFile(cachePath, JSON.stringify(cacheableManifest, null, 2));
     } catch (error) {
-        console.log("Failed to cache latest Modstoke Loader manifest", error);
+        console.warn("Failed to cache latest Modstoke Loader manifest", error);
     }
 }
 
@@ -302,7 +302,7 @@ async function readCachedLatestManifest(): Promise<LoaderUpdateManifest | null> 
 
         return validateLoaderManifest(JSON.parse(await fs.readTextFile(cachePath)) as LoaderUpdateManifest, "cache");
     } catch (error) {
-        console.log("Failed to read cached Modstoke Loader manifest", error);
+        console.warn("Failed to read cached Modstoke Loader manifest", error);
         return null;
     }
 }

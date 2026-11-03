@@ -104,7 +104,7 @@
     try {
       await getCurrentWindow().minimize();
     } catch (error) {
-      console.log("Failed to minimize window", error);
+      console.error("Failed to minimize window", error);
     }
   }
 
@@ -113,7 +113,7 @@
       await getCurrentWindow().toggleMaximize();
       await refreshMaximizedState();
     } catch (error) {
-      console.log("Failed to toggle maximize", error);
+      console.error("Failed to toggle maximize", error);
     }
   }
 
@@ -121,7 +121,7 @@
     try {
       await getCurrentWindow().close();
     } catch (error) {
-      console.log("Failed to close window", error);
+      console.error("Failed to close window", error);
     }
   }
 
@@ -145,7 +145,7 @@
     try {
       await getCurrentWindow().startDragging();
     } catch (error) {
-      console.log("Failed to start window drag", error);
+      console.error("Failed to start window drag", error);
     }
   }
 
@@ -189,7 +189,7 @@
       void refreshMaximizedState();
       await Promise.all([
         initializeInstallationProfiles(),
-        invoke<boolean>("is_dotnet11_installed").then(installed => isDotnetInstalled.set(installed), error => console.log(error)),
+        invoke<boolean>("is_dotnet11_installed").then(installed => isDotnetInstalled.set(installed), error => console.error("Failed to check for .NET 11", error)),
       ]);
     }
 

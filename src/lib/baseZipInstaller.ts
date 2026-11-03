@@ -8,7 +8,6 @@ export class BaseZipInstaller extends BaseInstaller {
     }
 
     protected async unzip(zipFile: string, destination: string) {
-        console.log(`Unzipping ${zipFile} to ${destination}`);
         await unzip(zipFile, destination);
     }
 }

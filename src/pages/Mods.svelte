@@ -368,7 +368,7 @@
         try {
             categories = await ModDatabase.fetchCategories();
         } catch (error) {
-            console.log("failed to fetch SOTF categories", error);
+            console.warn("failed to fetch SOTF categories", error);
         }
     }
 
@@ -453,7 +453,7 @@
             if (isDestroyed) return;
             ModDatabase.invalidateInstalledMods();
             installedInventoryWarning = `Installed mod scan failed: ${error}`;
-            console.log(installedInventoryWarning);
+            console.warn(installedInventoryWarning);
         } finally {
             if (!isDestroyed) isScanningInventory = false;
         }

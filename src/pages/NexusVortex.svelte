@@ -1069,7 +1069,7 @@
             nexusLocalCatalogCount = cache.mods.length;
         } catch (error) {
             discardNexusLocalCatalog();
-            console.log("Failed to persist Nexus catalog cache", error);
+            console.warn("Failed to persist Nexus catalog cache", error);
         }
     }
 
@@ -1539,7 +1539,7 @@
             };
         } catch (error) {
             if (!isCurrentNexusSession(generation)) return;
-            console.log("Failed to refresh Nexus endorsements", error);
+            console.warn("Failed to refresh Nexus endorsements", error);
             endorsementsLoaded = false;
         }
     }
@@ -1565,7 +1565,7 @@
             };
         } catch (error) {
             if (!isCurrentNexusSession(generation)) return;
-            console.log("Failed to refresh Nexus tracked mods", error);
+            console.warn("Failed to refresh Nexus tracked mods", error);
             trackedModsLoaded = false;
         }
     }

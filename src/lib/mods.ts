@@ -251,7 +251,7 @@ export class ModDatabase {
             try {
                 remoteMod = await this.fetchMod(m.modName);
             } catch (error) {
-                console.log(`failed to fetch remote mod metadata for ${m.modName}`, error);
+                console.warn(`failed to fetch remote mod metadata for ${m.modName}`, error);
             }
 
             if( remoteMod ) {
@@ -337,7 +337,7 @@ export class ModDatabase {
                 disabledPackagePath
             }
         } catch (error) {
-            console.log(`failed to load mod ${await path.basename(folderPath)}`, error);
+            console.warn(`failed to load mod ${await path.basename(folderPath)}`, error);
             return null;
         }
     }
@@ -351,7 +351,7 @@ export class ModDatabase {
             return await fs.readDir(folderPath);
         } catch (error) {
             if (logErrors) {
-                console.log(`failed to read directory ${folderPath}`, error);
+                console.warn(`failed to read directory ${folderPath}`, error);
             }
 
             return [];
@@ -455,7 +455,7 @@ export class ModDatabase {
                             }
                         }
                     } catch (error) {
-                        console.log("Mod profile recovery needs attention before another install", error);
+                        console.warn("Mod profile recovery needs attention before another install", error);
                     }
                 }
                 const mods = await this.readInstalledMods(gameRoot);
@@ -565,7 +565,6 @@ export class ModDatabase {
 
                     if(!(await linkedExists(folderPath)))
                     {
-                        console.log("folder does not exist for mod", folderName);
                         continue;
                     }
 
