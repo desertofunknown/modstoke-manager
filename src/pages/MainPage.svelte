@@ -209,7 +209,7 @@
             return `${report.issues[0].path} - ${report.issues[0].reason}`;
         }
 
-        const source = report.latestManifestSource === "cache" ? "cached release manifest" : "GitHub release manifest";
+        const source = report.latestManifestSource === "cache" ? "cached release manifest" : "modstoke.com release manifest";
         const checkedAt = new Date(report.checkedAtUtc).toLocaleTimeString();
         return `Checked ${checkedAt} using ${source}. ${report.versionOutdated ? "Installed metadata is older, but files match the current manifest." : "No loader file drift detected."}`;
     }

@@ -1,5 +1,9 @@
 # Changelog
 
+- Unreleased
+  - Install Loader packages whose own file list leaves out the Loader's descriptor, as Loader 0.4.0-net11-preview does. The whole package is still checked against the release's published hash first.
+  - Name modstoke.com, not GitHub, as the source of the Loader release a file check used.
+
 - 0.3.0
   - Limit what the Manager's window can reach. Files are limited to its downloads folder and the selected game or server folder, where nothing can be written as text. Downloads come only from the catalog and release hosts, over HTTPS, with size limits and the Loader's published hash checked. Archives install only into a game or dedicated server folder. The window can no longer run programs, and system libraries load only from System32.
   - Make the Open folder, Send to Vortex and mod page and source buttons work, and launch the game straight through Steam so Start game no longer reports a failure after starting it.

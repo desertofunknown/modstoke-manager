@@ -749,12 +749,15 @@ fn validate_staged_loader(staging: &Path, staged_files: &[PathBuf]) -> Result<bo
             return Err(format!("Loader package file {} does not match its manifest size.", file.path.display()));
         }
     }
+    // The descriptors and file manifests describe the package rather than belong to it, so the
+    // Loader leaves them out of its file list. They are checked above, and the whole archive was
+    // checked against the release manifest's hash before it was unpacked.
     for source in staged_files {
         let relative = source.strip_prefix(staging).map_err(|error| error.to_string())?;
         let key = path_key(relative);
         if !listed.contains(&key)
             && !is_bepinex_config(relative)
-            && !LOADER_FILE_MANIFESTS.iter().any(|path| key == path_key(Path::new(path)))
+            && !LOADER_FILE_MANIFESTS.iter().chain(&LOADER_DESCRIPTORS).any(|path| key == path_key(Path::new(path)))
         {
             return Err(format!("Loader package file {} is absent from its file manifest.", relative.display()));
         }
