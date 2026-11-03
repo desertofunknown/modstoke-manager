@@ -15,6 +15,7 @@ mod server_requirements;
 mod client_admission;
 mod admin_permissions;
 mod loader_console;
+mod game_skin;
 mod server_process;
 mod server_native_config;
 mod server_launch;
@@ -1246,6 +1247,7 @@ fn main() {
             admin_permissions::write_admin_permissions,
             loader_console::read_loader_console,
             loader_console::submit_loader_console,
+            game_skin::read_game_skin,
             server_launch::read_server_launch,
             server_launch::write_server_launch,
             server_launch::write_server_capacity,

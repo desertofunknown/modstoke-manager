@@ -39,4 +39,4 @@ Developed by Alex Cooper / OpenACAI Inc. Original RedManager lineage by Toni Mac
 
 OpenACAI-authored Manager changes are licensed under GPL-3.0-or-later. Original RedManager code retains its Apache-2.0 license. See [third-party notices](../THIRD_PARTY_NOTICES.md) for the retained licenses and credits.
 
-Bundled Sons of the Forest UI assets remain copyright property of Endnight Games and have project-specific, noncommercial permission for this tool. They are not covered by the Manager's GPL license. Modstoke Manager is independent and is not endorsed by Endnight Games or Nexus Mods. Modstoke Admin is a separate project and is not included in Manager downloads.
+The Manager ships no Sons of the Forest art: its Sons of the Forest skin is read from your own game files. Modstoke Manager is independent and is not endorsed by Endnight Games or Nexus Mods. Modstoke Admin is a separate project and is not included in Manager downloads.

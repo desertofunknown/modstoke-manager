@@ -1,6 +1,6 @@
 <script lang="ts">
     import LucideSettings from "~icons/lucide/settings";
-    import { SKIN_CHOICES, skinChoice } from "../lib/skins";
+    import { gameSkin, SKIN_CHOICES, skinChoice } from "../lib/skins";
 </script>
 
 <div class="settings-page">
@@ -21,6 +21,11 @@
                 <span><strong>{choice.label}</strong><small>{choice.description}</small></span>
             </label>
         {/each}
+        {#if $skinChoice !== "modstoke" && $gameSkin.status === "reading"}
+            <p class="skin-note">Reading the Sons of the Forest skin from your game files.</p>
+        {:else if $skinChoice !== "modstoke" && $gameSkin.status === "unavailable"}
+            <p class="skin-note">{$gameSkin.problem} Until the Manager can read your game files, it uses the Modstoke skin.</p>
+        {/if}
     </fieldset>
 </div>
 
@@ -40,6 +45,7 @@
     .skin-option input { flex-shrink: 0; width: 16px; height: 16px; margin: 2px 0 0; padding: 0; accent-color: var(--accent); cursor: pointer; }
     .skin-option strong { display: block; font-size: 13px; font-weight: 600; }
     .skin-option small { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 12px; }
+    .skin-note { margin: 8px 13px 2px; color: var(--text-secondary); font-size: 12px; }
     @media (max-width: 760px) {
         .workspace-mark { display: none; }
         .settings-group { padding: 16px 16px 12px; }

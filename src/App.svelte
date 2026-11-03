@@ -24,7 +24,7 @@
   import LucideTrees from "~icons/lucide/trees";
   import LucideSettings from "~icons/lucide/settings";
   import { initializeInstallationProfiles, selectedInstallation } from "./lib/installationProfiles";
-  import { resolveSkin, skinChoice } from "./lib/skins";
+  import { gameSkin, resolveSkin, skinChoice } from "./lib/skins";
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { currentMonitor, getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
@@ -254,7 +254,7 @@
   });
 </script>
 
-<main class:maximized={isWindowMaximized} data-skin={resolveSkin($skinChoice)}>
+<main class:maximized={isWindowMaximized} data-skin={resolveSkin($skinChoice, $gameSkin.status)}>
   <div class="app-frame">
     <div class="titlebar" class:operation-active={$processing} data-tauri-drag-region role="presentation" on:mousedown={startWindowDrag}>
       <div class="window-brand" data-tauri-drag-region>

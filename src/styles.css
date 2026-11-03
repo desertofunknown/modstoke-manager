@@ -1,11 +1,4 @@
-@font-face {
-  font-family: "SonsRoboto";
-  font-style: normal;
-  font-weight: 400 900;
-  src: url("./assets/sons-ui/roboto-regular.ttf") format("truetype");
-  font-display: swap;
-}
-
+/* SonsRoboto is the game's own Roboto, registered from the player's game files by lib/skins.ts. */
 :root {
   --surface-base: #101217;
   --surface-panel: #171a21;

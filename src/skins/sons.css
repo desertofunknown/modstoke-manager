@@ -1,5 +1,6 @@
 /* The window is transparent, so the Sons options-menu mask gives it a ragged silhouette. The frame
-   padding follows the mask's deepest edge (about 4.2% top, 4% bottom and 2.9% each side). */
+   padding follows the mask's deepest edge (about 4.2% top, 4% bottom and 2.9% each side). The mask
+   and backdrop are read from the player's game files at runtime (lib/skins.ts). */
 main[data-skin="sons"] {
   --frame-top: calc(4.2vh + 6px);
   --frame-side: calc(2.9vw + 8px);
@@ -24,7 +25,7 @@ main[data-skin="sons"]::after {
   inset: 4px 6px 8px;
   z-index: -1;
   pointer-events: none;
-  mask: url("../assets/sons-ui/background-(400ppu)-texture2d-1277.png") center / 100% 100% no-repeat;
+  mask: var(--sons-frame-mask) center / 100% 100% no-repeat;
 }
 
 main[data-skin="sons"]::before {
@@ -42,7 +43,7 @@ main[data-skin="sons"]::before {
 main[data-skin="sons"]::after {
   background:
     linear-gradient(180deg, rgba(0, 0, 0, 0.84), rgba(0, 0, 0, 0.93)),
-    url("../assets/sons-ui/blurred-title-screen-texture2d-14.png"),
+    var(--sons-backdrop),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 14px);
   background-position: center;
   background-size: cover, cover, auto;

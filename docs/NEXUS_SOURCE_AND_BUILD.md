@@ -49,9 +49,9 @@ Third-party components keep their original licenses. See the repository
 `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES`, and `LICENSES` folders/files for
 component-specific terms.
 
-Endnight Games UI texture/style assets, where bundled, are included only for
-this open-source Sons Of The Forest modding tool with permission. They are
-copyright property of Endnight Games and are not available for commercial use.
+The source contains no Endnight Games assets, so builds made from it carry
+none. The Sons of the Forest skin reads its textures and font from the player's
+own game installation at runtime.
 
 ## Build Environment
 
