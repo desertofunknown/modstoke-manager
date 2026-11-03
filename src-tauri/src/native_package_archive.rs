@@ -1,5 +1,5 @@
 use crate::hashing::is_sha256_hex;
-use crate::mod_update;
+use crate::{mod_update, safe_fs};
 use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Number, Value};
@@ -67,7 +67,7 @@ pub(super) fn inspect(source: &Path) -> Result<NativeArchive, String> {
     };
     let parent = source.parent().ok_or("The archive has no parent folder.")?;
     let name = Path::new(source.file_name().ok_or("The archive has no file name.")?);
-    if !mod_update::validate_target(parent, name)? {
+    if !safe_fs::validate_target(parent, name)? {
         return Err("The native archive does not exist.".into());
     }
     let mut options = OpenOptions::new();
@@ -85,7 +85,7 @@ pub(super) fn inspect(source: &Path) -> Result<NativeArchive, String> {
     if !metadata.is_file() || is_linked(&metadata) {
         return Err("The native archive must be a regular, nonlinked file.".into());
     }
-    if !mod_update::validate_target(parent, name)? {
+    if !safe_fs::validate_target(parent, name)? {
         return Err("The native archive disappeared during inspection.".into());
     }
     let size = metadata.len();

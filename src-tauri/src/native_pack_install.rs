@@ -196,7 +196,7 @@ fn apply_step(root: &Path, profile: &mut ModProfile, index: usize, source: &Path
             native_local::require_stopped()?;
             native_local::require_observed(root, observed)?;
             for file in &archive.files {
-                if mod_update::target_hash(staging, Path::new(&file.path))?.as_deref() != Some(&file.sha256) {
+                if safe_fs::target_hash(staging, Path::new(&file.path))?.as_deref() != Some(&file.sha256) {
                     return Err("Staged native package files differ from the reviewed pack.".into());
                 }
             }

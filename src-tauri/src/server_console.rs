@@ -1,4 +1,4 @@
-use crate::{mod_update, server_launch};
+use crate::{safe_fs, server_launch};
 use serde::Serialize;
 use std::fs::{self, File};
 use std::io::{ErrorKind, Read, Seek, SeekFrom};
@@ -40,7 +40,7 @@ fn newest_log(directory: &Path, matches: fn(&str) -> bool) -> Result<Option<Stri
     match fs::symlink_metadata(directory) {
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(format!("Could not inspect {}: {error}", directory.display())),
-        Ok(_) => mod_update::validate_directory(directory)?,
+        Ok(_) => safe_fs::validate_directory(directory)?,
     }
     let mut newest: Option<(SystemTime, String)> = None;
     for entry in fs::read_dir(directory).map_err(|error| format!("Could not list {}: {error}", directory.display()))? {
@@ -58,7 +58,7 @@ fn newest_log(directory: &Path, matches: fn(&str) -> bool) -> Result<Option<Stri
 
 /// Reads complete lines after `offset`, or the tail of the file when there is no usable offset.
 fn read_lines(directory: &Path, name: &str, offset: Option<u64>) -> Result<ConsoleChunk, String> {
-    if !mod_update::validate_target(directory, Path::new(name))? {
+    if !safe_fs::validate_target(directory, Path::new(name))? {
         return Ok(ConsoleChunk::problem("The log file was removed. Waiting for a new one."));
     }
     let mut file = File::open(directory.join(name)).map_err(|error| format!("Could not open {name}: {error}"))?;

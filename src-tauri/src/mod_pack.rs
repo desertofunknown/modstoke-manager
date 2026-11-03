@@ -1,5 +1,6 @@
 use crate::hashing::{is_sha256_hex, sha256_hex, sha256_reader};
 use crate::mod_update::{self, UpdateTarget};
+use crate::safe_fs;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
@@ -58,7 +59,7 @@ pub(crate) fn create_workspace(root: &Path) -> Result<String, String> {
         .ok_or("Invalid retained pack folder name")?
         .to_owned();
     validate_workspace_name(&name)?;
-    mod_update::validate_directory(workspace.path())?;
+    safe_fs::validate_directory(workspace.path())?;
     // This workspace outlives both the native update transaction and the process.
     let _ = workspace.into_path();
     Ok(name)
@@ -109,7 +110,7 @@ pub(crate) fn retain_package(
                     return Err(format!("The retained original for {} has changed.", target.relative_path.display()));
                 }
             } else {
-                mod_update::copy_durable(
+                safe_fs::copy_durable(
                     &root.join(&target.relative_path),
                     &workspace.join(&relative_backup),
                 )?;
@@ -340,7 +341,7 @@ fn retain_slot_receipt(
         return Err("The retained pack receipts exceed their combined size limit.".into());
     }
     let relative = receipt_path(slot);
-    mod_update::validate_target(workspace, &relative)?;
+    safe_fs::validate_target(workspace, &relative)?;
     let mut temporary = tempfile::Builder::new()
         .prefix("pending-")
         .tempfile_in(workspace)
@@ -349,7 +350,7 @@ fn retain_slot_receipt(
         .and_then(|_| temporary.as_file().sync_all())
         .map_err(|error| format!("Could not retain the pack receipt: {error}"))?;
     let temporary = temporary.into_temp_path();
-    mod_update::durable_rename(&temporary, &workspace.join(relative), false)?;
+    safe_fs::durable_rename(&temporary, &workspace.join(relative), false)?;
     let mut remaining = MAX_RECEIPT_BYTES;
     require_slot_receipt(root, workspace, workspace_name, slot, package, &mut remaining)
 }
@@ -378,7 +379,7 @@ fn read_slot_receipt(
     remaining: &mut usize,
 ) -> Result<Option<StoredReceipt>, String> {
     let relative = receipt_path(slot);
-    if !mod_update::validate_target(workspace, &relative)? {
+    if !safe_fs::validate_target(workspace, &relative)? {
         return Ok(None);
     }
     let path = workspace.join(relative);
@@ -421,21 +422,21 @@ fn validate_workspace_name(name: &str) -> Result<(), String> {
 }
 
 fn canonical_root(root: &Path) -> Result<PathBuf, String> {
-    mod_update::validate_directory(root)?;
+    safe_fs::validate_directory(root)?;
     fs::canonicalize(root).map_err(|error| format!("Could not resolve the game folder: {error}"))
 }
 
 fn existing_workspace(root: &Path, name: &str) -> Result<PathBuf, String> {
     validate_workspace_name(name)?;
     let workspace = root.join(name);
-    mod_update::validate_directory(&workspace)?;
+    safe_fs::validate_directory(&workspace)?;
     Ok(workspace)
 }
 
 fn directory_exists(path: &Path) -> Result<bool, String> {
     match fs::symlink_metadata(path) {
         Ok(_) => {
-            mod_update::validate_directory(path)?;
+            safe_fs::validate_directory(path)?;
             Ok(true)
         }
         Err(error) if error.kind() == ErrorKind::NotFound => {
@@ -455,7 +456,7 @@ fn ensure_directory(path: &Path) -> Result<(), String> {
     if !directory_exists(path)? {
         fs::create_dir(path).map_err(|error| format!("Could not create {}: {error}", path.display()))?;
     }
-    mod_update::validate_directory(path)
+    safe_fs::validate_directory(path)
 }
 
 fn backup_path(slot: usize, index: usize) -> PathBuf {
@@ -471,7 +472,7 @@ fn path_key(path: &Path) -> String {
 }
 
 fn target_hash(root: &Path, relative: &Path) -> Result<Option<String>, String> {
-    if !mod_update::validate_target(root, relative)? {
+    if !safe_fs::validate_target(root, relative)? {
         return Ok(None);
     }
     let path = root.join(relative);

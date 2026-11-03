@@ -1,5 +1,5 @@
 use crate::hashing::sha256_hex;
-use crate::{installation_profiles, mod_profile, mod_update, server_native_config, server_process};
+use crate::{installation_profiles, mod_profile, mod_update, safe_fs, server_native_config, server_process};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
@@ -103,9 +103,9 @@ fn validate_path(value: &str) -> Result<(), String> {
 
 fn canonical_data_directory(value: &str) -> Result<String, String> {
     validate_path(value)?;
-    mod_update::validate_directory(Path::new(value))?;
+    safe_fs::validate_directory(Path::new(value))?;
     let path = fs::canonicalize(value).map_err(|error| format!("Could not resolve the server data folder: {error}"))?;
-    mod_update::validate_directory(&path)?;
+    safe_fs::validate_directory(&path)?;
     ordinary_path(&path)
 }
 
@@ -126,7 +126,7 @@ fn read_settings(folder: &Path, installation_id: &str, executable: &str) -> Resu
         Ok(_) => {}
     }
     let filename = settings_file(installation_id);
-    if !mod_update::validate_target(folder, Path::new(&filename))? { return Ok((None, None)); }
+    if !safe_fs::validate_target(folder, Path::new(&filename))? { return Ok((None, None)); }
     let file = File::open(folder.join(&filename)).map_err(|error| format!("Could not read server launch settings: {error}"))?;
     let mut bytes = Vec::new();
     file.take(MAX_SETTINGS_BYTES + 1).read_to_end(&mut bytes).map_err(|error| error.to_string())?;
@@ -145,17 +145,17 @@ fn read_settings(folder: &Path, installation_id: &str, executable: &str) -> Resu
 fn create_settings_folder(folder: &Path) -> Result<(), String> {
     for ancestor in folder.ancestors() {
         match fs::symlink_metadata(ancestor) {
-            Ok(_) => { mod_update::validate_directory(ancestor)?; break; }
+            Ok(_) => { safe_fs::validate_directory(ancestor)?; break; }
             Err(error) if error.kind() == ErrorKind::NotFound => {}
             Err(error) => return Err(format!("Could not inspect the server profile folder: {error}")),
         }
     }
     fs::create_dir_all(folder).map_err(|error| format!("Could not create the server profile folder: {error}"))?;
-    mod_update::validate_directory(folder)
+    safe_fs::validate_directory(folder)
 }
 
 fn exclusive_lock(folder: &Path, name: &str) -> Result<File, String> {
-    mod_update::validate_target(folder, Path::new(name))?;
+    safe_fs::validate_target(folder, Path::new(name))?;
     let mut options = OpenOptions::new();
     options.read(true).write(true).create(true).truncate(false);
     #[cfg(windows)]
@@ -406,8 +406,8 @@ pub async fn write_server_launch(app: tauri::AppHandle, executable: String, inst
             return Err("Server launch settings changed while the save was prepared. Their current contents were preserved.".into());
         }
         let filename = settings_file(&installation_id);
-        let exists = mod_update::validate_target(&folder, Path::new(&filename))?;
-        mod_update::durable_rename(&temporary, &folder.join(filename), exists)?;
+        let exists = safe_fs::validate_target(&folder, Path::new(&filename))?;
+        safe_fs::durable_rename(&temporary, &folder.join(filename), exists)?;
         let observed = snapshot(&folder, &root, &executable, &installation_id)?;
         if observed.revision.as_deref() != Some(sha256_hex(&bytes).as_str()) {
             return Err("Server launch settings changed after saving. Read their current values before continuing.".into());

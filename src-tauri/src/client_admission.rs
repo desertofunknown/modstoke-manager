@@ -1,8 +1,8 @@
 use crate::hashing::sha256_hex;
-use crate::{installation_profiles, mod_update};
+use crate::{installation_profiles, mod_update, safe_fs};
 use serde::{Deserialize, Serialize};
-use std::fs::{self, File};
-use std::io::{ErrorKind, Read, Write};
+use std::fs;
+use std::io::{ErrorKind, Write};
 use std::ops::Range;
 use std::path::Path;
 
@@ -95,25 +95,8 @@ fn require_installation(executable: &str, installation_id: &str) -> Result<Strin
     inspected.root.ok_or_else(|| "The player installation has no resolved folder.".into())
 }
 
-pub(crate) fn read_bounded(root: &Path, relative: &Path, limit: usize) -> Result<Option<Vec<u8>>, String> {
-    if !mod_update::validate_target(root, relative)? {
-        return Ok(None);
-    }
-    let path = root.join(relative);
-    let file = File::open(&path)
-        .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
-    let mut bytes = Vec::new();
-    file.take((limit + 1) as u64)
-        .read_to_end(&mut bytes)
-        .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
-    if bytes.len() > limit {
-        return Err(format!("{} exceeds the {limit}-byte limit.", path.display()));
-    }
-    Ok(Some(bytes))
-}
-
 fn read_config(root: &Path) -> Result<Config, String> {
-    let Some(bytes) = read_bounded(root, Path::new(CONFIG_PATH), MAX_CONFIG_BYTES)? else {
+    let Some(bytes) = safe_fs::read_bounded(root, Path::new(CONFIG_PATH), MAX_CONFIG_BYTES)? else {
         return Ok(Config { bytes: None, boolean_span: None, enabled: false, revision: None });
     };
     let text = std::str::from_utf8(&bytes)
@@ -153,7 +136,7 @@ fn invalid_config() -> String {
 }
 
 fn installed_client(root: &Path) -> Result<String, String> {
-    let bytes = read_bounded(root, Path::new(MANIFEST_PATH), 64 * 1024)?
+    let bytes = safe_fs::read_bounded(root, Path::new(MANIFEST_PATH), 64 * 1024)?
         .ok_or("Install the Modstoke Client package in this player installation before changing managed admission.")?;
     let manifest: ClientManifest = serde_json::from_slice(&bytes)
         .map_err(|error| format!("The Modstoke Client package manifest is unreadable or unsupported: {error}"))?;
@@ -172,7 +155,7 @@ fn installed_client(root: &Path) -> Result<String, String> {
     {
         return Err("The Modstoke Client manifest has an invalid version.".into());
     }
-    if !mod_update::validate_target(root, Path::new(ASSEMBLY_PATH))? {
+    if !safe_fs::validate_target(root, Path::new(ASSEMBLY_PATH))? {
         return Err("The Modstoke Client assembly is missing. Install the complete client package before changing managed admission.".into());
     }
     let metadata = fs::metadata(root.join(ASSEMBLY_PATH))
@@ -235,7 +218,7 @@ fn require_writable(snapshot: &Snapshot) -> Result<(), String> {
 }
 
 fn create_config_parents(root: &Path) -> Result<(), String> {
-    mod_update::validate_target(root, Path::new(CONFIG_PATH))?;
+    safe_fs::validate_target(root, Path::new(CONFIG_PATH))?;
     let mut parent = root.to_owned();
     for part in ["BepInEx", "config"] {
         parent.push(part);
@@ -247,7 +230,7 @@ fn create_config_parents(root: &Path) -> Result<(), String> {
             }
             Err(error) => return Err(format!("Could not inspect {}: {error}", parent.display())),
         }
-        mod_update::validate_directory(&parent)?;
+        safe_fs::validate_directory(&parent)?;
     }
     Ok(())
 }
@@ -306,7 +289,7 @@ fn write_preference(
         return Err("The managed admission config changed while the preference was being prepared. Its current contents were preserved; reload before saving again.".into());
     }
     if let Some(temporary) = temporary {
-        mod_update::durable_rename(&temporary, &folder.join(CONFIG_PATH), original.bytes.is_some())?;
+        safe_fs::durable_rename(&temporary, &folder.join(CONFIG_PATH), original.bytes.is_some())?;
         return Ok(snapshot(&root, installation_id).state);
     }
     Ok(current.state)

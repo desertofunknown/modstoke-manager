@@ -1,5 +1,5 @@
 use crate::hashing::sha256_hex;
-use crate::mod_update;
+use crate::safe_fs;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
@@ -136,11 +136,11 @@ fn executable_parts(value: &str) -> Result<(&Path, TargetKind), String> {
 
 fn canonical_target(executable: &str) -> Result<(String, String, TargetKind), String> {
     let (parent, kind) = executable_parts(executable)?;
-    mod_update::validate_directory(parent)?;
+    safe_fs::validate_directory(parent)?;
     let filename = Path::new(executable)
         .file_name()
         .ok_or("Missing executable filename.")?;
-    if !mod_update::validate_target(parent, Path::new(filename))? {
+    if !safe_fs::validate_target(parent, Path::new(filename))? {
         return Err(format!(
             "The installation executable is missing: {executable}"
         ));
@@ -153,7 +153,7 @@ fn canonical_target(executable: &str) -> Result<(String, String, TargetKind), St
     let canonical_name = canonical
         .file_name()
         .ok_or("Missing executable filename.")?;
-    if !mod_update::validate_target(root, Path::new(canonical_name))? {
+    if !safe_fs::validate_target(root, Path::new(canonical_name))? {
         return Err(format!(
             "The installation executable is missing: {executable}"
         ));
@@ -247,8 +247,8 @@ fn read_registry(folder: &Path) -> Result<(Registry, Option<String>), String> {
         }
         Ok(_) => {}
     }
-    mod_update::validate_directory(folder)?;
-    if !mod_update::validate_target(folder, Path::new(REGISTRY_FILE))? {
+    safe_fs::validate_directory(folder)?;
+    if !safe_fs::validate_target(folder, Path::new(REGISTRY_FILE))? {
         return Ok((empty_registry(), None));
     }
     let file = File::open(folder.join(REGISTRY_FILE))
@@ -316,7 +316,7 @@ fn config_folder(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 fn acquire_lock(folder: &Path) -> Result<File, String> {
-    mod_update::validate_target(folder, Path::new(LOCK_FILE))?;
+    safe_fs::validate_target(folder, Path::new(LOCK_FILE))?;
     let mut options = OpenOptions::new();
     options.read(true).write(true).create(true).truncate(false);
     #[cfg(windows)]
@@ -416,7 +416,7 @@ fn write_registry(folder: &Path, expected_revision: Option<String>, registry: Re
     for ancestor in folder.ancestors() {
         match fs::symlink_metadata(ancestor) {
             Ok(_) => {
-                mod_update::validate_directory(ancestor)?;
+                safe_fs::validate_directory(ancestor)?;
                 break;
             }
             Err(error) if error.kind() == ErrorKind::NotFound => {}
@@ -429,7 +429,7 @@ fn write_registry(folder: &Path, expected_revision: Option<String>, registry: Re
     }
     fs::create_dir_all(folder)
         .map_err(|error| format!("Could not create the installation profile folder: {error}"))?;
-    mod_update::validate_directory(folder)?;
+    safe_fs::validate_directory(folder)?;
     let _lock = acquire_lock(folder)?;
     let (previous, revision) = read_registry(folder)?;
     if expected_revision != revision {
@@ -472,7 +472,7 @@ fn write_registry(folder: &Path, expected_revision: Option<String>, registry: Re
         .write_all(&bytes)
         .and_then(|_| temporary.as_file().sync_all())
         .map_err(|error| format!("Could not write installation profiles: {error}"))?;
-    mod_update::validate_target(folder, Path::new(REGISTRY_FILE))?;
+    safe_fs::validate_target(folder, Path::new(REGISTRY_FILE))?;
     temporary
         .persist(folder.join(REGISTRY_FILE))
         .map_err(|error| {

@@ -1,4 +1,4 @@
-use crate::{client_admission, installation_profiles};
+use crate::{installation_profiles, safe_fs};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::path::Path;
 use std::time::Duration;
@@ -213,7 +213,7 @@ fn unix_seconds(value: &str) -> Option<i64> {
 /// The pipe and process of a live console for this installation, or why there is none.
 fn endpoint(root: &Path, executable: &str) -> Result<(String, u32), String> {
     let offline = "The Loader console is available while the game or server runs with Modstoke Loader.";
-    let bytes = client_admission::read_bounded(root, Path::new(ENDPOINT_PATH), 4096)?.ok_or(offline)?;
+    let bytes = safe_fs::read_bounded(root, Path::new(ENDPOINT_PATH), 4096)?.ok_or(offline)?;
     let endpoint: Endpoint = serde_json::from_slice(&bytes)
         .map_err(|error| format!("console-endpoint.json could not be read: {error}"))?;
     if endpoint.schema != 1 {

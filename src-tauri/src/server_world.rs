@@ -1,5 +1,5 @@
 use crate::hashing::{is_sha256_hex, sha256_hex};
-use crate::{mod_update, server_launch, server_world_restore};
+use crate::{safe_fs, server_launch, server_world_restore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -153,17 +153,17 @@ fn validate_absolute(value: &str) -> Result<(), String> {
 // existing parent is still resolved and validated; no missing ancestry is guessed.
 pub(crate) fn selected_folder(data: &str, value: &str) -> Result<PathBuf, String> {
     validate_absolute(value)?;
-    mod_update::validate_directory(Path::new(data))?;
+    safe_fs::validate_directory(Path::new(data))?;
     let data_path = fs::canonicalize(data).map_err(|error| error.to_string())?;
     let requested = Path::new(value);
     let resolved = match fs::symlink_metadata(requested) {
         Ok(_) => {
-            mod_update::validate_directory(requested)?;
+            safe_fs::validate_directory(requested)?;
             fs::canonicalize(requested).map_err(|error| error.to_string())?
         }
         Err(error) if error.kind() == ErrorKind::NotFound => {
             let parent = requested.parent().ok_or("The selected save folder has no parent.")?;
-            mod_update::validate_directory(parent)?;
+            safe_fs::validate_directory(parent)?;
             fs::canonicalize(parent).map_err(|error| error.to_string())?
                 .join(requested.file_name().ok_or("The selected save folder has no name.")?)
         }
@@ -185,9 +185,9 @@ pub(crate) fn selected_folder(data: &str, value: &str) -> Result<PathBuf, String
 
 pub(crate) fn directory_present(path: &Path) -> Result<bool, String> {
     match fs::symlink_metadata(path) {
-        Ok(_) => { mod_update::validate_directory(path)?; Ok(true) }
+        Ok(_) => { safe_fs::validate_directory(path)?; Ok(true) }
         Err(error) if error.kind() == ErrorKind::NotFound => {
-            mod_update::validate_directory(path.parent().ok_or("Missing folder parent.")?)?;
+            safe_fs::validate_directory(path.parent().ok_or("Missing folder parent.")?)?;
             Ok(false)
         }
         Err(error) => Err(format!("Could not inspect a save or backup folder: {error}")),
@@ -195,7 +195,7 @@ pub(crate) fn directory_present(path: &Path) -> Result<bool, String> {
 }
 
 fn open_file(folder: &Path, relative: &str) -> Result<File, String> {
-    if !mod_update::validate_target(folder, Path::new(relative))? {
+    if !safe_fs::validate_target(folder, Path::new(relative))? {
         return Err("A required save or recovery file is missing. Current files were preserved.".into());
     }
     let mut options = OpenOptions::new();
@@ -233,7 +233,7 @@ pub(crate) fn read_record<T: serde::de::DeserializeOwned>(folder: &Path, name: &
 }
 
 pub(crate) fn write_record<T: Serialize>(folder: &Path, name: &str, record: &T) -> Result<String, String> {
-    if mod_update::validate_target(folder, Path::new(name))? {
+    if safe_fs::validate_target(folder, Path::new(name))? {
         return Err("Recovery metadata already exists. Its contents were preserved.".into());
     }
     let bytes = serde_json::to_vec_pretty(record).map_err(|error| error.to_string())?;
@@ -241,7 +241,7 @@ pub(crate) fn write_record<T: Serialize>(folder: &Path, name: &str, record: &T) 
     let mut temporary = tempfile::NamedTempFile::new_in(folder).map_err(|error| error.to_string())?;
     temporary.write_all(&bytes).and_then(|_| temporary.as_file().sync_all()).map_err(|error| error.to_string())?;
     let temporary = temporary.into_temp_path();
-    mod_update::durable_rename(&temporary, &folder.join(name), false)?;
+    safe_fs::durable_rename(&temporary, &folder.join(name), false)?;
     Ok(sha256_hex(&bytes))
 }
 
@@ -252,7 +252,7 @@ fn hash_or_copy(folder: &Path, entry: &str, destination: Option<&Path>, limit: u
     }
     let mut temporary = if let Some(destination) = destination {
         let parent = destination.parent().ok_or("Missing copy destination parent.")?;
-        mod_update::validate_directory(parent)?;
+        safe_fs::validate_directory(parent)?;
         Some(tempfile::NamedTempFile::new_in(parent).map_err(|error| error.to_string())?)
     } else { None };
     let mut hash = Sha256::new();
@@ -271,14 +271,14 @@ fn hash_or_copy(folder: &Path, entry: &str, destination: Option<&Path>, limit: u
     if let (Some(output), Some(destination)) = (temporary, destination) {
         output.as_file().sync_all().map_err(|error| error.to_string())?;
         let output = output.into_temp_path();
-        mod_update::durable_rename(&output, destination, false)?;
+        safe_fs::durable_rename(&output, destination, false)?;
     }
     Ok((bytes, format!("{:x}", hash.finalize())))
 }
 
 fn scan(folder: &Path, relative: &str, inventory: &mut Inventory, names: &mut HashSet<String>, bytes: &mut u64) -> Result<(), String> {
     let current = if relative.is_empty() { folder.to_owned() } else { folder.join(relative) };
-    mod_update::validate_directory(&current)?;
+    safe_fs::validate_directory(&current)?;
     for entry in fs::read_dir(&current).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
         let name = entry.file_name().into_string().map_err(|_| "Save filenames must be valid Unicode.")?;
@@ -288,7 +288,7 @@ fn scan(folder: &Path, relative: &str, inventory: &mut Inventory, names: &mut Ha
         let metadata = fs::symlink_metadata(entry.path()).map_err(|error| error.to_string())?;
         if metadata.is_dir() {
             if inventory.directories.len() >= MAX_FILES { return Err("The save folder exceeds 4096 subfolders.".into()); }
-            mod_update::validate_directory(&entry.path())?;
+            safe_fs::validate_directory(&entry.path())?;
             inventory.directories.push(path.clone());
             scan(folder, &path, inventory, names, bytes)?;
         } else {
@@ -359,12 +359,12 @@ pub(crate) fn require_inventory(folder: &Path, expected: &Inventory) -> Result<(
 
 pub(crate) fn copy_inventory(source: &Path, destination: &Path, expected: &Inventory) -> Result<(), String> {
     validate_inventory(expected)?;
-    mod_update::validate_directory(source)?;
+    safe_fs::validate_directory(source)?;
     if directory_present(destination)? { return Err("The prepared save folder already exists. It was preserved.".into()); }
     fs::create_dir(destination).map_err(|error| error.to_string())?;
     for relative in &expected.directories {
         let path = destination.join(relative);
-        mod_update::validate_directory(path.parent().ok_or("Missing backup parent.")?)?;
+        safe_fs::validate_directory(path.parent().ok_or("Missing backup parent.")?)?;
         fs::create_dir(&path).map_err(|error| error.to_string())?;
     }
     let mut total = 0u64;
@@ -384,7 +384,7 @@ pub(crate) fn copy_inventory(source: &Path, destination: &Path, expected: &Inven
 struct StoreMarker { schema_version: u32, format: String }
 
 pub(crate) fn store(data: &Path, create: bool) -> Result<Option<PathBuf>, String> {
-    mod_update::validate_directory(data)?;
+    safe_fs::validate_directory(data)?;
     let folder = data.join(STORE);
     if !directory_present(&folder)? {
         if !create { return Ok(None); }
@@ -392,7 +392,7 @@ pub(crate) fn store(data: &Path, create: bool) -> Result<Option<PathBuf>, String
         for entry in fs::read_dir(data).map_err(|error| error.to_string())? {
             let entry = entry.map_err(|error| error.to_string())?;
             if entry.file_name().to_str().is_some_and(|name| name.to_lowercase().starts_with(STORE_PREPARATION_PREFIX)) {
-                mod_update::validate_directory(&entry.path())?;
+                safe_fs::validate_directory(&entry.path())?;
                 retained += 1;
                 if retained >= MAX_BACKUPS {
                     return Err("There are already 64 retained backup-store preparations. Preserve or archive them before continuing.".into());
@@ -413,18 +413,18 @@ pub(crate) fn store(data: &Path, create: bool) -> Result<Option<PathBuf>, String
     if marker.schema_version != 1 || marker.format != "modstoke-native-world-backups" {
         return Err("The selected data folder contains an unsupported backup store. Its files were preserved.".into());
     }
-    for name in ["backups", "preparations", "transactions"] { mod_update::validate_directory(&folder.join(name))?; }
+    for name in ["backups", "preparations", "transactions"] { safe_fs::validate_directory(&folder.join(name))?; }
     Ok(Some(folder))
 }
 
 pub(crate) fn bounded_directories(folder: &Path, maximum: usize) -> Result<Vec<String>, String> {
-    mod_update::validate_directory(folder)?;
+    safe_fs::validate_directory(folder)?;
     let mut names = Vec::new();
     for entry in fs::read_dir(folder).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
         let name = entry.file_name().into_string().map_err(|_| "A recovery folder name is invalid.")?;
         if !valid_id(&name) { return Err("The backup store contains an unrecognized folder. Its files were preserved.".into()); }
-        mod_update::validate_directory(&entry.path())?;
+        safe_fs::validate_directory(&entry.path())?;
         names.push(name);
         if names.len() > maximum { return Err("The backup store exceeds its retained-folder limit. No files were removed.".into()); }
     }
@@ -444,10 +444,10 @@ pub(crate) fn new_workspace(folder: &Path, prefix: &str) -> Result<PathBuf, Stri
 }
 
 pub(crate) fn rename_directory(source: &Path, destination: &Path) -> Result<(), String> {
-    mod_update::validate_directory(source)?;
+    safe_fs::validate_directory(source)?;
     if directory_present(destination)? { return Err("A restore destination already exists. Its contents were preserved.".into()); }
     #[cfg(windows)]
-    { mod_update::durable_rename(source, destination, false) }
+    { safe_fs::durable_rename(source, destination, false) }
     #[cfg(not(windows))]
     { Err("Native save-folder swaps are supported on Windows only.".into()) }
 }
@@ -494,7 +494,7 @@ fn require_backup_layout(folder: &Path) -> Result<(), String> {
 pub(crate) fn read_backup(store: &Path, id: &str) -> Result<Backup, String> {
     if !valid_id(id) { return Err("The backup ID is invalid.".into()); }
     let folder = store.join("backups").join(id);
-    mod_update::validate_directory(&folder)?;
+    safe_fs::validate_directory(&folder)?;
     require_backup_layout(&folder)?;
     let (manifest, revision): (Manifest, _) = read_record(&folder, "manifest.json")?;
     if manifest.schema_version != 1 || manifest.id != id || !is_sha256_hex(&manifest.installation_id)
@@ -506,7 +506,7 @@ pub(crate) fn read_backup(store: &Path, id: &str) -> Result<Backup, String> {
     validate_absolute(&manifest.save_directory)?;
     validate_inventory(&manifest.inventory)?;
     let payload = folder.join("payload");
-    mod_update::validate_directory(&payload)?;
+    safe_fs::validate_directory(&payload)?;
     Ok(Backup { manifest, revision, payload })
 }
 
@@ -557,7 +557,7 @@ pub(crate) fn require_no_pending(data: &Path) -> Result<(), String> {
     match fs::symlink_metadata(data) {
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(format!("Could not inspect the server data folder: {error}")),
-        Ok(_) => mod_update::validate_directory(data)?,
+        Ok(_) => safe_fs::validate_directory(data)?,
     }
     let folder = data.join(STORE);
     if !directory_present(&folder)? { return Ok(()); }

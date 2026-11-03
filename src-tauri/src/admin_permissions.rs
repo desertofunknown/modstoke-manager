@@ -1,5 +1,5 @@
 use crate::hashing::sha256_hex;
-use crate::{client_admission, installation_profiles, mod_update};
+use crate::{installation_profiles, safe_fs};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::ser::{CharEscape, Formatter, PrettyFormatter};
 use std::collections::{HashMap, HashSet};
@@ -241,7 +241,7 @@ enum Stored {
 }
 
 fn read_policy(folder: &Path) -> Stored {
-    let bytes = match client_admission::read_bounded(folder, Path::new(POLICY_FILE), MAX_POLICY_BYTES) {
+    let bytes = match safe_fs::read_bounded(folder, Path::new(POLICY_FILE), MAX_POLICY_BYTES) {
         Ok(Some(bytes)) => bytes,
         Ok(None) => return Stored::Missing,
         Err(problem) => return Stored::Unreadable(problem),
@@ -269,7 +269,7 @@ fn read_policy(folder: &Path) -> Stored {
 }
 
 fn read_nodes(folder: &Path) -> (Option<Vec<PermissionNode>>, Option<String>) {
-    let bytes = match client_admission::read_bounded(folder, Path::new(NODES_FILE), MAX_NODES_BYTES) {
+    let bytes = match safe_fs::read_bounded(folder, Path::new(NODES_FILE), MAX_NODES_BYTES) {
         Ok(Some(bytes)) => bytes,
         Ok(None) => return (None, None),
         Err(problem) => return (None, Some(problem)),
@@ -281,7 +281,7 @@ fn read_nodes(folder: &Path) -> (Option<Vec<PermissionNode>>, Option<String>) {
 }
 
 fn read_status(folder: &Path) -> (Option<AdminStatus>, Option<String>) {
-    let bytes = match client_admission::read_bounded(folder, Path::new(STATUS_FILE), MAX_STATUS_BYTES) {
+    let bytes = match safe_fs::read_bounded(folder, Path::new(STATUS_FILE), MAX_STATUS_BYTES) {
         Ok(Some(bytes)) => bytes,
         Ok(None) => return (None, None),
         Err(problem) => return (None, Some(problem)),
@@ -294,7 +294,7 @@ fn read_status(folder: &Path) -> (Option<AdminStatus>, Option<String>) {
 }
 
 fn installed_admin(root: &Path) -> Option<String> {
-    let bytes = client_admission::read_bounded(root, Path::new(ADMIN_MANIFEST), 64 * 1024).ok()??;
+    let bytes = safe_fs::read_bounded(root, Path::new(ADMIN_MANIFEST), 64 * 1024).ok()??;
     let manifest: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
     manifest.get("version")?.as_str().map(str::to_owned)
 }
@@ -316,7 +316,7 @@ fn snapshot(root: &Path, installation_id: &str) -> PermissionsState {
         status_problem: None,
         admin_version: installed_admin(root),
     };
-    match mod_update::validate_directory(&folder) {
+    match safe_fs::validate_directory(&folder) {
         Ok(()) => {}
         Err(_) if !folder.exists() => return state,
         Err(problem) => {
@@ -659,7 +659,7 @@ fn busy(error: &io::Error) -> bool {
 
 // Admin holds the same lock across its own re-read, compare and replace, and only briefly.
 fn lock(folder: &Path) -> Result<File, String> {
-    mod_update::validate_target(folder, Path::new(LOCK_FILE))?;
+    safe_fs::validate_target(folder, Path::new(LOCK_FILE))?;
     let mut options = OpenOptions::new();
     options.read(true).write(true).create(true).truncate(false);
     #[cfg(windows)]
@@ -695,7 +695,7 @@ fn lock(folder: &Path) -> Result<File, String> {
 }
 
 fn require_revision(folder: &Path, expected: &str) -> Result<Vec<u8>, String> {
-    let bytes = client_admission::read_bounded(folder, Path::new(POLICY_FILE), MAX_POLICY_BYTES)?
+    let bytes = safe_fs::read_bounded(folder, Path::new(POLICY_FILE), MAX_POLICY_BYTES)?
         .ok_or("permissions.json was removed after it was read. Read it again before saving.")?;
     if sha256_hex(&bytes) != expected {
         return Err("permissions.json changed after it was read, in F7, by Admin or in another editor. Read it again before saving; nothing was written.".into());
@@ -715,16 +715,16 @@ fn stage(folder: &Path, prefix: &str, bytes: &[u8]) -> io::Result<tempfile::Temp
 fn backup(directory: &Path, revision: &str, bytes: &[u8]) -> Result<PathBuf, String> {
     fs::create_dir_all(directory)
         .map_err(|error| format!("Could not create the permissions backup folder: {error}"))?;
-    mod_update::validate_directory(directory)?;
+    safe_fs::validate_directory(directory)?;
     let name = format!("{revision}.{POLICY_FILE}");
     let path = directory.join(&name);
-    if mod_update::validate_target(directory, Path::new(&name))? {
+    if safe_fs::validate_target(directory, Path::new(&name))? {
         // Rotation goes by modification time, so a revision backed up again counts as recent.
         let _ = File::options().write(true).open(&path).and_then(|file| file.set_modified(SystemTime::now()));
     } else {
         let temporary = stage(directory, ".backup-", bytes)
             .map_err(|error| format!("Could not write the permissions backup: {error}"))?;
-        mod_update::durable_rename(&temporary, &path, false)?;
+        safe_fs::durable_rename(&temporary, &path, false)?;
     }
     // Backups are Manager's own copies; keep only the newest.
     let mut entries: Vec<(SystemTime, PathBuf)> = fs::read_dir(directory)
@@ -746,7 +746,7 @@ fn write_policy(backups: &Path, executable: &str, installation_id: &str, expecte
     -> Result<PermissionsSave, String> {
     let root = require_installation(executable, installation_id)?;
     let folder = Path::new(&root).join(FOLDER);
-    mod_update::validate_directory(&folder)?;
+    safe_fs::validate_directory(&folder)?;
     let (nodes, _) = read_nodes(&folder);
     let (problems, _) = check(policy, nodes.as_deref());
     if !problems.is_empty() {
@@ -773,7 +773,7 @@ fn write_policy(backups: &Path, executable: &str, installation_id: &str, expecte
         let mut attempt = 0;
         loop {
             require_revision(&folder, expected)?;
-            match mod_update::move_durably(&temporary, &folder.join(POLICY_FILE), true) {
+            match safe_fs::move_durably(&temporary, &folder.join(POLICY_FILE), true) {
                 Ok(()) => break,
                 Err(error) if busy(&error) && attempt < 10 => {
                     attempt += 1;

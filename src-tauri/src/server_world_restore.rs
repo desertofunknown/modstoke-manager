@@ -1,5 +1,5 @@
 use crate::hashing::is_sha256_hex;
-use crate::{mod_update, server_launch, server_world};
+use crate::{safe_fs, server_launch, server_world};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::ErrorKind;
@@ -29,7 +29,7 @@ pub(crate) struct Pending {
 }
 
 pub(crate) fn read_pending(store: &Path) -> Result<Option<Pending>, String> {
-    mod_update::validate_directory(store)?;
+    safe_fs::validate_directory(store)?;
     match fs::symlink_metadata(store.join(PENDING)) {
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(format!("Could not inspect pending save recovery: {error}")),
@@ -45,7 +45,7 @@ pub(crate) fn read_pending(store: &Path) -> Result<Option<Pending>, String> {
         || record.before_world_revision == record.after_world_revision {
         return Err("The pending save-restore journal is invalid or unsupported. All folders were preserved and server launch remains blocked.".into());
     }
-    mod_update::validate_directory(&store.join("transactions").join(&record.transaction_id))?;
+    safe_fs::validate_directory(&store.join("transactions").join(&record.transaction_id))?;
     Ok(Some(Pending { record, revision }))
 }
 
@@ -84,7 +84,7 @@ fn optional_inventory(path: &Path) -> Result<Option<Inventory>, String> {
 }
 
 fn require_transaction_layout(transaction: &Path) -> Result<(), String> {
-    mod_update::validate_directory(transaction)?;
+    safe_fs::validate_directory(transaction)?;
     let mut count = 0;
     for entry in fs::read_dir(transaction).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
@@ -92,7 +92,7 @@ fn require_transaction_layout(transaction: &Path) -> Result<(), String> {
         if !matches!(name.to_str(), Some("staged" | "displaced")) {
             return Err("The restore workspace contains unrecognized files. All files were preserved; recovery cannot guess their ownership.".into());
         }
-        mod_update::validate_directory(&entry.path())?;
+        safe_fs::validate_directory(&entry.path())?;
         count += 1;
         if count > 2 { return Err("The restore workspace contains ambiguous folder names.".into()); }
     }
@@ -172,12 +172,12 @@ fn reconcile(access: &server_launch::ServerWorldAccess, selected: &Path, store: 
     access.require_unchanged()?;
     require_journal(store, &pending.revision)?;
     let complete = if finish { "finished.json" } else { "undone.json" };
-    if mod_update::validate_target(&observed.transaction, Path::new(complete))? {
+    if safe_fs::validate_target(&observed.transaction, Path::new(complete))? {
         return Err("A completion record already exists. The pending restore was preserved.".into());
     }
     // Archiving the intent is the commit point. Until this durable move succeeds,
     // launch remains blocked and either explicit recovery direction is available.
-    mod_update::durable_rename(&store.join(PENDING), &observed.transaction.join(complete), false)
+    safe_fs::durable_rename(&store.join(PENDING), &observed.transaction.join(complete), false)
 }
 
 fn begin_restore(access: &server_launch::ServerWorldAccess, save_directory: &str,

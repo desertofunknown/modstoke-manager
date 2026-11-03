@@ -135,7 +135,7 @@ pub(super) fn require_catalog_write(
 }
 
 fn read_bytes(root: &Path, relative: &Path) -> Result<Vec<u8>, String> {
-    if !mod_update::validate_target(root, relative)? {
+    if !safe_fs::validate_target(root, relative)? {
         return Err(format!("Missing native manifest: {}", relative.display()));
     }
     let mut bytes = Vec::new();
@@ -159,7 +159,7 @@ pub(super) fn check_owned(root: &Path, archive: &NativeArchive) -> Result<(), St
         let path = Path::new(&file.path);
         mod_update::ensure_unmanaged(root, path)?;
         if !mod_update::is_native_user_file(path)
-            && mod_update::target_hash(root, path)?.as_deref() != Some(&file.sha256)
+            && safe_fs::target_hash(root, path)?.as_deref() != Some(&file.sha256)
         {
             return Err(format!("{} changed or is missing since Manager installed it. Its files were preserved; resolve the change before updating.", file.path));
         }
@@ -171,7 +171,7 @@ fn require_empty_directory_tree(path: &Path) -> Result<(), String> {
     let mut pending = vec![path.to_owned()];
     let mut count = 0;
     while let Some(folder) = pending.pop() {
-        mod_update::validate_directory(&folder)?;
+        safe_fs::validate_directory(&folder)?;
         for entry in fs::read_dir(folder).map_err(|error| error.to_string())? {
             let entry = entry.map_err(|error| error.to_string())?;
             count += 1;
@@ -288,7 +288,7 @@ pub(super) fn prepare_many(
         for file in &archive.files {
             let path = Path::new(&file.path);
             mod_update::ensure_unmanaged(root, path)?;
-            if let Some(current) = mod_update::target_hash(root, path)? {
+            if let Some(current) = safe_fs::target_hash(root, path)? {
                 if !mod_update::is_native_user_file(path)
                     && old_files
                         .get(&key(&file.path))
@@ -343,7 +343,7 @@ pub(super) fn prepare_many(
         observed.push((path, sha256_hex(&bytes)));
         observed.push((
             assembly_path.clone(),
-            mod_update::target_hash(root, &assembly_path)?
+            safe_fs::target_hash(root, &assembly_path)?
                 .ok_or("A native assembly disappeared.")?,
         ));
         let record = known_package(profile, &manifest.id);
@@ -551,7 +551,7 @@ fn pending_archive(profile: &ModProfile) -> Result<&NativeArchive, String> {
 
 pub(super) fn require_observed(root: &Path, observed: &[(PathBuf, String)]) -> Result<(), String> {
     for (path, expected) in observed {
-        if mod_update::target_hash(root, path)?.as_ref() != Some(expected) {
+        if safe_fs::target_hash(root, path)?.as_ref() != Some(expected) {
             return Err(format!(
                 "{} changed during native package preparation. Refresh before retrying.",
                 path.display()
@@ -666,7 +666,7 @@ pub async fn install_native_package(
                     require_stopped()?;
                     require_observed(&root, &prepared.observed)?;
                     for file in &archive.files {
-                        if mod_update::target_hash(staging, Path::new(&file.path))?.as_deref() != Some(&file.sha256) {
+                        if safe_fs::target_hash(staging, Path::new(&file.path))?.as_deref() != Some(&file.sha256) {
                             return Err("Staged native package files differ from the reviewed archive.".into());
                         }
                     }

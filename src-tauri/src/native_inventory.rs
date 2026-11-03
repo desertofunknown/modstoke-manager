@@ -1,4 +1,4 @@
-use crate::mod_update::{validate_directory, validate_target};
+use crate::safe_fs::{validate_directory, validate_target};
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};

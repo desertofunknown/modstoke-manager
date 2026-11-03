@@ -1,5 +1,5 @@
 use crate::hashing::sha256_hex;
-use crate::mod_update;
+use crate::safe_fs;
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
@@ -169,7 +169,7 @@ impl<'de> Deserialize<'de> for ConfigProperties {
 }
 
 pub(crate) fn read(data_directory: &Path) -> Result<NativeConfig, String> {
-    if !mod_update::validate_target(data_directory, Path::new(CONFIG_FILE))? {
+    if !safe_fs::validate_target(data_directory, Path::new(CONFIG_FILE))? {
         return Err("The server data folder has no dedicatedserver.cfg. Create the native server configuration before launching.".into());
     }
     let file = File::open(data_directory.join(CONFIG_FILE))

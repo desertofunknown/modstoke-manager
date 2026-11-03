@@ -285,8 +285,8 @@ pub async fn join_community_server(app: tauri::AppHandle, expected_server: Commu
         let steam_root = Path::new(&steam_game).parent().and_then(|path| std::fs::canonicalize(path).ok())
             .ok_or("Could not verify Steam's game installation.")?;
         if root != steam_root { return Err("Select Steam's Sons of the Forest installation before joining. Steam launches its registered copy.".into()); }
-        crate::mod_update::validate_directory(&root)?;
-        if !crate::mod_update::validate_target(&root, Path::new("SonsOfTheForest.exe"))? {
+        crate::safe_fs::validate_directory(&root)?;
+        if !crate::safe_fs::validate_target(&root, Path::new("SonsOfTheForest.exe"))? {
             return Err("The player executable is unavailable.".into());
         }
         let _lock = crate::mod_update::acquire_update_lock(&root)?;

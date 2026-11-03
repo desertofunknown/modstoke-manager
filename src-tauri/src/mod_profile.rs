@@ -1,5 +1,5 @@
 use crate::hashing::{is_sha256_hex, sha256_hex};
-use crate::mod_update;
+use crate::{mod_update, safe_fs};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
@@ -152,10 +152,10 @@ fn game_root(value: &str) -> Result<PathBuf, String> {
 
 fn profile_root(value: &str, allow_server: bool) -> Result<PathBuf, String> {
     let selected = Path::new(value);
-    mod_update::validate_directory(selected)?;
+    safe_fs::validate_directory(selected)?;
     let root = fs::canonicalize(selected).map_err(|error| error.to_string())?;
-    let player = mod_update::validate_target(&root, Path::new("SonsOfTheForest.exe"))?;
-    let server = allow_server && mod_update::validate_target(&root, Path::new("SonsOfTheForestDS.exe"))?;
+    let player = safe_fs::validate_target(&root, Path::new("SonsOfTheForest.exe"))?;
+    let server = allow_server && safe_fs::validate_target(&root, Path::new("SonsOfTheForestDS.exe"))?;
     if !player && !server {
         return Err(if allow_server {
             "Select a folder containing SonsOfTheForest.exe or SonsOfTheForestDS.exe to read its mod profile."
@@ -171,7 +171,7 @@ fn relative(root: &Path, value: &str) -> Result<PathBuf, String> {
     // canonical. Resolve the parent without following the final file itself.
     let path = Path::new(value);
     let parent = path.parent().ok_or_else(invalid_profile)?;
-    mod_update::validate_directory(parent)?;
+    safe_fs::validate_directory(parent)?;
     let absolute = fs::canonicalize(parent).map_err(|error| error.to_string())?
         .join(path.file_name().ok_or_else(invalid_profile)?);
     let suffix = absolute.strip_prefix(root).map_err(|_| "An observed install path is outside the selected game folder.".to_string())?;
@@ -308,7 +308,7 @@ fn validate_profile(root: &Path, profile: &ModProfile) -> Result<(), String> {
 }
 
 fn read_locked(root: &Path) -> Result<ProfileState, String> {
-    if !mod_update::validate_target(root, Path::new(PROFILE_FILE))? {
+    if !safe_fs::validate_target(root, Path::new(PROFILE_FILE))? {
         return Ok(ProfileState { profile: None, revision: None });
     }
     let file = File::open(root.join(PROFILE_FILE)).map_err(|error| error.to_string())?;
@@ -337,11 +337,11 @@ fn encode_profile(root: &Path, profile: &ModProfile) -> Result<Vec<u8>, String> 
 
 fn write_locked(root: &Path, profile: &ModProfile) -> Result<ProfileState, String> {
     let bytes = encode_profile(root, profile)?;
-    let replace = mod_update::validate_target(root, Path::new(PROFILE_FILE))?;
+    let replace = safe_fs::validate_target(root, Path::new(PROFILE_FILE))?;
     let mut temporary = tempfile::Builder::new().prefix(".modstoke-profile-").tempfile_in(root).map_err(|error| error.to_string())?;
     temporary.write_all(&bytes).and_then(|_| temporary.as_file().sync_all()).map_err(|error| error.to_string())?;
     let temporary = temporary.into_temp_path();
-    mod_update::durable_rename(&temporary, &root.join(PROFILE_FILE), replace)?;
+    safe_fs::durable_rename(&temporary, &root.join(PROFILE_FILE), replace)?;
     Ok(ProfileState { profile: Some(profile.clone()), revision: Some(sha256_hex(&bytes)) })
 }
 
@@ -367,7 +367,7 @@ fn reconcile(root: &Path, state: ProfileState) -> Result<ProfileState, String> {
     let mut original = true;
     let mut replacement = true;
     for target in step.targets.as_ref().ok_or_else(invalid_profile)? {
-        let current = mod_update::target_hash(root, &target.relative_path)?;
+        let current = safe_fs::target_hash(root, &target.relative_path)?;
         original &= current == target.original_sha256;
         replacement &= current == target.replacement_sha256;
     }
@@ -398,7 +398,7 @@ pub async fn read_mod_profile(game_root: String) -> Result<ProfileState, String>
         let state = read_locked(&root)?;
         let pack_recovery_active = state.profile.as_ref().is_some_and(|profile|
             profile.rollback.as_ref().is_some_and(|checkpoint| checkpoint.phase != "available"));
-        if !pack_recovery_active && mod_update::validate_target(&root, Path::new("SonsOfTheForestDS.exe"))? {
+        if !pack_recovery_active && safe_fs::validate_target(&root, Path::new("SonsOfTheForestDS.exe"))? {
             mod_update::recover_pending_updates(&root)?;
         }
         reconcile(&root, state)
@@ -451,7 +451,7 @@ pub async fn write_mod_profile(game_root: String, expected_revision: Option<Stri
 fn validate_previous(root: &Path, before: &InstallObservation) -> Result<mod_update::PreviousInstall, String> {
     let manifest = before.manifest_path.as_deref().ok_or("The installed mod has no manifest path. Refresh before updating.")?;
     let relative_manifest = relative(root, manifest)?;
-    mod_update::validate_target(root, &relative_manifest)?;
+    safe_fs::validate_target(root, &relative_manifest)?;
     let manifest: serde_json::Value = serde_json::from_slice(&fs::read(root.join(relative_manifest)).map_err(|error| error.to_string())?)
         .map_err(|_| "The installed manifest changed. Refresh before updating.")?;
     if manifest.get("id").and_then(|value| value.as_str()).map(key) != Some(key(&before.id))
@@ -469,7 +469,7 @@ fn validate_previous(root: &Path, before: &InstallObservation) -> Result<mod_upd
     let assembly = before.assembly_path.as_deref().map(|value| relative(root, value)).transpose()?;
     let mut enabled_assembly = None;
     if let Some(assembly) = &assembly {
-        if !mod_update::validate_target(root, assembly)? { return Err("The installed assembly moved before commit. Refresh before updating.".into()); }
+        if !safe_fs::validate_target(root, assembly)? { return Err("The installed assembly moved before commit. Refresh before updating.".into()); }
         let disabled_extension = assembly.extension().is_some_and(|value| value.eq_ignore_ascii_case("disabled"));
         if before.enabled == (disabled_extension || package_disabled) {
             return Err("The installed enabled/disabled state changed. Refresh before updating.".into());
@@ -481,7 +481,7 @@ fn validate_previous(root: &Path, before: &InstallObservation) -> Result<mod_upd
             }
         }
         let opposite = if before.enabled { assembly.with_extension("disabled") } else { enabled.clone() };
-        if mod_update::validate_target(root, &opposite)? {
+        if safe_fs::validate_target(root, &opposite)? {
             return Err("Both enabled and disabled assembly paths exist. Resolve this ambiguity before updating.".into());
         }
         enabled_assembly = Some(root.join(enabled).to_string_lossy().into_owned());
@@ -502,7 +502,7 @@ fn validate_observed_files(root: &Path, expected_files: &[ExpectedFile]) -> Resu
     for expected in expected_files {
         if expected.sha256.as_deref().is_some_and(|value| !is_sha256_hex(value)) { return Err(invalid_profile()); }
         let path = relative(root, &expected.path)?;
-        if mod_update::target_hash(root, &path)? != expected.sha256 {
+        if safe_fs::target_hash(root, &path)? != expected.sha256 {
             return Err(format!("{} changed before package commit. The pending plan was preserved; refresh before retrying.", path.display()));
         }
     }
@@ -585,7 +585,7 @@ pub async fn apply_mod_profile_package(
         let staged = tempfile::Builder::new().prefix(".modstoke-profile-").tempfile_in(&root).map_err(|error| error.to_string())?;
         fs::copy(&source, staged.path()).map_err(|error| error.to_string())?;
         staged.as_file().sync_all().map_err(|error| error.to_string())?;
-        if Some(mod_update::hash_file(staged.path())?) != step.package.archive_sha256 {
+        if Some(safe_fs::hash_file(staged.path())?) != step.package.archive_sha256 {
             return Err("The downloaded archive no longer matches its recorded SHA-256. The pending plan was preserved.".into());
         }
         mod_update::replace_archive_locked(

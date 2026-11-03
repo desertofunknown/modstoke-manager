@@ -1,5 +1,5 @@
 use crate::hashing::sha256_hex;
-use crate::{mod_update, server_launch, server_native_config, server_world};
+use crate::{safe_fs, server_launch, server_native_config, server_world};
 use serde::Serialize;
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -28,18 +28,18 @@ pub struct ConfigChange {
 }
 
 fn backup_directory(data: &Path) -> Result<PathBuf, String> {
-    mod_update::validate_directory(data)?;
+    safe_fs::validate_directory(data)?;
     let directory = data.join(BACKUP_DIRECTORY);
     if !server_world::directory_present(&directory)? {
         fs::create_dir(&directory)
             .map_err(|error| format!("Could not create the configuration backup folder: {error}"))?;
     }
-    mod_update::validate_directory(&directory)?;
+    safe_fs::validate_directory(&directory)?;
     Ok(directory)
 }
 
 fn backup_count(directory: &Path) -> Result<usize, String> {
-    mod_update::validate_directory(directory)?;
+    safe_fs::validate_directory(directory)?;
     let mut count = 0;
     for entry in fs::read_dir(directory)
         .map_err(|error| format!("Could not inspect the configuration backup folder: {error}"))? {
@@ -48,7 +48,7 @@ fn backup_count(directory: &Path) -> Result<usize, String> {
         }
         let entry = entry
             .map_err(|error| format!("Could not inspect a configuration backup entry: {error}"))?;
-        if !mod_update::validate_target(directory, Path::new(&entry.file_name()))? {
+        if !safe_fs::validate_target(directory, Path::new(&entry.file_name()))? {
             return Err("The configuration backup folder changed while it was being read. Read server settings before trying again.".into());
         }
         count += 1;
@@ -57,7 +57,7 @@ fn backup_count(directory: &Path) -> Result<usize, String> {
 }
 
 fn require_exact_file(directory: &Path, name: &Path, expected: &NativeConfig) -> Result<(), String> {
-    if !mod_update::validate_target(directory, name)? {
+    if !safe_fs::validate_target(directory, name)? {
         return Err("A required configuration or backup file is missing.".into());
     }
     let file = File::open(directory.join(name))
@@ -78,7 +78,7 @@ fn require_exact_file(directory: &Path, name: &Path, expected: &NativeConfig) ->
 }
 
 fn durable_temporary(directory: &Path, bytes: &[u8]) -> Result<tempfile::TempPath, String> {
-    mod_update::validate_directory(directory)?;
+    safe_fs::validate_directory(directory)?;
     let mut temporary = tempfile::NamedTempFile::new_in(directory)
         .map_err(|error| format!("Could not stage the configuration file: {error}"))?;
     temporary.write_all(bytes)
@@ -93,15 +93,15 @@ fn ensure_backup(data: &Path, original: &NativeConfig) -> Result<PathBuf, String
     let directory = backup_directory(data)?;
     let count = backup_count(&directory)?;
     let name = format!("{}.{}", original.revision, CONFIG_FILE);
-    if !mod_update::validate_target(&directory, Path::new(&name))? {
+    if !safe_fs::validate_target(&directory, Path::new(&name))? {
         if count >= MAX_BACKUPS {
             return Err("The configuration backup folder already has 64 entries. Preserve its backups and move older entries elsewhere before changing server settings.".into());
         }
         let temporary = durable_temporary(&directory, original.original_bytes())?;
         require_exact_file(&directory, Path::new(temporary.file_name()
             .ok_or("The configuration backup staging path has no filename.")?), original)?;
-        mod_update::validate_target(&directory, Path::new(&name))?;
-        mod_update::durable_rename(&temporary, &directory.join(&name), false)?;
+        safe_fs::validate_target(&directory, Path::new(&name))?;
+        safe_fs::durable_rename(&temporary, &directory.join(&name), false)?;
     }
     require_exact_file(&directory, Path::new(&name), original)?;
     Ok(directory.join(name))
@@ -182,7 +182,7 @@ fn write_config(access: &server_launch::ServerWorldAccess, expected_config_revis
     // package readiness and stopped game/server processes immediately before commit.
     access.require_unchanged()?;
     server_world::require_no_pending(data)?;
-    mod_update::durable_rename(&temporary, &data.join(CONFIG_FILE), true)
+    safe_fs::durable_rename(&temporary, &data.join(CONFIG_FILE), true)
         .map_err(|error| uncertain_commit(&error, &backup))?;
     let installed = server_native_config::read(data)
         .map_err(|error| uncertain_commit(&error, &backup))?;

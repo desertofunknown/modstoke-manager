@@ -14,6 +14,7 @@ mod mod_profile;
 mod mod_update;
 mod native_inventory;
 mod nexus;
+mod safe_fs;
 mod server_capacity;
 mod server_console;
 mod server_directory;
