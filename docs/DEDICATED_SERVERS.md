@@ -1,9 +1,6 @@
 # Dedicated servers
 
-Modstoke Manager, by OpenACAI, can remember a local Sons of the Forest dedicated
-server's installation and data folder, inspect its save settings, start, stop
-and restart it, and follow its logs. It does not install the dedicated server or
-configure its network.
+Modstoke Manager, by OpenACAI, works with a Sons of the Forest dedicated server installed on this PC. After you add and select a server under **Dedicated servers**, it has six tabs: **Server** (status, start, stop and restart, server name, player limit, log files and data folder), **Game settings**, **Staff** (Modstoke Admin permissions), **Console** (game log, Loader log and Loader console), **Packages** (native packages and recovery) and **World backups**. Manager does not install the dedicated server, open firewall ports or set up port forwarding.
 
 ## Prepare the server
 
@@ -222,11 +219,11 @@ The current restore implementation requires Windows. These backups include only
 the selected native folder. Older mods may keep sidecar records elsewhere; those
 need separate recovery and must not be assumed to match the restored world.
 External tools can still edit files or start a server independently of Manager's
-locks. Backup, interruption recovery and native reload require runtime acceptance.
+locks. Backup, recovery after an interruption and loading a restored world in the game have not finished testing yet.
 
 ## Package files and recovery
 
-On Main, use **Select ZIP…** under Native packages to inspect a local native mod
+On the **Packages** tab, use **Select ZIP…** under **Install native mod ZIP** to inspect a local native mod
 archive for the selected server installation. Review its identity, version,
 installation root, destination and required dependencies before choosing
 **Install package**, **Update package** or **Resume package**. Close the game and
@@ -240,7 +237,7 @@ configuration preservation rules.
 Native inventory is a filesystem observation, not proof that a package loaded or
 supports the dedicated server. Legacy catalog installation, toggling and removal
 remain unavailable for server profiles. Dedicated-server launch and native package
-installation, update and recovery still need app acceptance.
+installation, update and recovery have not finished testing yet.
 
 While Manager owns a running server, it retains locks for the installation and
 selected data folder. It releases them when it observes the child exit, or when
@@ -261,5 +258,4 @@ Data-folder preferences use separate schema-1 files under `server-launch` in
 Manager's existing app configuration folder. Installation registry and package
 lockfile formats remain unchanged. Re-adding a forgotten installation reuses
 its saved data-folder choice; forgetting an installation never deletes data.
-Sending commands such as save or broadcast to a running server needs Modstoke
-Loader support and remains separate work.
+To send commands to a running server, use **Loader console** on the **Console** tab. The server needs Modstoke Loader, and the commands offered depend on the Loader and mods installed there.

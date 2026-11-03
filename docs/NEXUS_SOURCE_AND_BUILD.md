@@ -7,26 +7,20 @@ For the Manager's API behavior, account handling and pending OAuth registration,
 start with the [Nexus integration notes](NEXUS_API_REVIEW.md). The signed 0.2.0
 downloads predate these changes; build the current Manager branch for review.
 
-The project is open source. The manager installs and verifies a loader package,
-so the source links and build notes below include the manager, the loader, and
-the loader-side forks used to produce a usable package.
+The project is open source. The Manager builds from this repository alone. It installs and verifies a loader package, but the loader source is published only as a partial snapshot for review, so the loader steps below describe the maintainer's local build and can't yet be repeated from public source.
 
 ## Public Source Links
 
 OpenACAI source repositories:
 
 - Modstoke Manager:
-  https://github.com/desertofunknown/openacai-mod-manager/tree/openacai-tauri2-svelte5-shell
-- Modstoke Loader:
-  https://github.com/desertofunknown/openacai-loader/tree/openacai-net11-preview
-- OpenACAI BepInEx fork:
-  https://github.com/desertofunknown/openacai-bepinex/tree/openacai-net11-preview
-- OpenACAI UnityDoorstop fork:
-  https://github.com/desertofunknown/openacai-unitydoorstop/tree/openacai-hostfxr-net10
-- OpenACAI RedLoader compatibility source:
-  https://github.com/desertofunknown/openacai-redloader/tree/openacai-loader-compat
-- OpenACAI MonoMod fork:
-  https://github.com/desertofunknown/openacai-monomod/tree/openacai-net11-preview
+  https://github.com/desertofunknown/modstoke-manager/tree/openacai-tauri2-svelte5-shell
+- Modstoke Loader (partial source snapshot for review, not a working build):
+  https://github.com/desertofunknown/modstoke-loader/tree/loader-source-preview
+- OpenACAI BepInEx and RedLoader fork changes: the `source-snapshot/upstream-forks`
+  folder on that branch
+
+The OpenACAI UnityDoorstop and MonoMod forks are not published yet.
 
 Upstream source provenance:
 
@@ -46,7 +40,7 @@ Upstream source provenance:
 The Modstoke Manager and Modstoke Loader source are licensed as
 GPL-3.0-or-later where OpenACAI-authored changes are separably licensable.
 Third-party components keep their original licenses. See the repository
-`LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES`, and `LICENSES` folders/files for
+`LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md` and `LICENSES/` files for
 component-specific terms.
 
 The source contains no Endnight Games assets, so builds made from it carry
@@ -106,7 +100,7 @@ where supported.
 From the manager repository:
 
 ```powershell
-cd "C:\path\to\openacai-mod-manager"
+cd "C:\path\to\modstoke-manager"
 npm ci
 npm run check
 npm run build
@@ -120,12 +114,7 @@ src-tauri/target/release/OpenACAI Mod Manager.exe
 src-tauri/target/release/bundle/nsis/Modstoke Manager_0.2.0_x64-setup.exe
 ```
 
-To copy the release binaries into the repository `prebuilt` folder and generate
-hashes:
-
-```powershell
-.\scripts\refresh-prebuilt.ps1 -Build
-```
+`scripts\refresh-prebuilt.ps1` deletes the Manager files in `prebuilt/`, copies in the new build and rewrites `SHA256SUMS.txt`. Only signed builds go in `prebuilt/` or on a release, so always run it with `-Sign` (see below). Newer signed builds aren't available yet, so `prebuilt/` keeps the signed 0.2.0 files for now. When the version changes, pass it with `-Version`; the script defaults to 0.2.0.
 
 Expected prebuilt outputs:
 
@@ -136,15 +125,13 @@ prebuilt/OpenACAI-Mod-Manager.ico
 prebuilt/SHA256SUMS.txt
 ```
 
-Code signing is optional for compilation and is done after the build:
+Signing is not needed to compile or inspect the source, but every binary committed to `prebuilt/` or attached to a release must be signed:
 
 ```powershell
 .\scripts\refresh-prebuilt.ps1 -Build -Sign
 ```
 
-Signing requires the OpenACAI Azure Trusted Signing environment to be configured
-locally. Reviewers do not need the signing credentials to compile or inspect the
-source.
+This signs the portable exe and the installer after the build. It does not sign the copy of the app inside the installer, so the installed `OpenACAI Mod Manager.exe` stays unsigned (the signed 0.2.0 installer included) until the build signs the app before packaging it. If the build or signing stops partway, `prebuilt/` is left with missing or unsigned files: run `git restore prebuilt` and don't commit it. Check every file with `Get-AuthenticodeSignature` before committing. Signing needs OpenACAI's Azure Artifact Signing account or its certificate; see [SIGNING.md](../SIGNING.md).
 
 ## Build Loader Dependencies
 
@@ -223,12 +210,12 @@ runtime. In the loader repository:
    runtime and hostfxr to bundle.
 3. Regenerate the loader ZIP, manifest and checksum together. Confirm the
    manifest's `runtime.dotnetRuntimeVersion` is `11.0.0-rc.2.26504.105` before
-   publishing the package through the existing release feed.
+   publishing the package to the loader release feed at modstoke.com, which the
+   Manager reads. No release has been published there yet.
 
 Keep the existing loader paths, assembly names and release asset names. The
 manager reads the package version and runtime metadata from the release
-manifest; it does not need a new hardcoded runtime pin. Building the RC2
-package and checking it in-game are separate from updating this guide.
+manifest; it does not need a new hardcoded runtime pin.
 
 From the loader repository:
 
@@ -280,7 +267,11 @@ Manager:
 ```powershell
 Get-FileHash ".\prebuilt\OpenACAI-Mod-Manager-0.2.0-x64-portable.exe" -Algorithm SHA256
 Get-FileHash ".\prebuilt\OpenACAI-Mod-Manager-0.2.0-x64-setup.exe" -Algorithm SHA256
+Get-AuthenticodeSignature ".\prebuilt\OpenACAI-Mod-Manager-0.2.0-x64-portable.exe"
+Get-AuthenticodeSignature ".\prebuilt\OpenACAI-Mod-Manager-0.2.0-x64-setup.exe"
 ```
+
+The hashes should match `prebuilt/SHA256SUMS.txt`, and both files should report `Valid` with the signer OpenACAI Inc.
 
 Loader:
 
@@ -290,4 +281,5 @@ Get-Content ".\dist\OpenACAILoader.manifest.json"
 ```
 
 The mod manager's install/repair flow also verifies loader file hashes from the
-release manifest before reporting the loader as installed.
+release manifest before reporting the loader as installed. That flow needs a
+loader release at modstoke.com, which has not been published yet.

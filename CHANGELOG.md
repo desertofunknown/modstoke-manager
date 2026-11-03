@@ -1,14 +1,14 @@
 - Unreleased
   - Start faster. The window opens already sized for its monitor once the page has loaded, without the blocking Initializing overlay, and the Sons of the Forest skin loads its cached files as ordinary images and a font. Hashing, unzipping and the .NET check no longer run on the window's thread. In development, Vite no longer stalls on a PostCSS config search or on watching the Rust build output, which took a dev launch from about 40 seconds to about 5.
-  - Add skins and a Settings page to choose them. Sons of the Forest brings back the ragged frame and title screen backdrop from the game's menus, and is used by default while managing Sons of the Forest. The Modstoke skin keeps the plain dark panels.
-  - Read the Sons of the Forest skin's frame and backdrop from the player's own game files instead of shipping copies of Endnight's art, along with the game's Roboto font, and cache them per user until the game or Manager updates. Without a game installation the Manager uses the Modstoke skin and Segoe UI.
+  - Add a Settings page to choose a skin: Match the game (the default, which uses the Sons of the Forest skin), Modstoke or Sons of the Forest. The Sons of the Forest skin brings back the ragged frame and title screen backdrop from the game's menus; the Modstoke skin keeps the plain dark panels.
+  - Read the Sons of the Forest skin's frame and backdrop, and the game's Roboto font, from the player's own game files; the Manager ships no Endnight art. The files are cached for that user and read again when the game's files change. Without a player installation the Manager uses the Modstoke skin and Segoe UI.
   - Add a Loader console for games and dedicated servers running Modstoke Loader: it follows the Loader's live output and sends its commands, such as status, mods and Admin's commands, with a confirmation step where a command asks for one. It appears on a server's Console tab and on the Loaders page, connects only to the running game or server of that installation, and shows recent command results.
   - Edit Modstoke Admin's staff permissions from a dedicated server's Staff tab or a player installation's Multiplayer tools: roles with ranks, inheritance and allow and deny nodes, staff by SteamID64 with notes and expiry, remote F7 access and the game-role mapping. Manager checks the file against Admin's rules and node list, shows what changes before saving, refuses to overwrite a file F7 or another editor changed, keeps a backup, and shows whether Admin applied or rejected the saved file. Archive installs can no longer replace Admin's permission files.
   - Add a Game settings tab for dedicated servers: game mode, autosave interval, tree regrowth and structure damage, every custom-game setting the server reads, frame rates, LAN only and the network check. Changes are reviewed first and saved with the usual configuration backup; unrecognized values and unread entries are kept.
   - Stop a dedicated server Manager started by sending Ctrl+C to its console, restart it once it has exited, or force it to stop after a confirmation. Add a Console tab that follows the server's game log and Modstoke Loader log, and a Log files setting for the native game log.
   - Add a community server browser backed by modstoke.com. It shows server status, settings and recent activity, compares required mods with the selected installation, and joins through Steam after rechecking the server. `modstoke://join/` links open that server, and launching the Manager again focuses the running window.
   - Request loader releases from modstoke.com, reject manifest file records that could point outside the game folder, and accept loader packages that ship the core as `Modstoke.Loader.dll`.
-  - Rename the app to Modstoke Manager by OpenACAI, with new artwork and consistent Loader, Admin and SDK labels. Preserve existing installations, settings and update addresses.
+  - Rename the app to Modstoke Manager by OpenACAI, with new artwork and consistent Loader, Admin and SDK labels. Preserve existing installations, settings and mod catalog addresses.
   - Stage native mod updates before replacing files, preserve disabled paths and files absent from the release, and restore overwritten files after installation failures. Keep recovery backups when restoration fails and refuse to overwrite Vortex-managed files.
   - Keep expanded Nexus descriptions and file notes inside the scrolling detail layout on short, narrow windows.
   - Match local package names to possessive Nexus titles, prefer explicit Nexus identities, and stop treating author names as installed mods.
@@ -20,7 +20,7 @@
   - Refresh inventory and feature controls when the selected game installation changes, keep scans tied to their original folder, and reject actions on stale installed entries.
   - Keep mod actions unavailable until the local inventory is ready, with visible scan retries and operation errors.
   - Add keyboard focus, Tab wrapping, Escape dismissal, and focus restoration to mod detail dialogs; discard late Nexus detail and dependency responses after changing selection.
-  - Validate OpenACAI loader downloads before removing the installed runtime, preserve BepInEx configuration after extraction failures, and require installed file verification before reporting success.
+  - Validate Modstoke Loader downloads before removing the installed runtime, preserve BepInEx configuration after extraction failures, and require installed file verification before reporting success.
   - Surface feature installation failures, refresh action state after partial failures, and clear temporary web downloads on both success and failure.
   - Preserve catalog filters, sorting, and loaded results when switching tabs or stores, and load secondary pages only when opened.
   - Add keyboard tab navigation and Ctrl+F search with Escape to clear, and keep store labels readable on smaller windows.
@@ -28,12 +28,12 @@
   - Serialize SOTF catalog pagination, retry the failed page or inventory scan, and ignore stale mode/search results.
   - Fill sparse catalog views as space becomes available and release scroll observers when leaving the page.
   - Use bundled preview artwork when images are missing or unavailable.
-- 0.2.0
-  - Moved OpenACAI Endnight Loader update checks to GitHub Release assets instead of raw branch prebuilts.
-  - Added live loader-file SHA256 verification progress and cached the latest release manifest for last-known-good comparisons.
-  - Changed update behavior so repair/update is offered only when loader-owned files are missing or hash-mismatched.
-  - Updated runtime checks and user messaging for the `.NET 11` loader preview track.
-  - Refreshed the manager UI toward a darker Sons-style options shell with flatter controls and chromatic hover states.
+  - Redesign the Manager around Overview, Installed mods, Browse mods, Server browser, Loaders, Dedicated servers, Multiplayer, Creator tools and Settings pages.
+  - Save several player and dedicated server installations and switch between them.
+  - Add a Dedicated servers workspace: add an existing `SonsOfTheForestDS.exe`, choose its data folder, change its name and player limit, install packages, and back up and restore worlds.
+  - Install local native mod ZIPs and portable native packs from Installed mods or a server's Packages tab, with a review before anything is installed.
+  - Add Multiplayer tools for server requirement lists, Modstoke Client participation and package recovery.
+  - Move personal Nexus API keys under Development testing while Nexus account sign-in awaits application registration.
   - Merged the SOTF Mods and Nexus/Vortex storefronts into one top-level Mods workspace with a local source switch.
   - Added an All Stores Mods workspace mode that stacks SOTF Mods and Nexus/Vortex in one shared search surface while keeping each source's download/install actions reachable.
   - Made All Stores the fresh-launch Mods workspace default, while dedicated SOTF Mods or Nexus/Vortex source choices stay session-local instead of persisting across app restarts.
@@ -122,6 +122,12 @@
   - Rendered Nexus spoiler, details, collapse, and accordion BBCode/HTML blocks as native expandable sections with safe summaries so author-hidden instructions keep their intended collapsed layout.
   - Preserved more Nexus author-layout BBCode by converting labeled divider sections, standalone anchor/bookmark markers, and table cell width/alignment hints into safe drawer markup.
   - Preserved labeled code/preformatted blocks, quote citations, and attribute-bearing alignment BBCode so author-written install examples and centered/right-aligned sections keep their intended layout.
+- 0.2.0
+  - Moved OpenACAI Endnight Loader update checks to GitHub Release assets instead of raw branch prebuilts.
+  - Added live loader-file SHA256 verification progress and cached the latest release manifest for last-known-good comparisons.
+  - Changed update behavior so repair/update is offered only when loader-owned files are missing or hash-mismatched.
+  - Updated runtime checks and user messaging for the `.NET 11` loader preview track.
+  - Refreshed the manager UI toward a darker Sons-style options shell with flatter controls and chromatic hover states.
   - Rebuilt and signed portable/setup EXEs as `0.2.0`.
 
 - 0.1.2

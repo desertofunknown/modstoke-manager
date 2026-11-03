@@ -34,8 +34,8 @@ Upstream projects keep their own names: BepInEx, RedLoader, SonsSdk and `RedLoad
 
 - Apply the same display names and **by OpenACAI** credit in the loader, admin and SDK repositories. Their releases and assembly identities are outside this manager change. Keep existing runtime paths and package contracts, or provide explicit migrations and aliases before replacing them.
 - Coordinate the manager's display name with Nexus Mods while retaining the existing integration identifiers until registration and any replacements are approved. See the [Nexus integration notes](NEXUS_API_REVIEW.md).
-- Set up **modstoke.com**, HTTPS and the replacement website/catalog services separately. Verify manifest schemas, download integrity and support for older clients before changing any endpoint. Keep old endpoints or redirects available for released clients. The loader release feed is the exception: its old GitHub address is no longer available, so the Manager now requests it from modstoke.com.
-- Publish newly signed manager builds separately. A GitHub repository rename, download filename change or release relocation also needs stable redirects or aliases for existing links.
+- Set up the modstoke.com website and catalog services separately. The Manager already reads the community server list and the loader release feed from modstoke.com, because the feed's old GitHub address is no longer available. No loader release has been published there yet. Mod catalog addresses are unchanged. Before changing any other endpoint, verify manifest schemas, download integrity and support for older clients, and keep old endpoints or redirects available for released clients.
+- Sign every new manager build before uploading it, as described in [code signing](../SIGNING.md). New signed releases are on hold, so the repository still offers only the signed 0.2.0 files. The repository was renamed from `openacai-mod-manager` to `modstoke-manager`; GitHub redirects the old web, clone and download addresses. A download filename change or release relocation also needs stable redirects or aliases for existing links.
 
 ## Installer template
 

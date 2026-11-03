@@ -3,7 +3,7 @@
 Modstoke Manager, by OpenACAI, can prepare an installed Modstoke Client to
 participate in managed admission when Sons of the Forest next starts.
 
-Select a player installation, open **Main → Managed client participation**, and
+Select a player installation, open **Multiplayer → Managed client participation**, and
 choose **Read setting**. **Enable for next start** opts in to managed admission;
 **Disable for next start** restores ordinary vanilla joining and hosting. These
 actions change only the Client preference. Starting the game, changing profiles
@@ -54,6 +54,6 @@ separately by the server, and is not configured through this player control.
 
 The configuration handler and interface have source and build checks. Ordinary
 app inspection covers reading the installed Client and its saved preference.
-Configuration writes, process-blocked saves and end-to-end managed joining still
-need their own requested acceptance exercise. Mod reports are declarations, not
+Saving the setting, refusing to save while the game runs, and joining a managed
+server end to end have not been tested in the app yet. Mod reports are declarations, not
 proof that a client is honest.

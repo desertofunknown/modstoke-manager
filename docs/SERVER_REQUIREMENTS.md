@@ -1,8 +1,10 @@
 # Server requirements
 
 Modstoke Manager, by OpenACAI, can prepare and compare a portable list of native
-packages for Sons of the Forest. This document describes preparation metadata;
-it is not a server configuration or an admission message.
+packages for Sons of the Forest. Open **Multiplayer → Server requirements** with a
+player installation selected. Import or paste a list, or choose **Read installation**
+and pick packages under **Create a list from this installation**. A list is
+preparation metadata; it is not a server configuration or an admission message.
 
 ```json
 {
@@ -54,6 +56,8 @@ client participation or an honest client. Manager's comparison does not read
 loaded-mod reports or activate server enforcement. The SDK and server must
 select their admission policy separately. Selecting server-only packages as
 client requirements is an operator decision; the Manager does not infer it.
+The **Server browser** uses the same comparison for a listed server's required
+mods and enables **Join server** only when every one shows **Files match**.
 
 Use **Save JSON** to preserve a list before navigating away. Switching installation
 profiles keeps the current list and clears its previous comparison. Reading a new

@@ -1,8 +1,9 @@
 # Portable native packs
 
 Modstoke Manager by OpenACAI prepares shareable collections of native mod ZIPs.
-Open **Native packages → Portable native packs**, enter a name and select the
-ZIPs. Every declared native dependency must be included at its exact version.
+Open **Installed mods → Native packages** (or a dedicated server's **Packages**
+tab), then under **Portable native packs** enter a name, choose **Prepare pack…**
+and select the ZIPs. Every declared native dependency must be included at its exact version.
 Manager checks each archive and lists dependencies before the mods that need
 them. Installed packages do not supply missing dependencies during preparation.
 
@@ -41,7 +42,8 @@ applying those steps again.
 Manager's player and server launch actions refuse unfinished plans or recovery.
 Launching through Steam or another program directly bypasses that check.
 
-**Pack recovery** restores the plan's originals in reverse package order and
+**Pack recovery**, on the **Multiplayer** tab or a server's **Packages** tab,
+restores the plan's originals in reverse package order and
 restores the prior profile records. Conflicting external changes stop recovery
 and remain available for inspection. Starting a new pack replaces the previous
 completed recovery point; resuming an unfinished pack retains its checkpoint.

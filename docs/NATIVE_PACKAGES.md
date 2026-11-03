@@ -1,9 +1,11 @@
 # Native package installation
 
 Modstoke Manager by OpenACAI can install a local native mod ZIP into a selected
-player or dedicated-server installation. Open **Native packages**, select the
-ZIP and review its identity, version, destination and required dependencies
-before choosing Install. Close the game and dedicated server first.
+player or dedicated-server installation. For a player installation, open
+**Installed mods → Native packages**; for a server, open its **Packages** tab under
+**Dedicated servers**. Choose **Select ZIP…** and review its identity, version,
+destination and required dependencies before choosing **Install package**. Close
+the game and dedicated server first.
 
 For a collection with a shared recovery point, use [Portable native packs](NATIVE_PACKS.md).
 That workflow prepares its archives, then offers a separate installation review.
@@ -58,8 +60,9 @@ IDs are rejected. Existing schema 1/2 records remain readable. Older Manager
 versions reject the new provider or fields instead of silently rewriting them.
 
 Interrupted installs retain their plan. Select the same ZIP under Native
-packages to resume, or use **Pack recovery** to restore the previous files and
-profile records. A portable pack uses **Load pending pack** and every original
+packages to resume, or use **Pack recovery** (on the **Multiplayer** tab for a
+player installation, or a server's **Packages** tab) to restore the previous
+files and profile records. A portable pack uses **Load pending pack** and every original
 ZIP to resume the collection. Its optional `pendingPlan.nativePack` descriptor
 is retained until the plan finishes; use the current Manager to recover it.
 The latest recovery point remains available until discarded

@@ -1,22 +1,24 @@
 # Manager troubleshooting
 
-This guide covers the [`openacai-tauri2-svelte5-shell` Manager branch](https://github.com/desertofunknown/openacai-mod-manager/tree/openacai-tauri2-svelte5-shell). The signed 0.2.0 downloads in that branch still carry the OpenACAI Mod Manager name.
+This guide covers the [`openacai-tauri2-svelte5-shell` Manager branch](https://github.com/desertofunknown/modstoke-manager/tree/openacai-tauri2-svelte5-shell). The signed 0.2.0 downloads in that branch still carry the OpenACAI Mod Manager name.
 
 ## The Manager rejects my game path
 
-Choose the game's `SonsOfTheForest.exe`, not the Steam shortcut or the install folder itself. The file picker accepts an `.exe`, and the Manager checks that its filename is `SonsOfTheForest.exe`.
+Select **Add** and choose the game's `SonsOfTheForest.exe`, not a Steam shortcut or the game folder. The game pages accept only `SonsOfTheForest.exe`, and **Dedicated servers** accepts only `SonsOfTheForestDS.exe`. A folder can hold only one kind of installation, so keep the game and a dedicated server in separate folders. If a saved installation shows as unavailable after the game moved, add its new location and **Forget** the old profile.
 
 ## Loader install says the manifest is unavailable
 
-The current install, Check, and Update / Repair flows use a [fixed release manifest on modstoke.com](https://modstoke.com/releases/loader/latest/OpenACAILoader.manifest.json). No loader release has been published there yet, so the Manager cannot fetch a new loader package. The signed 0.2.0 downloads still request the old GitHub release address, which is no longer available. If a manifest was cached from an earlier successful check, the Manager may show cached status, but it still needs an available package URL to download a repair.
+The loader install on the **Loaders** page, **Check files** and **Update / Repair** (labelled **Verify / Repair** until a check finds a problem) all use a [fixed release manifest on modstoke.com](https://modstoke.com/releases/loader/latest/OpenACAILoader.manifest.json). No loader release has been published there yet, so the Manager cannot fetch a new loader package. The signed 0.2.0 downloads still request the old GitHub release address, which is no longer available. If a manifest was cached from an earlier successful check, the Manager may show cached status, but it still needs an available package URL to download a repair.
 
 The source contains a local ZIP installer class, but the current UI does not connect it to an install button. Selecting a local `OpenACAILoader.zip` is therefore not a supported workaround in this build. Loader install and repair need a compatible loader release published to that address.
 
-## Start Game stops after a loader update error
+## Launch game stops before the game starts
 
-When a loader is installed, the Manager checks it before its **Start Game** action. If verification or updating fails, that action stops and shows an error. You can launch the game through Steam, but that bypasses the Manager's prelaunch check and does not repair the loader. Resolve the loader issue before treating its installation as verified.
+**Launch game** on Overview starts the game through Steam, so Steam must point to the installation selected in the Manager. If it points elsewhere, the Manager says so and does not start the game. Open that installation's folder and start it the way you usually do. An unfinished package install or pack recovery also blocks the launch until you finish it, for example under **Pack recovery** in **Multiplayer**.
 
-## Check reports missing or mismatched loader files
+When Modstoke Loader is installed, the Manager checks it before launching. If verification or updating fails, the launch stops and shows an error. While no loader release is published on modstoke.com, this check fails unless an earlier check cached a manifest. You can still start the game through Steam, but that skips the Manager's check and does not repair the loader. Resolve the loader issue before treating its installation as verified.
+
+## Check files reports missing or mismatched loader files
 
 The Manager compares loader-owned files with SHA256 hashes in the release manifest. **Update / Repair** downloads a package and checks its hash before installing it. While the release feed is unavailable, that button cannot fetch the files it needs. Keep the issue details shown by the Manager; they identify the first affected path. Avoid deleting unrelated game or mod files to clear the warning.
 
@@ -26,18 +28,22 @@ Nexus file downloads are handed to Vortex. Vortex owns deployments it manages, s
 
 Nexus browser sign-in needs approval of the Manager application by Nexus Mods. The manual API key field is for development testing; do not include your key in a bug report.
 
+## The Sons of the Forest skin shows plain panels
+
+The Manager does not ship the game's art. **Match the game** and **Sons of the Forest** read the frame, title backdrop and font from your own game files, so add your player installation (`SonsOfTheForest.exe`). A dedicated server does not have these files. Until the Manager can read them, it uses the Modstoke skin, and **Settings** shows the reason. The files are cached and read again after the game updates.
+
 ## A source build fails
 
 Run `npm ci` from the Manager repository before `npm run check` or `npm run tauri build`. On Windows, the build also needs Rust/Cargo, Visual Studio C++ build tools, the Windows SDK, and WebView2 as described in the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/#windows). Node.js 22.12 or newer is the version specified by this project. The Manager build does not need a .NET SDK or a copy of Sons of the Forest; those are separate loader-build concerns.
 
 ## Check a downloaded executable
 
-Compare its SHA256 hash with the [checksums committed alongside the downloads](https://github.com/desertofunknown/openacai-mod-manager/blob/openacai-tauri2-svelte5-shell/prebuilt/SHA256SUMS.txt). In PowerShell, replace the path with the file you downloaded:
+Compare its SHA256 hash with the [checksums committed alongside the downloads](https://github.com/desertofunknown/modstoke-manager/blob/openacai-tauri2-svelte5-shell/prebuilt/SHA256SUMS.txt). In PowerShell, replace the path with the file you downloaded:
 
 ```powershell
 Get-FileHash -Algorithm SHA256 -LiteralPath ".\OpenACAI-Mod-Manager-0.2.0-x64-setup.exe"
 Get-AuthenticodeSignature -LiteralPath ".\OpenACAI-Mod-Manager-0.2.0-x64-setup.exe"
 ```
 
-The signature should report `Valid` with **OpenACAI Inc** as the signer. A local source build will not carry that signature unless it is signed separately.
+The signature should report `Valid` with **OpenACAI Inc** as the signer. Only the downloaded setup and portable files are signed. The `OpenACAI Mod Manager.exe` that the 0.2.0 setup installs reports `NotSigned`. A local source build is not signed unless it is signed separately.
 

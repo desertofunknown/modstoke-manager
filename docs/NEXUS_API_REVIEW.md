@@ -6,7 +6,7 @@ Public account sign-in is awaiting registration with Nexus Mods. The current dev
 
 ## Source and review build
 
-- [Current source](https://github.com/desertofunknown/openacai-mod-manager/tree/openacai-tauri2-svelte5-shell)
+- [Current source](https://github.com/desertofunknown/modstoke-manager/tree/openacai-tauri2-svelte5-shell)
 - [Build instructions](NEXUS_SOURCE_AND_BUILD.md)
 - [Application icon](../src-tauri/icons/128x128@2x.png)
 - [License](../LICENSE) and [third-party notices](../THIRD_PARTY_NOTICES.md)
@@ -17,7 +17,7 @@ In the app, open **Browse mods**, choose **Nexus & Vortex**, and expand **Develo
 
 ## Requests and account data
 
-Catalog requests use the connected account's API key. The Manager does not retry a failed account catalog request anonymously or substitute a different feed. An empty response remains empty. Nexus controls which results its API returns; this change does not claim that every website preference has been independently verified.
+Catalog requests use the connected account's API key. The Manager does not retry a failed account catalog request anonymously or substitute a different feed. An empty response remains empty. Nexus controls which results its API returns; the Manager has not checked that every website preference is applied.
 
 In-memory responses expire after ten minutes and are discarded when the connection changes. The local catalog snapshot belongs to a validated Nexus user ID and expires after 24 hours. Successful catalog refreshes replace that snapshot, including empty results. Previous accounts' rows are not merged into it. Offline rows are labelled as cached and may predate changes to website preferences.
 
@@ -42,6 +42,6 @@ For registration discussion:
 
 These values are proposals, not an approved or implemented OAuth contract. Nexus must confirm support for the desktop callback and issue the client registration details. The OAuth callback receiver, authorization flow and token lifecycle still need implementation once that contract is agreed. The retained legacy SSO code is not OAuth and its sign-in button is disabled while registration is pending.
 
-The proposed callback is a desktop URI and does not depend on `modstoke.com` being deployed. The intended website remains separate work. Unauthenticated browsing on the Nexus website will not apply the user's blocked categories or other account preferences.
+The proposed callback is a desktop URI and does not depend on the modstoke.com website. The Manager already registers the `modstoke://` scheme for server join links. Unauthenticated browsing on the Nexus website will not apply the user's blocked categories or other account preferences.
 
 Nexus's [API acceptable use policy](https://help.nexusmods.com/article/114-api-acceptable-use-policy) describes application review, identification headers and the limits on personal-key testing. Registration does not imply Nexus endorsement.

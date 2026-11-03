@@ -20,6 +20,6 @@ The loader package installed by this manager is built around these open-source p
 
 ## OpenACAI Changes
 
-OpenACAI-authored work includes the Modstoke Loader install flow, public package validation, Modstoke branding, safer zip handling, broader mod package scanning, and mod catalog stability improvements.
+OpenACAI-authored work includes the Modstoke Loader install flow, public package validation, Modstoke branding, Nexus Mods integration, saved player and dedicated server installations, dedicated server tools, the community server browser, the Loader console, the Modstoke Admin staff permissions editor, native package installs, skins, safer zip handling, broader mod package scanning, and mod catalog stability improvements.
 
 Modstoke Admin, the private anti-cheat/admin mod, is intentionally not part of this public repository.
