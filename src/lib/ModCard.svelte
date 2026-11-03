@@ -3,7 +3,8 @@
     import { createEventDispatcher, onDestroy } from 'svelte';
     import { ModDatabase, modPreviewUrls, type Mod } from './mods';
     import { storeRichTextPlainText } from './richText';
-    import { errorMessage, formatCount } from './format';
+    import { errorMessage, formatCount, formatDate } from './format';
+    import { modIdentityKey } from './modDisplay';
     import { fallbackPreviewUrl } from './modPreview';
     import StatusButton from './StatusButton.svelte';
     import * as dialog from "@tauri-apps/plugin-dialog"
@@ -41,7 +42,7 @@
     const dispatch = createEventDispatcher<{ refreshMods: void; details: Mod }>();
     onDestroy(() => { destroyed = true; });
 
-    $: currentModKey = mod.mod_id || mod.slug || mod.name;
+    $: currentModKey = modIdentityKey(mod);
     $: if (currentModKey !== errorModKey || $gameExePath !== errorPath) {
       operationError = "";
       errorModKey = currentModKey;
@@ -50,7 +51,7 @@
 
     $: isLibrary = mod.type === "Library" || mod.installedMod?.loaderType === "redloader-library";
     $: {
-      const modKey = mod.mod_id || mod.slug || mod.name;
+      const modKey = modIdentityKey(mod);
       if (activePreviewModKey !== modKey) {
         activePreviewModKey = modKey;
         currentPreviewIndex = 0;
@@ -176,15 +177,6 @@
       await runOperation(checked ? "enable" : "disable", () => ModDatabase.toggleMod(installedMod, checked));
     }
 
-    function formatDate(dateString: string) {
-      const date = new Date(dateString);
-      return date.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      });
-    };
-    
     function onImageLoad(event: Event) {
       if ((event.currentTarget as HTMLImageElement).getAttribute("src") === currentPreviewUrl) {
         isImageLoaded = true;

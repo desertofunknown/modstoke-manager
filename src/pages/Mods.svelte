@@ -5,7 +5,27 @@
     import type { Mod, ModCategory, ModVersion } from "../lib/mods";
     import { ModDatabase, modDependencies, modPreviewUrls, Sorting } from "../lib/mods";
     import { renderStoreRichText } from "../lib/richText";
-    import { clampNumber, cssPixels, formatCount } from "../lib/format";
+    import { clampNumber, cssPixels, formatCount, formatDate } from "../lib/format";
+    import {
+        dateValue,
+        detailAuthorName,
+        detailCategoryLabel,
+        detailCompatibilityLabel,
+        detailInstallStateLabel,
+        detailLoaderLabel,
+        detailRatingLabel,
+        detailSourceLabel,
+        detailVersionChangelogHtml,
+        detailVersionDate,
+        detailVersionDownloads,
+        detailVersions,
+        modIdentityKey,
+        normalizedSourceUrl,
+        rowSortMetricValue,
+        sortMetricLabel,
+        trustedAuthorLabel,
+        type SotfCatalogSort
+    } from "../lib/modDisplay";
     import type { SourceSummary } from "../lib/sourceSummary";
     import { openWebLink } from "../lib/utils";
     import { fallbackPreviewUrl } from "../lib/modPreview";
@@ -29,8 +49,6 @@
         state: DetailDependencyState;
         message?: string;
     };
-
-    type SotfCatalogSort = "updated" | "downloads" | "favorites" | "comments" | "rating" | "name";
 
     export let sharedSearchTerm = "";
     export let sharedSearchVersion = 0;
@@ -665,108 +683,6 @@
         }
     }
 
-    function modIdentityKey(mod: Mod): string {
-        return mod.mod_id || mod.slug || mod.name;
-    }
-
-    function formatDetailDate(dateString: string): string {
-        const date = new Date(dateString);
-        return date.toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-        });
-    }
-
-    function detailAuthorName(mod: Mod): string {
-        return mod.user?.name ?? mod.installedMod?.manifest?.author ?? "Unknown";
-    }
-
-    function detailCategoryLabel(mod: Mod): string {
-        return mod.category?.name ?? mod.installedMod?.manifest?.type ?? "-";
-    }
-
-    function detailSourceLabel(mod: Mod): string {
-        if (!mod.installedMod) {
-            return "Online";
-        }
-
-        if (mod.installedMod.installSource === "vortex") {
-            return "Vortex";
-        }
-
-        if (mod.installedMod.installSource === "native") {
-            return "Native";
-        }
-
-        return "Manual";
-    }
-
-    function detailLoaderLabel(mod: Mod): string {
-        if (mod.installedMod?.loaderType === "bepinex-plugin") {
-            return "BepInEx plugin";
-        }
-
-        if (mod.installedMod?.loaderType === "redloader-library" || mod.type === "Library") {
-            return "RedLoader library";
-        }
-
-        if (mod.type === "Build") {
-            return "Build";
-        }
-
-        return "RedLoader mod";
-    }
-
-    function detailCompatibilityLabel(mod: Mod): string {
-        if (mod.requiresAllPlayers) {
-            return "Requires all players";
-        }
-
-        if (mod.isMultiplayerCompatible) {
-            return "Multiplayer compatible";
-        }
-
-        if (mod.modSide === "client") {
-            return "Client-side";
-        }
-
-        return "Review";
-    }
-
-    function detailVersions(mod: Mod): ModVersion[] {
-        return [...(mod.versions ?? [])]
-            .sort((left, right) => {
-                if (left.isLatest !== right.isLatest) {
-                    return left.isLatest ? -1 : 1;
-                }
-
-                return dateValue(right.createdAt ?? right.updatedAt) - dateValue(left.createdAt ?? left.updatedAt);
-            })
-            .slice(0, 5);
-    }
-
-    function dateValue(value?: string): number {
-        if (!value) {
-            return 0;
-        }
-
-        const time = new Date(value).getTime();
-        return Number.isFinite(time) ? time : 0;
-    }
-
-    function detailVersionDate(version: ModVersion): string {
-        return version.createdAt || version.updatedAt ? formatDetailDate(version.createdAt ?? version.updatedAt ?? "") : "-";
-    }
-
-    function detailVersionDownloads(version: ModVersion): string {
-        return formatCount(version._count?.downloads);
-    }
-
-    function detailVersionChangelogHtml(version: ModVersion): string {
-        return renderStoreRichText(version.changelog, "No changelog text.");
-    }
-
     function sortVisibleMods(mods: Mod[]): Mod[] {
         return [...mods].sort(compareModsBySort);
     }
@@ -824,46 +740,6 @@
         return "recent updates";
     }
 
-    function sortMetricLabel(sort: SotfCatalogSort): string {
-        if (sort === "downloads") {
-            return "Downloads";
-        }
-
-        if (sort === "favorites") {
-            return "Favorites";
-        }
-
-        if (sort === "comments") {
-            return "Comments";
-        }
-
-        if (sort === "rating") {
-            return "Rating";
-        }
-
-        return "";
-    }
-
-    function rowSortMetricValue(mod: Mod, sort: SotfCatalogSort): string {
-        if (sort === "downloads") {
-            return formatCount(mod.downloads ?? mod.lastWeekDownloads);
-        }
-
-        if (sort === "favorites") {
-            return formatCount(mod.favoritesCount);
-        }
-
-        if (sort === "comments") {
-            return formatCount(mod.commentsCount);
-        }
-
-        if (sort === "rating") {
-            return detailRatingLabel(mod.averageRating);
-        }
-
-        return "";
-    }
-
     function sotfSummaryNote(): string {
         if (selectedSort !== "updated") {
             return `Sorted by ${selectedSortLabel()}`;
@@ -880,49 +756,11 @@
         return onlineSelected ? "Live store" : "Local inventory";
     }
 
-    function detailRatingLabel(value?: number): string {
-        if (typeof value !== "number" || value <= 0) {
-            return "No rating";
-        }
-
-        return `${value.toFixed(1)} / 5`;
-    }
-
-    function trustedAuthorLabel(mod: Mod): string {
-        return mod.user?.isTrusted ? "Trusted" : "Standard";
-    }
-
-    function normalizedSourceUrl(mod: Mod): string {
-        const raw = mod.sourceUrl?.trim();
-        if (!raw) {
-            return "";
-        }
-
-        try {
-            const url = new URL(raw);
-            return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : "";
-        } catch {
-            return "";
-        }
-    }
-
     function openSelectedDetailSource() {
         const url = selectedDetailMod ? normalizedSourceUrl(selectedDetailMod) : "";
         if (url) {
             openWebLink(url);
         }
-    }
-
-    function detailInstallStateLabel(mod: Mod): string {
-        if (!mod.isInstalled) {
-            return "Not installed";
-        }
-
-        if (mod.installedMod?.installSource === "vortex") {
-            return "Managed by Vortex";
-        }
-
-        return mod.installedMod?.isEnabled ? "Installed enabled" : "Installed disabled";
     }
 
     function matchesClientFilters(mod: Mod): boolean {
@@ -1166,7 +1004,7 @@
                                 <span>Source <b>{detailSourceLabel(selectedDetailMod)}</b></span>
                                 <span>State <b>{detailInstallStateLabel(selectedDetailMod)}</b></span>
                                 <span>Version <b>{selectedDetailMod.latestVersion ?? "-"}</b></span>
-                                <span>Updated <b>{selectedDetailMod.lastReleasedAt ? formatDetailDate(selectedDetailMod.lastReleasedAt) : "-"}</b></span>
+                                <span>Updated <b>{selectedDetailMod.lastReleasedAt ? formatDate(selectedDetailMod.lastReleasedAt) : "-"}</b></span>
                                 <span>Category <b>{detailCategoryLabel(selectedDetailMod)}</b></span>
                                 <span>Compatibility <b>{detailCompatibilityLabel(selectedDetailMod)}</b></span>
                                 <span>Downloads <b>{formatCount(selectedDetailMod.downloads ?? selectedDetailMod.lastWeekDownloads)}</b></span>
