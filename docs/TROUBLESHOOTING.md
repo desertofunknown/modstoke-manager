@@ -8,19 +8,21 @@ Select **Add** and choose the game's `SonsOfTheForest.exe`, not a Steam shortcut
 
 ## Loader install says the manifest is unavailable
 
-The loader install on the **Loaders** page, **Check files** and **Update / Repair** (labelled **Verify / Repair** until a check finds a problem) all use a [fixed release manifest on modstoke.com](https://modstoke.com/releases/loader/latest/OpenACAILoader.manifest.json). No loader release has been published there yet, so the Manager cannot fetch a new loader package. The 0.2.0 files still request the old GitHub release address, which is no longer available. If a manifest was cached from an earlier successful check, the Manager may show cached status, but it still needs an available package URL to download a repair.
+The loader install on the **Loaders** page, **Check files** and **Update / Repair** (labelled **Verify / Repair** until a check finds a problem) all use a [fixed release manifest on modstoke.com](https://modstoke.com/releases/loader/latest/OpenACAILoader.manifest.json). The current release is [Loader 0.4.1-net11-preview](https://modstoke.com/releases/#loader-0-4-1-net11-preview). If the manifest is unavailable, check that the PC can reach modstoke.com, then try again. If an earlier check cached a manifest, the Manager may show cached status, but it still needs to reach modstoke.com to download a repair. The 0.2.0 files still request the old GitHub release address, which is no longer available.
 
-The source contains a local ZIP installer class, but the current UI does not connect it to an install button. Selecting a local `OpenACAILoader.zip` is therefore not a supported workaround in this build. Loader install and repair need a compatible loader release published to that address.
+If the install stops with "is absent from its file manifest", the release is Loader 0.4.0-net11-preview, which Manager 0.3.0 cannot install. Loader 0.4.1 and later install normally.
+
+The source contains a local ZIP installer class, but the current UI does not connect it to an install button. Selecting a local `OpenACAILoader.zip` is therefore not a supported workaround in this build.
 
 ## Launch game stops before the game starts
 
 **Launch game** on Overview starts the game through Steam, so Steam must point to the installation selected in the Manager. If it points elsewhere, the Manager says so and does not start the game. Open that installation's folder and start it the way you usually do. An unfinished package install or pack recovery also blocks the launch until you finish it, for example under **Pack recovery** in **Multiplayer**.
 
-When Modstoke Loader is installed, the Manager checks it before launching. If verification or updating fails, the launch stops and shows an error. While no loader release is published on modstoke.com, this check fails unless an earlier check cached a manifest. You can still start the game through Steam, but that skips the Manager's check and does not repair the loader. Resolve the loader issue before treating its installation as verified.
+When Modstoke Loader is installed, the Manager checks it before launching. If verification or updating fails, the launch stops and shows an error. If modstoke.com cannot be reached, this check fails unless an earlier check cached a manifest. You can still start the game through Steam, but that skips the Manager's check and does not repair the loader. Resolve the loader issue before treating its installation as verified.
 
 ## Check files reports missing or mismatched loader files
 
-The Manager compares loader-owned files with SHA256 hashes in the release manifest. **Update / Repair** downloads a package and checks its hash before installing it. While the release feed is unavailable, that button cannot fetch the files it needs. Keep the issue details shown by the Manager; they identify the first affected path. Avoid deleting unrelated game or mod files to clear the warning.
+The Manager compares loader-owned files with SHA256 hashes in the release manifest. **Update / Repair** downloads a package and checks its hash before installing it. If modstoke.com cannot be reached, that button cannot fetch the files it needs. Keep the issue details shown by the Manager; they identify the first affected path. Avoid deleting unrelated game or mod files to clear the warning.
 
 ## A Nexus mod does not change when I disable or remove it
 

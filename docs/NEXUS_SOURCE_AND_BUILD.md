@@ -281,5 +281,5 @@ Get-Content ".\dist\OpenACAILoader.manifest.json"
 ```
 
 The mod manager's install/repair flow also verifies loader file hashes from the
-release manifest before reporting the loader as installed. That flow needs a
-loader release at modstoke.com, which has not been published yet.
+release manifest before reporting the loader as installed. That flow reads the
+loader release from modstoke.com.
