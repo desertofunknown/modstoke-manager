@@ -4,10 +4,12 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::io::{ErrorKind, Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 const AUTHORIZE_URL: &str = "https://users.nexusmods.com/oauth/authorize";
 const TOKEN_URL: &str = "https://users.nexusmods.com/oauth/token";
@@ -15,7 +17,10 @@ const REVOKE_URL: &str = "https://users.nexusmods.com/oauth/revoke";
 // The registration Nexus Mods issued. The Manager is a public client: it proves each sign-in with
 // PKCE and carries no client secret, which anyone could read out of the executable.
 const CLIENT_ID: &str = "modstoke";
-const REDIRECT_URI: &str = "modstoke://oauth/nexus/callback";
+// Nexus sends the browser back to this local address, which the Manager listens on only while a
+// sign-in is waiting. Browsers open it like any page, so no custom-scheme prompt can block it.
+const LOOPBACK_ADDRESS: &str = "127.0.0.1:47823";
+const REDIRECT_URI: &str = "http://127.0.0.1:47823/callback";
 const SCOPE: &str = "openid public";
 const CREDENTIAL_SERVICE: &str = "Modstoke Manager";
 const REFRESH_TOKEN_ACCOUNT: &str = "nexusmods-refresh-token";
@@ -76,6 +81,8 @@ static PENDING: Mutex<Option<PendingSignIn>> = Mutex::new(None);
 // Counts sign-outs, so a sign-in that finishes after one is thrown away.
 static SIGN_OUTS: AtomicU64 = AtomicU64::new(0);
 static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
+// Whether the loopback listener is running. Read and written only with PENDING locked.
+static LISTENING: AtomicBool = AtomicBool::new(false);
 
 // One lock covers the session and the saved refresh token, for sign-in, refresh and sign-out alike.
 fn session() -> &'static tauri::async_runtime::Mutex<Option<Session>> {
@@ -88,8 +95,7 @@ pub fn remember_app(app: &tauri::AppHandle) {
     let _ = APP.set(app.clone());
 }
 
-// Opens the Nexus Mods sign-in page in the player's browser. Nexus sends them back through the
-// modstoke:// callback, which a second launch of the Manager passes to receive_arguments.
+// Opens the Nexus Mods sign-in page in the player's browser and starts listening for its return.
 #[tauri::command]
 pub fn nexus_begin_sign_in() -> Result<SignInStarted, String> {
     // RFC 7636 asks for a 43 to 128 character verifier; 32 random bytes encode to 43.
@@ -109,37 +115,119 @@ pub fn nexus_begin_sign_in() -> Result<SignInStarted, String> {
         ],
     )
     .map_err(|error| error.to_string())?;
-    *PENDING.lock().map_err(|_| busy())? = Some(PendingSignIn {
+    let mut pending = PENDING.lock().map_err(|_| busy())?;
+    *pending = Some(PendingSignIn {
         state,
         verifier,
         started: Instant::now(),
         sign_outs: SIGN_OUTS.load(Ordering::SeqCst),
     });
+    if !LISTENING.load(Ordering::SeqCst) {
+        let listener = match TcpListener::bind(LOOPBACK_ADDRESS).and_then(|listener| {
+            listener.set_nonblocking(true)?;
+            Ok(listener)
+        }) {
+            Ok(listener) => listener,
+            Err(_) => {
+                *pending = None;
+                return Err("Another program is using the local port the Nexus Mods sign-in needs (47823). Close it and try again.".into());
+            }
+        };
+        LISTENING.store(true, Ordering::SeqCst);
+        std::thread::spawn(move || listen(listener));
+    }
+    drop(pending);
     let opened = crate::system::shell_execute("open", std::ffi::OsStr::new(url.as_str())).is_ok();
     Ok(SignInStarted { url: url.into(), opened })
 }
 
-// Picks the sign-in callback out of a second launch's arguments and finishes the sign-in in the
-// background. The page hears the outcome through the nexus-sign-in event.
-pub fn receive_arguments(app: &tauri::AppHandle, arguments: &[String]) {
-    if arguments.len() != 2 || !arguments[1].starts_with(REDIRECT_URI) {
-        return;
+// Serves the browser's return from Nexus until the waiting sign-in completes, is cancelled or lapses.
+fn listen(listener: TcpListener) {
+    loop {
+        {
+            let Ok(pending) = PENDING.lock() else { break };
+            if !pending.as_ref().is_some_and(|waiting| waiting.started.elapsed() <= SIGN_IN_WINDOW) {
+                // The port is released before another sign-in can try to bind it again.
+                drop(listener);
+                LISTENING.store(false, Ordering::SeqCst);
+                return;
+            }
+        }
+        match listener.accept() {
+            // Browsers often open a spare connection they never use, so each one is read on its
+            // own thread and cannot hold up the request that carries the callback.
+            Ok((stream, _)) => {
+                std::thread::spawn(move || answer(stream));
+            }
+            Err(error) if error.kind() == ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(100)),
+            Err(_) => std::thread::sleep(Duration::from_millis(250)),
+        }
     }
-    let Ok(callback) = reqwest::Url::parse(&arguments[1]) else { return };
-    if callback.host_str() != Some("oauth") || callback.path() != "/nexus/callback" {
-        return;
+    LISTENING.store(false, Ordering::SeqCst);
+}
+
+// Handles one request to the loopback address. Only GET /callback with the waiting attempt's state
+// finishes a sign-in; the page hears the outcome through the nexus-sign-in event.
+fn answer(mut stream: TcpStream) {
+    let _ = stream.set_nonblocking(false);
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let mut request = Vec::new();
+    let mut buffer = [0u8; 1024];
+    while request.len() < 8192 && !request.windows(4).any(|end| end == b"\r\n\r\n") {
+        match stream.read(&mut buffer) {
+            Ok(0) | Err(_) => break,
+            Ok(read) => request.extend_from_slice(&buffer[..read]),
+        }
     }
+    let request = String::from_utf8_lossy(&request);
+    let target = request.lines().next()
+        .and_then(|line| line.strip_prefix("GET "))
+        .and_then(|rest| rest.split(' ').next())
+        .unwrap_or_default();
+    let callback = reqwest::Url::parse(&format!("http://127.0.0.1{target}")).ok()
+        .filter(|url| target.starts_with('/') && url.path() == "/callback");
+    let Some(callback) = callback else {
+        respond(&mut stream, "404 Not Found", "Not found", "This address only finishes a Nexus Mods sign-in.");
+        return;
+    };
     let query: HashMap<String, String> = callback.query_pairs().into_owned().collect();
-    let Some(pending) = take_pending(&query) else { return };
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let error = complete_sign_in(pending, &query).await.err();
-        let _ = app.emit("nexus-sign-in", SignInFinished { error });
-    });
+    let Some(pending) = take_pending(&query) else {
+        respond(&mut stream, "400 Bad Request", "Sign-in link out of date",
+            "This sign-in is no longer waiting. Start it again from Modstoke Manager.");
+        return;
+    };
+    let result = tauri::async_runtime::block_on(complete_sign_in(pending, &query));
+    match &result {
+        Ok(()) => respond(&mut stream, "200 OK", "Signed in",
+            "You're signed in to Nexus Mods. You can close this tab and go back to Modstoke Manager."),
+        Err(error) => respond(&mut stream, "200 OK", "Sign-in failed", error),
+    }
+    if let Some(app) = APP.get() {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+        let _ = app.emit("nexus-sign-in", SignInFinished { error: result.err() });
+    }
+}
+
+fn respond(stream: &mut TcpStream, status: &str, title: &str, message: &str) {
+    let escape = |text: &str| text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    let body = format!(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Modstoke: {title}</title></head>\
+         <body style=\"margin:0;padding:48px;background:#101217;color:#eef0f4;font:15px/1.6 system-ui,sans-serif\">\
+         <h1 style=\"font-size:22px;margin:0 0 12px\">{title}</h1><p style=\"margin:0;color:#b8bfcc\">{}</p></body></html>",
+        escape(message),
+    );
+    let response = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nConnection: close\r\n\r\n{body}",
+        body.len(),
+    );
+    let _ = stream.write_all(response.as_bytes());
 }
 
 // Only a callback carrying the waiting attempt's state counts. Anything else, such as a stale
-// browser tab or a link from a web page, is ignored and the real attempt keeps waiting.
+// browser tab or a request from a web page, is ignored and the real attempt keeps waiting.
 fn take_pending(query: &HashMap<String, String>) -> Option<PendingSignIn> {
     let mut pending = PENDING.lock().ok()?;
     if query.get("state") != Some(&pending.as_ref()?.state) {

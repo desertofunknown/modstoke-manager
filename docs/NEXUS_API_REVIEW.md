@@ -13,7 +13,7 @@ Players sign in through their browser with OAuth 2.0 and PKCE, as a public deskt
 
 Build the `openacai-tauri2-svelte5-shell` branch with `npm ci` and `npm run tauri build`. The executable is `src-tauri/target/release/OpenACAI Mod Manager.exe`. Its filename is retained for installation compatibility; the app displays Modstoke Manager.
 
-In the app, open **Browse mods**, choose **Nexus & Vortex** and select **Sign in with Nexus**. Approve Modstoke Manager on Nexus Mods, then let the browser open the Manager. The signed 0.2.0 downloads in `prebuilt/` are an older baseline, not this review build.
+In the app, open **Browse mods**, choose **Nexus & Vortex** and select **Sign in with Nexus**. Approve Modstoke on Nexus Mods. The browser then shows that you're signed in, and the Manager loads the catalog. The signed 0.2.0 downloads in `prebuilt/` are an older baseline, not this review build.
 
 ## Requests and account data
 
@@ -35,14 +35,14 @@ The application is registered as **Modstoke**, published **by OpenACAI**, for Mo
 | --- | --- |
 | Application | Public desktop application for Windows, using PKCE |
 | Client ID | `modstoke` |
-| Callback | `modstoke://oauth/nexus/callback` |
+| Callback | `http://127.0.0.1:47823/callback` |
 | Scopes | `openid public` |
 | Purpose | Nexus API access on behalf of the signed-in player |
 
 The sign-in follows the Nexus [OAuth 2.0 and PKCE guide](https://modding.wiki/en/api/oauth2-guide):
 
 - The Manager creates a random 43-character code verifier and a state value for each attempt. It opens `users.nexusmods.com/oauth/authorize` with the S256 code challenge in the player's default browser.
-- After approval, Nexus redirects to the `modstoke://` callback. Windows hands that link to the running Manager. The installer registers the scheme, and portable and development builds register it for the current user when they start.
+- After approval, Nexus redirects the browser to `http://127.0.0.1:47823/callback`. The Manager listens there, on the loopback address only, while a sign-in is waiting, and the page tells the player to return to the Manager. A loopback callback is what the Nexus guide recommends for desktop apps; unlike a custom scheme, the browser cannot block the hand-off.
 - The callback must carry the state of the waiting attempt and arrive within ten minutes. It is accepted once. A callback with any other state is ignored.
 - The code and verifier are exchanged at `users.nexusmods.com/oauth/token`. The access token goes in the `Authorization: Bearer` header for API v1 and v2 requests. `users/validate.json` confirms the account and reports the rate limits.
 

@@ -1188,7 +1188,7 @@
         isLoading = true;
         signInPending = true;
         signInLink = "";
-        status = "Approve Modstoke Manager on Nexus Mods, then let your browser open the Manager.";
+        status = "Approve Modstoke on Nexus Mods in your browser to finish signing in.";
         try {
             const started = await beginNexusSignIn();
             if (!isDestroyed && !started.opened) signInLink = started.url;
