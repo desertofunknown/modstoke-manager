@@ -623,9 +623,9 @@ pub async fn install_native_package(
         let prepared = prepare(&root, current.profile.as_ref(), &archive)?;
         let mut profile = current.profile.clone().unwrap_or(ModProfile { schema_version: 1, game_root: root.to_string_lossy().into_owned(),
             requested_roots: Vec::new(), packages: Vec::new(), archives: Vec::new(), pending_plan: None, rollback: None });
-        if profile.pending_plan.is_some() {
+        if let Some(plan) = &profile.pending_plan {
             if !same(pending_archive(&profile)?, &archive)? { return Err("The ZIP does not match the unfinished native plan.".into()); }
-            let old = &profile.pending_plan.as_ref().expect("plan").steps;
+            let old = &plan.steps;
             if old.len() != prepared.steps.len() {
                 return Err("The installed native dependencies changed since this plan began. Restore them or roll back the pending plan.".into());
             }

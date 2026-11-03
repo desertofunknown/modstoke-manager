@@ -159,11 +159,6 @@ struct NexusActionResponse {
 }
 
 #[tauri::command(async)]
-fn is_dotnet10_installed() -> Result<bool, String> {
-    is_dotnet_major_installed("10.")
-}
-
-#[tauri::command(async)]
 fn is_dotnet11_installed() -> Result<bool, String> {
     is_dotnet_major_installed("11.")
 }
@@ -257,7 +252,8 @@ async fn nexus_fetch_sotf_mods(view: String) -> Result<NexusModsResponse, String
         "updated" => {
             format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/updated.json?period=1m")
         }
-        "trending" | _ => {
+        // Trending is the default feed.
+        _ => {
             format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}/mods/trending.json")
         }
     };
@@ -961,7 +957,7 @@ fn sha256_file(path: String) -> Result<String, String> {
         hasher.update(&buffer[..read]);
     }
 
-    Ok(format!("{:X}", hasher.finalize()))
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn get_file_description(path: impl AsRef<Path>) -> Result<String, Box<dyn Error>> {
@@ -1037,31 +1033,22 @@ async fn get_steam_path() -> Option<String> {
 
     let file = File::open(vdf).ok()?;
     let reader = BufReader::new(file);
-    for line in reader.lines() {
-        if let Ok(text) = line {
-            if let Some(cap) = re.captures(&text) {
-                steam_paths.push(PathBuf::from(cap[1].replace(r"\\", r"\")).join(r"steamapps"));
-            }
+    for text in reader.lines().map_while(Result::ok) {
+        if let Some(cap) = re.captures(&text) {
+            steam_paths.push(PathBuf::from(cap[1].replace(r"\\", r"\")).join(r"steamapps"));
         }
     }
 
     let install_re = Regex::new(r#"\s"installdir"\s+"(.+)""#).unwrap();
     for path in steam_paths {
         let manifest = path.join(format!(r"appmanifest_{}.acf", SOTF_APP_ID));
-        if manifest.exists() {
-            let file = File::open(manifest).ok()?;
-            let reader = BufReader::new(file);
-            for line in reader.lines() {
-                if let Ok(text) = line {
-                    if let Some(cap) = install_re.captures(&text) {
-                        let file_path = path
-                            .join("common")
-                            .join(&cap[1])
-                            .join("SonsOfTheForest.exe");
-                        if file_path.exists() {
-                            return file_path.to_str().map(|s| s.to_string());
-                        }
-                    }
+        // One unreadable library must not hide the game in another.
+        let Ok(file) = File::open(manifest) else { continue };
+        for text in BufReader::new(file).lines().map_while(Result::ok) {
+            if let Some(cap) = install_re.captures(&text) {
+                let file_path = path.join("common").join(&cap[1]).join("SonsOfTheForest.exe");
+                if let (true, Some(found)) = (file_path.exists(), file_path.to_str()) {
+                    return Some(found.to_string());
                 }
             }
         }
@@ -1258,7 +1245,6 @@ fn main() {
             server_directory::take_pending_community_join,
             server_directory::join_community_server,
             unzip_handler,
-            mod_update::update_native_mod,
             mod_profile::read_mod_profile,
             mod_profile::check_player_launch_ready,
             mod_profile::write_mod_profile,
@@ -1300,7 +1286,6 @@ fn main() {
             server_world_restore::recover_server_world_restore,
             inspect_openacai_loader_zip,
             get_steam_path,
-            is_dotnet10_installed,
             is_dotnet11_installed,
             get_file_version,
             nexus_save_api_key,

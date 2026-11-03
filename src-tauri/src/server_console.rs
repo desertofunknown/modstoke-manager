@@ -49,7 +49,7 @@ fn newest_log(directory: &Path, matches: fn(&str) -> bool) -> Result<Option<Stri
         let Ok(metadata) = entry.metadata() else { continue };
         if !matches(&name) || !metadata.is_file() { continue; }
         let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
-        if newest.as_ref().map_or(true, |(time, current)| (modified, &name) > (*time, current)) {
+        if newest.as_ref().is_none_or(|(time, current)| (modified, &name) > (*time, current)) {
             newest = Some((modified, name));
         }
     }

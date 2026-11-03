@@ -235,6 +235,8 @@ fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+// Short-lived and matched immediately, so the large Parsed variant isn't boxed.
+#[allow(clippy::large_enum_variant)]
 enum Stored {
     Missing,
     Unreadable(String),
@@ -612,13 +614,13 @@ impl Formatter for AdminFormatter {
             if matches!(character, ' '..='~') && !matches!(character, '<' | '>' | '&' | '\'' | '+' | '`') {
                 continue;
             }
-            writer.write_all(fragment[start..index].as_bytes())?;
+            writer.write_all(&fragment.as_bytes()[start..index])?;
             for unit in character.encode_utf16(&mut [0; 2]) {
                 write!(writer, "\\u{unit:04X}")?;
             }
             start = index + character.len_utf8();
         }
-        writer.write_all(fragment[start..].as_bytes())
+        writer.write_all(&fragment.as_bytes()[start..])
     }
 
     fn write_char_escape<W: ?Sized + Write>(&mut self, writer: &mut W, escape: CharEscape) -> io::Result<()> {

@@ -225,6 +225,9 @@ fn begin_restore(access: &server_launch::ServerWorldAccess, save_directory: &str
     reconcile(access, &selected, &store, &Pending { record, revision }, true)
 }
 
+// Tauri commands take named arguments, so grouping them into a struct would change what the
+// frontend sends.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn restore_server_world_backup(app: tauri::AppHandle, executable: String, installation_id: String,
     expected_revision: String, expected_config_revision: String, save_directory: String,
@@ -237,6 +240,7 @@ pub async fn restore_server_world_backup(app: tauri::AppHandle, executable: Stri
     }).await.map_err(|error| error.to_string())?
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn recover_server_world_restore(app: tauri::AppHandle, executable: String, installation_id: String,
     expected_revision: String, expected_config_revision: String, save_directory: String,

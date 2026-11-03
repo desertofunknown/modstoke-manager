@@ -371,7 +371,7 @@ impl AssetsFile {
         // Unity stores rows bottom up, and the decoder writes BGRA.
         let mut rgba = vec![0u8; width * height * 4];
         for (target, source) in rgba.chunks_exact_mut(width * 4).zip(pixels.chunks_exact(width).rev()) {
-            for (out, pixel) in target.chunks_exact_mut(4).zip(source) {
+            for (out, pixel) in target.as_chunks_mut::<4>().0.iter_mut().zip(source) {
                 let [blue, green, red, alpha] = pixel.to_le_bytes();
                 out.copy_from_slice(&[red, green, blue, alpha]);
             }

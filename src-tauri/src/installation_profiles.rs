@@ -331,7 +331,7 @@ pub async fn inspect_installation_target(executable: String) -> Result<Inspected
 }
 
 pub(crate) fn inspect_target(executable: &str) -> Result<InspectedTarget, String> {
-    let (parent, kind) = executable_parts(&executable)?;
+    let (parent, kind) = executable_parts(executable)?;
     let mut target = Target {
         id: root_id(&ordinary_path(parent)?),
         name: match kind {
@@ -342,7 +342,7 @@ pub(crate) fn inspect_target(executable: &str) -> Result<InspectedTarget, String
         executable: executable.to_owned(),
         kind,
     };
-    match canonical_target(&executable) {
+    match canonical_target(executable) {
         Ok((canonical_executable, root, _)) => {
             target.id = root_id(&root);
             target.executable = canonical_executable;
@@ -394,11 +394,11 @@ fn write_registry(folder: &Path, expected_revision: Option<String>, registry: Re
             }
         }
     }
-    fs::create_dir_all(&folder)
+    fs::create_dir_all(folder)
         .map_err(|error| format!("Could not create the installation profile folder: {error}"))?;
-    mod_update::validate_directory(&folder)?;
-    let _lock = acquire_lock(&folder)?;
-    let (previous, revision) = read_registry(&folder)?;
+    mod_update::validate_directory(folder)?;
+    let _lock = acquire_lock(folder)?;
+    let (previous, revision) = read_registry(folder)?;
     if expected_revision != revision {
         return Err("Installation profiles changed since they were loaded. Reload them before saving again.".into());
     }
@@ -433,13 +433,13 @@ fn write_registry(folder: &Path, expected_revision: Option<String>, registry: Re
             }
         }
     }
-    let mut temporary = tempfile::NamedTempFile::new_in(&folder)
+    let mut temporary = tempfile::NamedTempFile::new_in(folder)
         .map_err(|error| format!("Could not prepare installation profiles: {error}"))?;
     temporary
         .write_all(&bytes)
         .and_then(|_| temporary.as_file().sync_all())
         .map_err(|error| format!("Could not write installation profiles: {error}"))?;
-    mod_update::validate_target(&folder, Path::new(REGISTRY_FILE))?;
+    mod_update::validate_target(folder, Path::new(REGISTRY_FILE))?;
     temporary
         .persist(folder.join(REGISTRY_FILE))
         .map_err(|error| {

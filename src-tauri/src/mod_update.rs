@@ -45,9 +45,10 @@ enum RecoveryOutcome {
     Cleaned,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PreviousInstall {
+// Called with the update's targets and the root just before live files change.
+pub(crate) type BeforeCommit<'a> = dyn FnMut(&[UpdateTarget], &Path) -> Result<(), String> + 'a;
+
+pub(crate) struct PreviousInstall {
     pub(crate) assembly_path: Option<String>,
     pub(crate) enabled_assembly_path: Option<String>,
     pub(crate) package_path: Option<String>,
@@ -88,33 +89,11 @@ struct LoaderFile {
     size: u64,
 }
 
-#[tauri::command]
-pub async fn update_native_mod(
-    source: String,
-    destination: String,
-    previous_install: PreviousInstall,
-) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        replace_archive(source, destination, Some(previous_install))
-    })
-    .await
-    .map_err(|error| format!("The mod update could not finish: {error}"))?
-}
-
 pub fn install_zip_archive(source: String, destination: String) -> Result<(), String> {
-    replace_archive(source, destination, None)
-}
-
-fn replace_archive(
-    source: String,
-    destination: String,
-    previous_install: Option<PreviousInstall>,
-) -> Result<(), String> {
-    let selected_root = Path::new(&destination);
-    let root = fs::canonicalize(selected_root).map_err(|error| error.to_string())?;
+    let root = fs::canonicalize(Path::new(&destination)).map_err(|error| error.to_string())?;
     let _lock = acquire_update_lock(&root)?;
     recover_pending_updates(&root)?;
-    replace_archive_locked(source, destination, previous_install, &mut |_, _| Ok(()))
+    replace_archive_locked(source, destination, None, &mut |_, _| Ok(()))
 }
 
 // The caller must hold the canonical game root's update lock and recover pending
@@ -123,7 +102,7 @@ pub(crate) fn replace_archive_locked(
     source: String,
     destination: String,
     previous_install: Option<PreviousInstall>,
-    before_commit: &mut dyn FnMut(&[UpdateTarget], &Path) -> Result<(), String>,
+    before_commit: &mut BeforeCommit,
 ) -> Result<(), String> {
     replace_archive_locked_inner(source, destination, previous_install, None, before_commit)
 }
@@ -133,7 +112,7 @@ pub(crate) fn replace_native_archive_locked(
     destination: String,
     package_path: PathBuf,
     old_files: Vec<(PathBuf, String)>,
-    before_commit: &mut dyn FnMut(&[UpdateTarget], &Path) -> Result<(), String>,
+    before_commit: &mut BeforeCommit,
 ) -> Result<(), String> {
     let policy = NativePackagePolicy { package_path, old_files };
     validate_native_policy(&policy)?;
@@ -145,7 +124,7 @@ fn replace_archive_locked_inner(
     destination: String,
     previous_install: Option<PreviousInstall>,
     native: Option<NativePackagePolicy>,
-    before_commit: &mut dyn FnMut(&[UpdateTarget], &Path) -> Result<(), String>,
+    before_commit: &mut BeforeCommit,
 ) -> Result<(), String> {
     let selected_root = Path::new(&destination);
     let root = fs::canonicalize(selected_root).map_err(|error| error.to_string())?;
