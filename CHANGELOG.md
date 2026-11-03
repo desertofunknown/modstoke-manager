@@ -1,6 +1,6 @@
 # Changelog
 
-- Unreleased
+- 0.3.0
   - Limit what the Manager's window can reach. Files are limited to its downloads folder and the selected game or server folder, where nothing can be written as text. Downloads come only from the catalog and release hosts, over HTTPS, with size limits and the Loader's published hash checked. Archives install only into a game or dedicated server folder. The window can no longer run programs, and system libraries load only from System32.
   - Make the Open folder, Send to Vortex and mod page and source buttons work, and launch the game straight through Steam so Start game no longer reports a failure after starting it.
   - From Start game, only repair the installed Loader version. Install a new version from the Loaders page, and never install an older release over a newer one.

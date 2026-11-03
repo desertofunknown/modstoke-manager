@@ -1,6 +1,6 @@
 [package]
 name = "openacai-mod-manager"
-version = "0.2.0"
+version = "0.3.0"
 description = "Modstoke Manager by OpenACAI, an independent game and dedicated-server toolkit for Sons of the Forest."
 authors = ["Alex Cooper"]
 license = "GPL-3.0-or-later"

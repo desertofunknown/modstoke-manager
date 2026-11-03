@@ -1,7 +1,7 @@
 {
   "name": "openacai-mod-manager",
   "private": false,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "Alex Cooper",
   "license": "GPL-3.0-or-later",
   "type": "module",
