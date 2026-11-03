@@ -56,7 +56,7 @@ pub struct RegistryState {
     pub selected: Option<InspectedTarget>,
 }
 
-fn required_nullable<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+pub(crate) fn required_nullable<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,
@@ -72,7 +72,7 @@ fn empty_registry() -> Registry {
     }
 }
 
-fn path_key(value: &str) -> String {
+pub(crate) fn path_key(value: &str) -> String {
     value
         .replace('\\', "/")
         .trim_end_matches('/')
@@ -87,13 +87,7 @@ fn ordinary_path(path: &Path) -> Result<String, String> {
     let value = path
         .to_str()
         .ok_or("The installation path is not valid Unicode.")?;
-    if value
-        .get(..8)
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("\\\\?\\UNC\\"))
-    {
-        return Ok(format!("\\\\{}", &value[8..]));
-    }
-    Ok(value.strip_prefix("\\\\?\\").unwrap_or(value).to_owned())
+    Ok(safe_fs::strip_verbatim_prefix(value))
 }
 
 fn executable_parts(value: &str) -> Result<(&Path, TargetKind), String> {

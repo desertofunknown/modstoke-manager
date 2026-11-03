@@ -1,4 +1,5 @@
 use crate::hashing::{is_sha256_hex, sha256_hex};
+use crate::installation_profiles::path_key;
 use crate::{safe_fs, server_launch, server_world_restore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -124,13 +125,8 @@ fn validate_relative(value: &str) -> Result<(), String> {
 
 fn ordinary(path: &Path) -> Result<String, String> {
     let text = path.to_str().ok_or("Save and backup paths must be valid Unicode.")?;
-    if text.get(..8).is_some_and(|prefix| prefix.eq_ignore_ascii_case("\\\\?\\UNC\\")) {
-        return Ok(format!("\\\\{}", &text[8..]));
-    }
-    Ok(text.strip_prefix("\\\\?\\").unwrap_or(text).to_owned())
+    Ok(safe_fs::strip_verbatim_prefix(text))
 }
-
-fn path_key(value: &str) -> String { value.replace('\\', "/").trim_end_matches('/').to_lowercase() }
 
 fn validate_absolute(value: &str) -> Result<(), String> {
     let path = Path::new(value);

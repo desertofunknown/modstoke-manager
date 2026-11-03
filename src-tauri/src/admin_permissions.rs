@@ -1,6 +1,7 @@
 use crate::hashing::sha256_hex;
-use crate::{installation_profiles, safe_fs};
-use serde::{Deserialize, Deserializer, Serialize};
+use crate::installation_profiles::{self, required_nullable};
+use crate::safe_fs;
+use serde::{Deserialize, Serialize};
 use serde_json::ser::{CharEscape, Formatter, PrettyFormatter};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
@@ -161,14 +162,6 @@ pub struct PermissionsSave {
     revision: String,
     backup_path: Option<String>,
     state: PermissionsState,
-}
-
-fn required_nullable<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    Option::<T>::deserialize(deserializer)
 }
 
 #[tauri::command]

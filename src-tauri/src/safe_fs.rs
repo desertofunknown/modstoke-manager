@@ -22,6 +22,16 @@ pub(crate) fn validate_relative_path(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+pub(crate) fn strip_verbatim_prefix(path: &str) -> String {
+    if path
+        .get(..8)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("\\\\?\\UNC\\"))
+    {
+        return format!("\\\\{}", &path[8..]);
+    }
+    path.strip_prefix("\\\\?\\").unwrap_or(path).to_owned()
+}
+
 pub(crate) fn is_linked(metadata: &fs::Metadata) -> bool {
     #[cfg(windows)]
     {

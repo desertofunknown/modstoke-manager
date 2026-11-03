@@ -1,4 +1,4 @@
-use crate::safe_fs::{validate_directory, validate_target};
+use crate::safe_fs::{strip_verbatim_prefix, validate_directory, validate_target};
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -574,12 +574,7 @@ fn has_disabled_segment(path: &Path) -> bool {
 }
 
 fn display_path(path: &Path) -> String {
-    let value = path.to_string_lossy();
-    if let Some(unc) = value.strip_prefix("\\\\?\\UNC\\") {
-        format!("\\\\{unc}")
-    } else {
-        value.strip_prefix("\\\\?\\").unwrap_or(&value).to_owned()
-    }
+    strip_verbatim_prefix(&path.to_string_lossy())
 }
 
 fn mark_duplicates(packages: &mut [NativePackage]) {

@@ -84,10 +84,7 @@ fn require_installation(executable: &str, installation_id: &str) -> Result<(Stri
 
 fn ordinary_path(path: &Path) -> Result<String, String> {
     let text = path.to_str().ok_or("The server data folder is not valid Unicode.")?;
-    if text.get(..8).is_some_and(|prefix| prefix.eq_ignore_ascii_case("\\\\?\\UNC\\")) {
-        return Ok(format!("\\\\{}", &text[8..]));
-    }
-    Ok(text.strip_prefix("\\\\?\\").unwrap_or(text).to_owned())
+    Ok(safe_fs::strip_verbatim_prefix(text))
 }
 
 fn validate_path(value: &str) -> Result<(), String> {

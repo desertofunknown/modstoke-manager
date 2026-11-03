@@ -1,5 +1,5 @@
 use crate::hashing::{is_sha256_hex, sha256_hex, sha256_reader};
-use crate::mod_update::{self, UpdateTarget};
+use crate::mod_update::{self, path_key, UpdateTarget};
 use crate::safe_fs;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -465,10 +465,6 @@ fn backup_path(slot: usize, index: usize) -> PathBuf {
 
 fn removed_path(slot: usize, index: usize) -> PathBuf {
     PathBuf::from(format!("removed-{slot}-{index}"))
-}
-
-fn path_key(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/").to_lowercase()
 }
 
 fn target_hash(root: &Path, relative: &Path) -> Result<Option<String>, String> {
