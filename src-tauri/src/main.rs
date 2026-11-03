@@ -14,16 +14,7 @@ mod mod_update;
 mod native_inventory;
 mod nexus;
 mod safe_fs;
-mod server_capacity;
-mod server_console;
-mod server_directory;
-mod server_game_settings;
-mod server_launch;
-mod server_native_config;
-mod server_process;
-mod server_requirements;
-mod server_world;
-mod server_world_restore;
+mod server;
 mod steam;
 mod system;
 
@@ -66,19 +57,19 @@ fn main() {
         SetDefaultDllDirectories(LOAD_LIBRARY_FLAGS(LOAD_LIBRARY_SEARCH_SYSTEM32.0 | LOAD_LIBRARY_SEARCH_USER_DIRS.0));
     }
     tauri::Builder::default()
-        .manage(server_directory::PendingJoin::default())
+        .manage(server::directory::PendingJoin::default())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
-            server_directory::receive_arguments(app, &args);
+            server::directory::receive_arguments(app, &args);
         }))
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             let args: Vec<String> = std::env::args_os().map(|arg| arg.to_string_lossy().into_owned()).collect();
-            server_directory::receive_arguments(app.handle(), &args);
+            server::directory::receive_arguments(app.handle(), &args);
             if let Some(window) = app.get_webview_window("main") {
                 let _ = fit_to_monitor(&window);
                 // Shown anyway if the page never reports that it loaded.
@@ -102,11 +93,11 @@ fn main() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
-            server_directory::list_community_servers,
-            server_directory::get_community_server,
-            server_directory::get_community_server_history,
-            server_directory::take_pending_community_join,
-            server_directory::join_community_server,
+            server::directory::list_community_servers,
+            server::directory::get_community_server,
+            server::directory::get_community_server_history,
+            server::directory::take_pending_community_join,
+            server::directory::join_community_server,
             unzip_handler,
             downloads::download_to_cache,
             nexus::open_nxm_link,
@@ -128,7 +119,7 @@ fn main() {
             installation_profiles::inspect_installation_target,
             installation_profiles::write_installation_profiles,
             native_inventory::read_native_mod_inventory,
-            server_requirements::parse_server_requirements,
+            server::requirements::parse_server_requirements,
             client_admission::read_client_admission,
             client_admission::write_client_admission,
             admin_permissions::read_admin_permissions,
@@ -137,20 +128,20 @@ fn main() {
             loader_console::read_loader_console,
             loader_console::submit_loader_console,
             game_skin::read_game_skin,
-            server_launch::read_server_launch,
-            server_launch::write_server_launch,
-            server_launch::write_server_capacity,
-            server_launch::write_server_identity,
-            server_launch::write_server_log_files,
-            server_launch::write_server_game_settings,
-            server_game_settings::read_server_game_settings,
-            server_launch::launch_dedicated_server,
-            server_launch::stop_dedicated_server,
-            server_console::read_server_console,
-            server_world::read_server_world,
-            server_world::create_server_world_backup,
-            server_world_restore::restore_server_world_backup,
-            server_world_restore::recover_server_world_restore,
+            server::launch::read_server_launch,
+            server::launch::write_server_launch,
+            server::launch::write_server_capacity,
+            server::launch::write_server_identity,
+            server::launch::write_server_log_files,
+            server::launch::write_server_game_settings,
+            server::game_settings::read_server_game_settings,
+            server::launch::launch_dedicated_server,
+            server::launch::stop_dedicated_server,
+            server::console::read_server_console,
+            server::world::read_server_world,
+            server::world::create_server_world_backup,
+            server::world_restore::restore_server_world_backup,
+            server::world_restore::recover_server_world_restore,
             loader_package::inspect_openacai_loader_zip,
             steam::get_steam_path,
             system::is_dotnet11_installed,

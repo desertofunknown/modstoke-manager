@@ -34,7 +34,7 @@ pub(super) fn same<T: Serialize>(left: &T, right: &T) -> Result<bool, String> {
 }
 
 pub(super) fn require_stopped() -> Result<(), String> {
-    let running = crate::server_process::any_running(
+    let running = crate::server::process::any_running(
         &["SonsOfTheForest.exe", "SonsOfTheForestDS.exe"],
         "Sons of the Forest",
         "Native packages cannot be changed until process status is known.",

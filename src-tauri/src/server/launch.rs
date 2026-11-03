@@ -1,5 +1,6 @@
+use super::{native_config, process};
 use crate::hashing::sha256_hex;
-use crate::{installation_profiles, mod_profile, mod_update, safe_fs, server_native_config, server_process};
+use crate::{installation_profiles, mod_profile, mod_update, safe_fs};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{ErrorKind, Read, Write};
@@ -54,7 +55,7 @@ pub struct ServerLaunchState {
     revision: Option<String>,
     config_path: Option<String>,
     config_revision: Option<String>,
-    config: Option<server_native_config::ConfigSummary>,
+    config: Option<native_config::ConfigSummary>,
     config_problem: Option<String>,
     process_state: String,
     process_id: Option<u32>,
@@ -201,7 +202,7 @@ impl ServerWorldAccess {
             || settings.as_ref().map(|value| value.data_directory.as_str()) != Some(self.data_directory.as_str()) {
             return Err("Server data-folder settings changed. Read them again before continuing.".into());
         }
-        let config = server_native_config::read(Path::new(&self.data_directory))?;
+        let config = native_config::read(Path::new(&self.data_directory))?;
         if config.revision != self.config_revision || config.summary.save_slot != self.save_slot {
             return Err("dedicatedserver.cfg changed. Read the server settings again before continuing.".into());
         }
@@ -234,7 +235,7 @@ pub(crate) fn acquire_world_access(app: &tauri::AppHandle, executable: &str, ins
         return Err("The server data folder changed. Choose it again before accessing saves.".into());
     }
     let data_lock = exclusive_lock(Path::new(&data_directory), ".modstoke-server.lock")?;
-    let config = server_native_config::read(Path::new(&data_directory))?;
+    let config = native_config::read(Path::new(&data_directory))?;
     let access = ServerWorldAccess {
         installation_id: installation_id.into(), root, data_directory, save_slot: config.summary.save_slot,
         executable, settings_folder: folder, settings_revision: expected_revision.into(),
@@ -255,7 +256,7 @@ fn snapshot(folder: &Path, root: &str, executable: &str, installation_id: &str) 
             if canonical != saved { return Err("The server data folder changed. Choose it again before starting.".into()); }
             Ok(canonical)
         })
-        .and_then(|path| server_native_config::read(Path::new(&path)));
+        .and_then(|path| native_config::read(Path::new(&path)));
     let (config, config_revision, config_problem) = match config {
         Ok(config) => (Some(config.summary), Some(config.revision), None),
         Err(problem) => (None, None, Some(problem)),
@@ -273,7 +274,7 @@ fn snapshot(folder: &Path, root: &str, executable: &str, installation_id: &str) 
             return Ok::<_, String>((state, owned.then_some(server.child.id()), last_exit, restart_pending, restart_problem));
         }
         // Between the exit and the watcher's new start, report the restart as still stopping.
-        let state = if restart_pending { "stopping" } else if server_process::is_running()? { "other" } else { "stopped" };
+        let state = if restart_pending { "stopping" } else if process::is_running()? { "other" } else { "stopped" };
         Ok((state, None, last_exit, restart_pending, restart_problem))
     })();
     let (process_state, process_id, last_exit, restart_pending, restart_problem, process_problem) = match observed {
@@ -282,7 +283,7 @@ fn snapshot(folder: &Path, root: &str, executable: &str, installation_id: &str) 
     };
     let save_problem = process_problem.clone().or_else(|| (process_state != "stopped")
         .then(|| "Stop all Sons of the Forest dedicated-server processes before changing the data folder or starting another server.".into()))
-        .or_else(|| data_directory.as_deref().and_then(|data| crate::server_world::require_no_pending(Path::new(data)).err()));
+        .or_else(|| data_directory.as_deref().and_then(|data| super::world::require_no_pending(Path::new(data)).err()));
     let launch_problem = save_problem.clone().or_else(|| config_problem.clone())
         .or_else(|| config.as_ref().filter(|config| config.save_mode == "New")
             .map(|_| "SaveMode is New. The native server would overwrite its selected save slot on every start. Set SaveMode to Continue in dedicatedserver.cfg before launching through Manager.".into()))
@@ -307,7 +308,7 @@ pub async fn read_server_launch(app: tauri::AppHandle, executable: String, insta
 #[tauri::command]
 pub async fn write_server_capacity(app: tauri::AppHandle, executable: String, installation_id: String,
     expected_revision: String, expected_config_revision: String, max_players: u32,
-    acknowledge_experimental: bool) -> Result<crate::server_capacity::CapacityChange, String> {
+    acknowledge_experimental: bool) -> Result<super::capacity::CapacityChange, String> {
     if !matches!(max_players, 8 | 16 | 32) {
         return Err("Choose a configured player limit of 8, 16 or 32.".into());
     }
@@ -316,38 +317,38 @@ pub async fn write_server_capacity(app: tauri::AppHandle, executable: String, in
     }
     tauri::async_runtime::spawn_blocking(move || {
         let access = acquire_world_access(&app, &executable, &installation_id, &expected_revision, &expected_config_revision)?;
-        crate::server_world::require_no_pending(Path::new(&access.data_directory))?;
-        crate::server_capacity::write(&access, &expected_config_revision, max_players)
+        super::world::require_no_pending(Path::new(&access.data_directory))?;
+        super::capacity::write(&access, &expected_config_revision, max_players)
     }).await.map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
 pub async fn write_server_identity(app: tauri::AppHandle, executable: String, installation_id: String,
     expected_revision: String, expected_config_revision: String, server_name: String,
-) -> Result<crate::server_capacity::ConfigChange, String> {
+) -> Result<super::capacity::ConfigChange, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let access = acquire_world_access(&app, &executable, &installation_id, &expected_revision, &expected_config_revision)?;
-        crate::server_capacity::write_identity(&access, &expected_config_revision, &server_name)
+        super::capacity::write_identity(&access, &expected_config_revision, &server_name)
     }).await.map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
 pub async fn write_server_log_files(app: tauri::AppHandle, executable: String, installation_id: String,
     expected_revision: String, expected_config_revision: String, enabled: bool,
-) -> Result<crate::server_capacity::ConfigChange, String> {
+) -> Result<super::capacity::ConfigChange, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let access = acquire_world_access(&app, &executable, &installation_id, &expected_revision, &expected_config_revision)?;
-        crate::server_capacity::write_log_files(&access, &expected_config_revision, enabled)
+        super::capacity::write_log_files(&access, &expected_config_revision, enabled)
     }).await.map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
 pub async fn write_server_game_settings(app: tauri::AppHandle, executable: String, installation_id: String,
-    expected_revision: String, expected_config_revision: String, change: crate::server_game_settings::GameSettingsChange,
-) -> Result<crate::server_capacity::ConfigChange, String> {
+    expected_revision: String, expected_config_revision: String, change: super::game_settings::GameSettingsChange,
+) -> Result<super::capacity::ConfigChange, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let access = acquire_world_access(&app, &executable, &installation_id, &expected_revision, &expected_config_revision)?;
-        crate::server_capacity::write_game_settings(&access, &expected_config_revision, &change)
+        super::capacity::write_game_settings(&access, &expected_config_revision, &change)
     }).await.map_err(|error| error.to_string())?
 }
 
@@ -361,13 +362,13 @@ pub async fn write_server_launch(app: tauri::AppHandle, executable: String, inst
         let _installation_lock = mod_update::acquire_update_lock(Path::new(&root))?;
         create_settings_folder(&folder)?;
         let _launch_lock = exclusive_lock(&folder, ".launch.lock")?;
-        server_process::require_stopped()?;
+        process::require_stopped()?;
         let (previous, revision) = read_settings(&folder, &installation_id, &executable)?;
         if revision != expected_revision { return Err("Server launch settings changed. Read them again before saving.".into()); }
         if let Some(previous) = previous {
-            crate::server_world::require_no_pending(Path::new(&previous.data_directory))?;
+            super::world::require_no_pending(Path::new(&previous.data_directory))?;
         }
-        crate::server_world::require_no_pending(Path::new(&data_directory))?;
+        super::world::require_no_pending(Path::new(&data_directory))?;
         let settings = Settings { schema_version: 1, installation_id: installation_id.clone(), executable: executable.clone(), data_directory };
         let bytes = serde_json::to_vec_pretty(&settings).map_err(|error| error.to_string())?;
         if bytes.len() as u64 > MAX_SETTINGS_BYTES { return Err("Server launch settings exceed 64 KiB.".into()); }
@@ -378,7 +379,7 @@ pub async fn write_server_launch(app: tauri::AppHandle, executable: String, inst
             || canonical_data_directory(&settings.data_directory)? != settings.data_directory {
             return Err("The selected server or data folder changed while settings were prepared. Read them again before saving.".into());
         }
-        server_process::require_stopped()?;
+        process::require_stopped()?;
         if read_settings(&folder, &installation_id, &executable)?.1 != expected_revision {
             return Err("Server launch settings changed while the save was prepared. Their current contents were preserved.".into());
         }
@@ -401,7 +402,7 @@ fn launch(folder: &Path, executable: &str, installation_id: &str, expected_revis
     let mut processes = PROCESSES.lock().map_err(|_| "The server process record is unavailable. Restart Manager before trying again.")?;
     reap(&mut processes)?;
     if processes.running.is_some() { return Err("A server launched by this Manager is still running.".into()); }
-    server_process::require_stopped()?;
+    process::require_stopped()?;
     let (settings, revision) = read_settings(folder, installation_id, &executable)?;
     if revision.as_deref() != Some(expected_revision) { return Err("Server launch settings changed. Read them again before starting.".into()); }
     let settings = settings.ok_or("Choose the server data folder before starting.")?;
@@ -409,8 +410,8 @@ fn launch(folder: &Path, executable: &str, installation_id: &str, expected_revis
     if data_directory != settings.data_directory { return Err("The server data folder changed. Choose it again before starting.".into()); }
     let data_lock = exclusive_lock(Path::new(&data_directory), ".modstoke-server.lock")?;
     mod_profile::require_launch_ready(Path::new(&root))?;
-    crate::server_world::require_no_pending(Path::new(&data_directory))?;
-    let config = server_native_config::read(Path::new(&data_directory))?;
+    super::world::require_no_pending(Path::new(&data_directory))?;
+    let config = native_config::read(Path::new(&data_directory))?;
     if config.revision != expected_config_revision { return Err("dedicatedserver.cfg changed. Read its current save settings before starting.".into()); }
     if config.summary.save_mode != "Continue" {
         return Err("SaveMode must be Continue to launch through Manager. New would overwrite the selected save slot.".into());
@@ -418,8 +419,8 @@ fn launch(folder: &Path, executable: &str, installation_id: &str, expected_revis
     if require_installation(&executable, installation_id)?.0 != root {
         return Err("The dedicated-server installation changed before launch.".into());
     }
-    server_process::require_stopped()?;
-    crate::server_world::require_no_pending(Path::new(&data_directory))?;
+    process::require_stopped()?;
+    super::world::require_no_pending(Path::new(&data_directory))?;
     // Arguments go straight to the selected executable. There is no shell or inherited Steam player launch.
     let mut command = Command::new(&executable);
     command.current_dir(&root).arg("-userdatapath").arg(&data_directory);
@@ -477,7 +478,7 @@ pub async fn stop_dedicated_server(app: tauri::AppHandle, executable: String, in
         let relaunch = if restart && !force {
             let (settings, revision) = read_settings(&folder, &installation_id, &executable)?;
             let data = settings.ok_or("Choose the server data folder before restarting.")?.data_directory;
-            let config = server_native_config::read(Path::new(&data))?;
+            let config = native_config::read(Path::new(&data))?;
             Some((revision.ok_or("Server launch settings are unavailable.")?, config.revision))
         } else { None };
         let mut processes = PROCESSES.lock().map_err(|_| "The server process record is unavailable. Restart Manager before trying again.")?;
@@ -493,7 +494,7 @@ pub async fn stop_dedicated_server(app: tauri::AppHandle, executable: String, in
         } else {
             // A second Ctrl+C could cut short a save that the first one started.
             if server.stop_requested { return Err("A stop is already in progress. Wait for the server to exit, or force it to stop.".into()); }
-            server_process::interrupt(server.child.id())?;
+            process::interrupt(server.child.id())?;
             server.stop_requested = true;
             server.restart = relaunch.is_some();
         }

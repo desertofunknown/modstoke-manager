@@ -1,11 +1,12 @@
+use super::{launch, native_config, world};
 use crate::hashing::sha256_hex;
-use crate::{safe_fs, server_launch, server_native_config, server_world};
+use crate::safe_fs;
 use serde::Serialize;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use server_native_config::{NativeConfig, CONFIG_FILE, MAX_CONFIG_BYTES};
+use native_config::{NativeConfig, CONFIG_FILE, MAX_CONFIG_BYTES};
 
 const BACKUP_DIRECTORY: &str = ".modstoke-config-backups";
 const MAX_BACKUPS: usize = 64;
@@ -30,7 +31,7 @@ pub struct ConfigChange {
 fn backup_directory(data: &Path) -> Result<PathBuf, String> {
     safe_fs::validate_directory(data)?;
     let directory = data.join(BACKUP_DIRECTORY);
-    if !server_world::directory_present(&directory)? {
+    if !world::directory_present(&directory)? {
         fs::create_dir(&directory)
             .map_err(|error| format!("Could not create the configuration backup folder: {error}"))?;
     }
@@ -111,7 +112,7 @@ fn uncertain_commit(error: &str, backup: &Path) -> String {
     format!("The server settings change may have been committed, but its final state could not be confirmed. {error} Read server settings before taking another action. Preserve the original configuration backup at {}.", backup.display())
 }
 
-pub(crate) fn write(access: &server_launch::ServerWorldAccess,
+pub(crate) fn write(access: &launch::ServerWorldAccess,
     expected_config_revision: &str, max_players: u32) -> Result<CapacityChange, String> {
     if !matches!(max_players, 8 | 16 | 32) {
         return Err("Choose a native server capacity of 8, 16, or 32 players.".into());
@@ -126,7 +127,7 @@ pub(crate) fn write(access: &server_launch::ServerWorldAccess,
     })
 }
 
-pub(crate) fn write_identity(access: &server_launch::ServerWorldAccess,
+pub(crate) fn write_identity(access: &launch::ServerWorldAccess,
     expected_config_revision: &str, server_name: &str) -> Result<ConfigChange, String> {
     let name = server_name.trim();
     if name.is_empty() || name.chars().count() > 256 || server_name.chars().any(char::is_control) {
@@ -138,7 +139,7 @@ pub(crate) fn write_identity(access: &server_launch::ServerWorldAccess,
     })
 }
 
-pub(crate) fn write_log_files(access: &server_launch::ServerWorldAccess,
+pub(crate) fn write_log_files(access: &launch::ServerWorldAccess,
     expected_config_revision: &str, enabled: bool) -> Result<ConfigChange, String> {
     write_config(access, expected_config_revision, |original| {
         if original.summary.log_files_enabled == enabled { return Ok(None); }
@@ -146,23 +147,23 @@ pub(crate) fn write_log_files(access: &server_launch::ServerWorldAccess,
     })
 }
 
-pub(crate) fn write_game_settings(access: &server_launch::ServerWorldAccess, expected_config_revision: &str,
-    change: &crate::server_game_settings::GameSettingsChange) -> Result<ConfigChange, String> {
-    write_config(access, expected_config_revision, |original| crate::server_game_settings::apply(original, change))
+pub(crate) fn write_game_settings(access: &launch::ServerWorldAccess, expected_config_revision: &str,
+    change: &super::game_settings::GameSettingsChange) -> Result<ConfigChange, String> {
+    write_config(access, expected_config_revision, |original| super::game_settings::apply(original, change))
 }
 
-fn write_config(access: &server_launch::ServerWorldAccess, expected_config_revision: &str,
+fn write_config(access: &launch::ServerWorldAccess, expected_config_revision: &str,
     change: impl FnOnce(&NativeConfig) -> Result<Option<NativeConfig>, String>) -> Result<ConfigChange, String> {
     let data = Path::new(&access.data_directory);
     access.require_unchanged()?;
-    server_world::require_no_pending(data)?;
-    let original = server_native_config::read(data)?;
+    world::require_no_pending(data)?;
+    let original = native_config::read(data)?;
     if original.revision != expected_config_revision {
         return Err("dedicatedserver.cfg changed. Read server settings again before saving.".into());
     }
     let Some(changed) = change(&original)? else {
         access.require_unchanged()?;
-        server_world::require_no_pending(data)?;
+        world::require_no_pending(data)?;
         return Ok(ConfigChange {
             changed: false, config_revision: original.revision, backup_path: None,
         });
@@ -181,10 +182,10 @@ fn write_config(access: &server_launch::ServerWorldAccess, expected_config_revis
     // Its last check verifies identity, settings, exact original config revision,
     // package readiness and stopped game/server processes immediately before commit.
     access.require_unchanged()?;
-    server_world::require_no_pending(data)?;
+    world::require_no_pending(data)?;
     safe_fs::durable_rename(&temporary, &data.join(CONFIG_FILE), true)
         .map_err(|error| uncertain_commit(&error, &backup))?;
-    let installed = server_native_config::read(data)
+    let installed = native_config::read(data)
         .map_err(|error| uncertain_commit(&error, &backup))?;
     if installed.revision != changed.revision || installed.original_bytes() != changed.original_bytes() {
         return Err(uncertain_commit("dedicatedserver.cfg did not match the expected new bytes.", &backup));

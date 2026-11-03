@@ -1,6 +1,7 @@
+use super::{launch, world_restore};
 use crate::hashing::{is_sha256_hex, sha256_hex};
 use crate::installation_profiles::path_key;
-use crate::{safe_fs, server_launch, server_world_restore};
+use crate::safe_fs;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -459,7 +460,7 @@ fn utc_now() -> Result<String, String> {
     Ok(format!("{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z", time / 3600, (time / 60) % 60, time % 60))
 }
 
-pub(crate) fn require_binding(access: &server_launch::ServerWorldAccess, selected: &Path, manifest: &Manifest) -> Result<(), String> {
+pub(crate) fn require_binding(access: &launch::ServerWorldAccess, selected: &Path, manifest: &Manifest) -> Result<(), String> {
     if manifest.installation_id != access.installation_id || manifest.installation_root != access.root
         || manifest.data_directory != access.data_directory || manifest.save_directory != ordinary(selected)? {
         return Err("This backup belongs to a different installation, data folder, or selected save folder.".into());
@@ -499,7 +500,7 @@ pub(crate) fn read_backup(store: &Path, id: &str) -> Result<Backup, String> {
     Ok(Backup { manifest, revision, payload })
 }
 
-pub(crate) fn require_backup(access: &server_launch::ServerWorldAccess, selected: &Path, store: &Path,
+pub(crate) fn require_backup(access: &launch::ServerWorldAccess, selected: &Path, store: &Path,
     id: &str, expected_revision: &str) -> Result<Backup, String> {
     let backup = read_backup(store, id)?;
     require_binding(access, selected, &backup.manifest)?;
@@ -511,7 +512,7 @@ pub(crate) fn require_backup(access: &server_launch::ServerWorldAccess, selected
     Ok(backup)
 }
 
-pub(crate) fn create_backup(access: &server_launch::ServerWorldAccess, selected: &Path,
+pub(crate) fn create_backup(access: &launch::ServerWorldAccess, selected: &Path,
     store: &Path, inventory: &Inventory, label: &str) -> Result<Backup, String> {
     if bounded_directories(&store.join("backups"), MAX_BACKUPS)?.len() >= MAX_BACKUPS {
         return Err("This data folder already contains 64 backups. Preserve or archive them before creating another; Manager does not prune backups.".into());
@@ -557,15 +558,15 @@ pub(crate) fn require_no_pending(data: &Path) -> Result<(), String> {
     }
 }
 
-pub(crate) fn snapshot(access: &server_launch::ServerWorldAccess, save_directory: &str) -> Result<WorldState, String> {
+pub(crate) fn snapshot(access: &launch::ServerWorldAccess, save_directory: &str) -> Result<WorldState, String> {
     let store = store(Path::new(&access.data_directory), false)?;
-    let pending = store.as_deref().map(server_world_restore::read_pending).transpose()?.flatten();
+    let pending = store.as_deref().map(world_restore::read_pending).transpose()?.flatten();
     let requested = if save_directory.is_empty() {
         pending.as_ref().map(|pending| pending.record.save_directory.as_str())
             .ok_or("Choose the existing native save folder containing SaveData.zip or SaveData.json. No pending restore was found.")?
     } else { save_directory };
     let selected = selected_folder(&access.data_directory, requested)?;
-    if let Some(pending) = &pending { server_world_restore::require_pending_binding(access, &selected, pending)?; }
+    if let Some(pending) = &pending { world_restore::require_pending_binding(access, &selected, pending)?; }
     let listed = (|| {
         let mut backups = Vec::new();
         if let Some(store) = &store {
@@ -595,7 +596,7 @@ pub(crate) fn snapshot(access: &server_launch::ServerWorldAccess, save_directory
         (None, 0, 0, pending.is_none().then(|| "The selected native save folder is missing. Existing backups were preserved.".into()))
     };
     access.require_unchanged()?;
-    let current_pending = store.as_deref().map(server_world_restore::read_pending).transpose()?.flatten();
+    let current_pending = store.as_deref().map(world_restore::read_pending).transpose()?.flatten();
     if current_pending.as_ref().map(|pending| &pending.revision) != pending.as_ref().map(|pending| &pending.revision) {
         return Err("The pending restore changed while its state was read. Read World recovery again.".into());
     }
@@ -613,7 +614,7 @@ pub(crate) fn snapshot(access: &server_launch::ServerWorldAccess, save_directory
 pub async fn read_server_world(app: tauri::AppHandle, executable: String, installation_id: String,
     expected_revision: String, expected_config_revision: String, save_directory: String) -> Result<WorldState, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let access = server_launch::acquire_world_access(&app, &executable, &installation_id, &expected_revision, &expected_config_revision)?;
+        let access = launch::acquire_world_access(&app, &executable, &installation_id, &expected_revision, &expected_config_revision)?;
         snapshot(&access, &save_directory)
     }).await.map_err(|error| error.to_string())?
 }
@@ -623,7 +624,7 @@ pub async fn create_server_world_backup(app: tauri::AppHandle, executable: Strin
     expected_revision: String, expected_config_revision: String, save_directory: String,
     expected_world_revision: String) -> Result<WorldState, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let access = server_launch::acquire_world_access(&app, &executable, &installation_id, &expected_revision, &expected_config_revision)?;
+        let access = launch::acquire_world_access(&app, &executable, &installation_id, &expected_revision, &expected_config_revision)?;
         require_no_pending(Path::new(&access.data_directory))?;
         let selected = selected_folder(&access.data_directory, &save_directory)?;
         let inventory = inspect(&selected)?;

@@ -1,4 +1,5 @@
-use crate::{safe_fs, server_launch};
+use super::launch;
+use crate::safe_fs;
 use serde::Serialize;
 use std::fs::{self, File};
 use std::io::{ErrorKind, Read, Seek, SeekFrom};
@@ -94,7 +95,7 @@ fn read_lines(directory: &Path, name: &str, offset: Option<u64>) -> Result<Conso
 pub async fn read_server_console(app: tauri::AppHandle, executable: String, installation_id: String,
     source: String, file: Option<String>, offset: Option<u64>) -> Result<ConsoleChunk, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let (root, data) = server_launch::server_folders(&app, &executable, &installation_id)?;
+        let (root, data) = launch::server_folders(&app, &executable, &installation_id)?;
         let (directory, matches, missing) = match source.as_str() {
             "game" => {
                 let Some(data) = data else {

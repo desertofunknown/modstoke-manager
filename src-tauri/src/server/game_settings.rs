@@ -1,5 +1,5 @@
-use crate::server_launch;
-use crate::server_native_config::{self, NativeConfig};
+use super::launch;
+use super::native_config::{self, NativeConfig};
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
@@ -240,8 +240,8 @@ pub(crate) fn apply(config: &NativeConfig, change: &GameSettingsChange) -> Resul
 #[tauri::command]
 pub async fn read_server_game_settings(app: tauri::AppHandle, executable: String, installation_id: String) -> Result<GameSettingsState, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let (_, data) = server_launch::server_folders(&app, &executable, &installation_id)?;
+        let (_, data) = launch::server_folders(&app, &executable, &installation_id)?;
         let data = data.ok_or("Choose the server data folder before editing game settings.")?;
-        state(&server_native_config::read(Path::new(&data))?)
+        state(&native_config::read(Path::new(&data))?)
     }).await.map_err(|error| error.to_string())?
 }

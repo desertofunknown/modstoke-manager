@@ -291,7 +291,7 @@ fn write_preference(
 
 #[cfg(windows)]
 pub(crate) fn game_process_running() -> Result<bool, String> {
-    crate::server_process::any_running(
+    crate::server::process::any_running(
         &["SonsOfTheForest.exe", "SonsOfTheForestDS.exe"],
         "Sons of the Forest",
         "Managed admission cannot be changed until process status is known.",

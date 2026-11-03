@@ -834,8 +834,8 @@ pub(crate) fn validate_mod_path(path: &Path) -> Result<(), String> {
 
 pub(crate) fn acquire_update_lock(root: &Path) -> Result<File, String> {
     if validate_target(root, Path::new("SonsOfTheForestDS.exe"))? {
-        crate::server_launch::reap_exited()?;
-        crate::server_process::require_stopped()?;
+        crate::server::launch::reap_exited()?;
+        crate::server::process::require_stopped()?;
     }
     validate_target(root, Path::new(LOCK_PATH))?;
     let lock = exclusive_lock_options().open(root.join(LOCK_PATH)).map_err(|error| {
