@@ -811,7 +811,7 @@ function decodeHtmlEntities(value: string): string {
     });
 }
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
     return value
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
@@ -820,6 +820,6 @@ function escapeHtml(value: string): string {
         .replace(/'/g, "&#39;");
 }
 
-function escapeAttribute(value: string): string {
+export function escapeAttribute(value: string): string {
     return escapeHtml(value).replace(/`/g, "&#96;");
 }
