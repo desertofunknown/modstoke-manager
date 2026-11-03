@@ -1,7 +1,8 @@
 use crate::hashing::{is_sha256_hex, sha256_hex};
 use crate::safe_fs::{
-    collect_files, copy_durable, create_parent_dirs, durable_rename, hash_file, reject_linked_path,
-    target_hash, validate_directory, validate_relative_path, validate_target, write_durable,
+    collect_files, copy_durable, create_parent_dirs, durable_rename, exclusive_lock_options,
+    hash_file, is_linked, reject_linked_path, target_hash, validate_directory,
+    validate_relative_path, validate_target, write_durable,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -837,16 +838,7 @@ pub(crate) fn acquire_update_lock(root: &Path) -> Result<File, String> {
         crate::server_process::require_stopped()?;
     }
     validate_target(root, Path::new(LOCK_PATH))?;
-    let mut options = OpenOptions::new();
-    options.read(true).write(true).create(true);
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::OpenOptionsExt;
-        // An open handle owns this root's lock; a process exit releases it without
-        // leaving a stale lock that would need to be guessed at or deleted.
-        options.share_mode(0).custom_flags(0x00200000); // FILE_FLAG_OPEN_REPARSE_POINT
-    }
-    let lock = options.open(root.join(LOCK_PATH)).map_err(|error| {
+    let lock = exclusive_lock_options().open(root.join(LOCK_PATH)).map_err(|error| {
         format!(
             "Could not lock native mod updates in {}. Another update may be running: {error}",
             root.display()
@@ -939,7 +931,7 @@ fn abandoned_preparation(workspace: &Path) -> Result<bool, String> {
     for entry in fs::read_dir(workspace).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
         let metadata = fs::symlink_metadata(entry.path()).map_err(|error| error.to_string())?;
-        if !metadata.is_dir() || reject_linked_path(&entry.path(), &metadata).is_err() {
+        if !metadata.is_dir() || is_linked(&metadata) {
             return Ok(false);
         }
         match entry.file_name().to_string_lossy().to_lowercase().as_str() {

@@ -660,13 +660,7 @@ fn busy(error: &io::Error) -> bool {
 // Admin holds the same lock across its own re-read, compare and replace, and only briefly.
 fn lock(folder: &Path) -> Result<File, String> {
     safe_fs::validate_target(folder, Path::new(LOCK_FILE))?;
-    let mut options = OpenOptions::new();
-    options.read(true).write(true).create(true).truncate(false);
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::OpenOptionsExt;
-        options.share_mode(0).custom_flags(0x00200000); // FILE_FLAG_OPEN_REPARSE_POINT
-    }
+    let options = safe_fs::exclusive_lock_options();
     let mut attempt = 0;
     let file = loop {
         match options.open(folder.join(LOCK_FILE)) {
@@ -679,14 +673,7 @@ fn lock(folder: &Path) -> Result<File, String> {
         }
     };
     let metadata = file.metadata().map_err(|error| error.to_string())?;
-    #[cfg(windows)]
-    let linked = {
-        use std::os::windows::fs::MetadataExt;
-        metadata.file_attributes() & 0x400 != 0
-    };
-    #[cfg(not(windows))]
-    let linked = metadata.file_type().is_symlink();
-    if linked || !metadata.is_file() {
+    if safe_fs::is_linked(&metadata) || !metadata.is_file() {
         return Err("permissions.lock is not an ordinary file.".into());
     }
     #[cfg(not(windows))]

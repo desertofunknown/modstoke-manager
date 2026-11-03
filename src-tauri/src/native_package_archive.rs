@@ -6,7 +6,7 @@ use serde_json::{Map, Number, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::fs::{self, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
@@ -76,13 +76,13 @@ pub(super) fn inspect(source: &Path) -> Result<NativeArchive, String> {
     {
         use std::os::windows::fs::OpenOptionsExt;
         // Retain this handle throughout inspection; deny concurrent writes and deletion.
-        options.share_mode(1).custom_flags(0x00200000);
+        options.share_mode(1).custom_flags(safe_fs::FILE_FLAG_OPEN_REPARSE_POINT);
     }
     let mut reader = options
         .open(&source)
         .map_err(|error| format!("Could not open the native archive: {error}"))?;
     let metadata = reader.metadata().map_err(|error| error.to_string())?;
-    if !metadata.is_file() || is_linked(&metadata) {
+    if !metadata.is_file() || safe_fs::is_linked(&metadata) {
         return Err("The native archive must be a regular, nonlinked file.".into());
     }
     if !safe_fs::validate_target(parent, name)? {
@@ -355,18 +355,6 @@ pub(super) fn validate_name(value: &str) -> Result<(), String> {
         );
     }
     Ok(())
-}
-
-fn is_linked(metadata: &fs::Metadata) -> bool {
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        metadata.file_attributes() & 0x400 != 0
-    }
-    #[cfg(not(windows))]
-    {
-        metadata.file_type().is_symlink()
-    }
 }
 
 fn hash_reader(

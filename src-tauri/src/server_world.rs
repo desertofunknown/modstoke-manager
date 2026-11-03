@@ -203,18 +203,11 @@ fn open_file(folder: &Path, relative: &str) -> Result<File, String> {
     #[cfg(windows)]
     {
         use std::os::windows::fs::OpenOptionsExt;
-        options.share_mode(1).custom_flags(0x00200000); // Read sharing only; open the reparse point itself.
+        options.share_mode(1).custom_flags(safe_fs::FILE_FLAG_OPEN_REPARSE_POINT); // Read sharing only.
     }
     let file = options.open(folder.join(relative)).map_err(|error| format!("Could not read a save or recovery file: {error}"))?;
     let metadata = file.metadata().map_err(|error| error.to_string())?;
-    #[cfg(windows)]
-    let linked = {
-        use std::os::windows::fs::MetadataExt;
-        metadata.file_attributes() & 0x400 != 0
-    };
-    #[cfg(not(windows))]
-    let linked = metadata.file_type().is_symlink();
-    if linked || !metadata.is_file() {
+    if safe_fs::is_linked(&metadata) || !metadata.is_file() {
         return Err("Save and recovery files must be ordinary files, without links or reparse points.".into());
     }
     Ok(file)

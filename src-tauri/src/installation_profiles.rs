@@ -2,7 +2,7 @@ use crate::hashing::sha256_hex;
 use crate::safe_fs;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashSet;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
@@ -317,25 +317,11 @@ fn config_folder(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 fn acquire_lock(folder: &Path) -> Result<File, String> {
     safe_fs::validate_target(folder, Path::new(LOCK_FILE))?;
-    let mut options = OpenOptions::new();
-    options.read(true).write(true).create(true).truncate(false);
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::OpenOptionsExt;
-        options.share_mode(0).custom_flags(0x00200000); // FILE_FLAG_OPEN_REPARSE_POINT
-    }
-    let lock = options.open(folder.join(LOCK_FILE)).map_err(|error| {
+    let lock = safe_fs::exclusive_lock_options().open(folder.join(LOCK_FILE)).map_err(|error| {
         format!("Could not lock installation profiles. Another save may be running: {error}")
     })?;
     let metadata = lock.metadata().map_err(|error| error.to_string())?;
-    #[cfg(windows)]
-    let linked = {
-        use std::os::windows::fs::MetadataExt;
-        metadata.file_attributes() & 0x400 != 0
-    };
-    #[cfg(not(windows))]
-    let linked = metadata.file_type().is_symlink();
-    if linked || !metadata.is_file() {
+    if safe_fs::is_linked(&metadata) || !metadata.is_file() {
         return Err("The installation profile lock is not an ordinary file.".into());
     }
     #[cfg(not(windows))]

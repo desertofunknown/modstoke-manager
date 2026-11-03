@@ -488,7 +488,7 @@ fn open_single_file(path: &Path) -> Result<File, String> {
     #[cfg(windows)]
     {
         use std::os::windows::fs::OpenOptionsExt;
-        options.share_mode(1).custom_flags(0x00200000); // Read sharing; open the reparse point itself.
+        options.share_mode(1).custom_flags(safe_fs::FILE_FLAG_OPEN_REPARSE_POINT); // Read sharing only.
     }
     let file = options.open(path).map_err(|error| format!("Could not read {}: {error}", path.display()))?;
     require_single_file(path, &file)?;
@@ -509,7 +509,7 @@ fn require_single_file(path: &Path, file: &File) -> Result<(), String> {
         if !unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle() as isize), &mut information) }.as_bool() {
             return Err(format!("Could not inspect {}: {}", path.display(), io::Error::last_os_error()));
         }
-        if information.dwFileAttributes & 0x400 != 0 || information.nNumberOfLinks != 1 {
+        if information.dwFileAttributes & safe_fs::FILE_ATTRIBUTE_REPARSE_POINT != 0 || information.nNumberOfLinks != 1 {
             return Err(format!("Refusing a linked retained pack file: {}", path.display()));
         }
     }

@@ -1,7 +1,7 @@
 use crate::hashing::sha256_hex;
 use crate::{installation_profiles, mod_profile, mod_update, safe_fs, server_native_config, server_process};
 use serde::{Deserialize, Serialize};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command};
@@ -156,24 +156,10 @@ fn create_settings_folder(folder: &Path) -> Result<(), String> {
 
 fn exclusive_lock(folder: &Path, name: &str) -> Result<File, String> {
     safe_fs::validate_target(folder, Path::new(name))?;
-    let mut options = OpenOptions::new();
-    options.read(true).write(true).create(true).truncate(false);
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::OpenOptionsExt;
-        options.share_mode(0).custom_flags(0x00200000); // FILE_FLAG_OPEN_REPARSE_POINT
-    }
-    let file = options.open(folder.join(name))
+    let file = safe_fs::exclusive_lock_options().open(folder.join(name))
         .map_err(|error| format!("Could not lock {}. Another Manager operation may be using it: {error}", folder.join(name).display()))?;
     let metadata = file.metadata().map_err(|error| error.to_string())?;
-    #[cfg(windows)]
-    let linked = {
-        use std::os::windows::fs::MetadataExt;
-        metadata.file_attributes() & 0x400 != 0
-    };
-    #[cfg(not(windows))]
-    let linked = metadata.file_type().is_symlink();
-    if linked || !metadata.is_file() {
+    if safe_fs::is_linked(&metadata) || !metadata.is_file() {
         return Err("The server profile lock is not an ordinary file.".into());
     }
     #[cfg(not(windows))]

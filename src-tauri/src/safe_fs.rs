@@ -1,7 +1,12 @@
 use crate::hashing::sha256_reader;
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Component, Path, PathBuf};
+
+#[cfg(windows)]
+pub(crate) const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+#[cfg(windows)]
+pub(crate) const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
 
 pub(crate) fn validate_relative_path(path: &Path) -> Result<(), String> {
     if path.as_os_str().is_empty()
@@ -17,21 +22,39 @@ pub(crate) fn validate_relative_path(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn reject_linked_path(path: &Path, metadata: &fs::Metadata) -> Result<(), String> {
+pub(crate) fn is_linked(metadata: &fs::Metadata) -> bool {
     #[cfg(windows)]
-    let linked = {
+    {
         use std::os::windows::fs::MetadataExt;
-        metadata.file_attributes() & 0x400 != 0
-    };
+        metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    }
     #[cfg(not(windows))]
-    let linked = metadata.file_type().is_symlink();
-    if linked {
+    {
+        metadata.file_type().is_symlink()
+    }
+}
+
+pub(crate) fn reject_linked_path(path: &Path, metadata: &fs::Metadata) -> Result<(), String> {
+    if is_linked(metadata) {
         return Err(format!(
             "Refusing to update through a linked path: {}",
             path.display()
         ));
     }
     Ok(())
+}
+
+pub(crate) fn exclusive_lock_options() -> OpenOptions {
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // An open handle owns the lock; a process exit releases it without
+        // leaving a stale lock that would need to be guessed at or deleted.
+        options.share_mode(0).custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    options
 }
 
 pub(crate) fn validate_directory(path: &Path) -> Result<(), String> {
