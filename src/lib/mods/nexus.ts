@@ -363,6 +363,17 @@ export async function beginNexusSignIn(): Promise<{ url: string; opened: boolean
     return await invoke<{ url: string; opened: boolean }>("nexus_begin_sign_in");
 }
 
+// Finishes the sign-in from the code the Nexus Mods success page offers to copy. The outcome
+// arrives through onNexusSignInFinished, like a sign-in the browser handed back.
+export async function finishNexusSignInWithCode(pasted: string): Promise<void> {
+    await invoke("nexus_finish_sign_in", { pasted });
+}
+
+// The browser handed back an earlier attempt's Continue link while a newer sign-in is waiting.
+export async function onNexusSignInStale(handler: () => void): Promise<UnlistenFn> {
+    return await listen("nexus-sign-in-stale", () => handler());
+}
+
 // Nexus sends the browser back to the Manager, which finishes the sign-in and reports here.
 export async function onNexusSignInFinished(handler: (error: string | null) => void): Promise<UnlistenFn> {
     return await listen<{ error: string | null }>("nexus-sign-in", event => handler(event.payload.error ?? null));

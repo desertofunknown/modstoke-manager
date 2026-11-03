@@ -1,3 +1,5 @@
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::Serialize;
 
@@ -581,35 +583,44 @@ async fn nexus_set_sotf_tracking(
 }
 
 // Nexus checks the access token itself here, including whether the player has revoked it.
+// Confirms that Nexus accepts the access token and reads the account from it. users/validate.json
+// only accepts personal API keys, so the account comes from the token's own user claims, as the
+// Nexus OAuth guide describes. The token arrives straight from the Nexus token endpoint over HTTPS
+// and Nexus checks it on every request, so its claims are read without verifying the signature.
 async fn validate_nexus_session(access_token: &str) -> Result<(NexusUser, NexusRateLimit), String> {
-    let (value, rate_limit) = nexus_json(
-        nexus_client(access_token)?.get(format!("{NEXUS_API_BASE}/v1/users/validate.json")),
+    let (_, rate_limit) = nexus_json(
+        nexus_client(access_token)?.get(format!("{NEXUS_API_BASE}/v1/games/{NEXUS_GAME_DOMAIN}.json")),
         "Nexus account validation",
     )
     .await?;
-    let user_id = value
-        .get("user_id")
-        .and_then(|value| value.as_u64())
+    let claims = access_token
+        .split('.')
+        .nth(1)
+        .and_then(|payload| URL_SAFE_NO_PAD.decode(payload.trim_end_matches('=')).ok())
+        .and_then(|payload| serde_json::from_slice::<serde_json::Value>(&payload).ok())
+        .ok_or_else(|| "Nexus did not return a valid account identity.".to_string())?;
+    let account = claims.get("user");
+    let user_id = account
+        .and_then(|user| user.get("id"))
+        .and_then(|id| id.as_u64())
+        .or_else(|| claims.get("sub").and_then(|sub| sub.as_str()).and_then(|sub| sub.parse().ok()))
         .filter(|id| *id > 0 && *id <= 9_007_199_254_740_991)
         .ok_or_else(|| "Nexus did not return a valid account identity.".to_string())?;
+    let roles: Vec<&str> = account
+        .and_then(|user| user.get("membership_roles"))
+        .and_then(|roles| roles.as_array())
+        .map(|roles| roles.iter().filter_map(|role| role.as_str()).collect())
+        .unwrap_or_default();
     let user = NexusUser {
         user_id: Some(user_id),
-        name: value
-            .get("name")
-            .and_then(|v| v.as_str())
-            .map(|v| v.to_string()),
-        profile_url: value
-            .get("profile_url")
-            .and_then(|v| v.as_str())
-            .map(|v| v.to_string()),
-        membership_tier: value
-            .get("membership_tier")
-            .or_else(|| value.get("premium_tier"))
-            .or_else(|| value.get("account_type"))
-            .and_then(|v| v.as_str())
-            .map(|v| v.to_string()),
-        is_premium: value.get("is_premium").and_then(|v| v.as_bool()),
-        is_supporter: value.get("is_supporter").and_then(|v| v.as_bool()),
+        name: account
+            .and_then(|user| user.get("username"))
+            .and_then(|name| name.as_str())
+            .map(str::to_string),
+        profile_url: None,
+        membership_tier: roles.contains(&"lifetimepremium").then(|| "lifetime".to_string()),
+        is_premium: Some(roles.iter().any(|role| matches!(*role, "premium" | "lifetimepremium"))),
+        is_supporter: Some(roles.contains(&"supporter")),
     };
 
     Ok((user, rate_limit))

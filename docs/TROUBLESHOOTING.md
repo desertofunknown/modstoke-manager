@@ -26,7 +26,7 @@ The Manager compares loader-owned files with SHA256 hashes in the release manife
 
 Nexus file downloads are handed to Vortex. Vortex owns deployments it manages, so enable, disable, update, or remove those packages in Vortex. The Manager can show their state but does not replace Vortex's deployment controls.
 
-Nexus sign-in opens your browser. After you approve Modstoke on Nexus Mods, the browser shows a page saying you're signed in, and the Manager updates. Finish within ten minutes, or start again from the Manager. The Manager listens on `127.0.0.1:47823` during sign-in, so close any other program using that port. If the browser did not open at all, copy the link the Manager shows under the sign-in button.
+Nexus sign-in opens your browser. After you approve Modstoke, Nexus shows "Authorisation successful!". Select **Continue** there and allow the browser to open the Manager. A blank tab may open as well; close it. If the Manager still doesn't respond, select **Having issues?** on the Nexus page, copy the code, and paste it into the field under the sign-in button. Finish within ten minutes of starting, and use the Nexus page from your latest attempt. If the browser did not open at all, use the link the Manager shows under the sign-in button.
 
 ## The Sons of the Forest skin shows plain panels
 

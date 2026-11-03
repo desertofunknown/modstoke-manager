@@ -66,14 +66,16 @@ fn main() {
                 let _ = window.set_focus();
             }
             server::directory::receive_arguments(app, &args);
+            nexus_auth::receive_arguments(app, &args);
         }))
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             let args: Vec<String> = std::env::args_os().map(|arg| arg.to_string_lossy().into_owned()).collect();
             nexus_auth::remember_app(app.handle());
             server::directory::receive_arguments(app.handle(), &args);
+            nexus_auth::receive_arguments(app.handle(), &args);
             // The installer registers modstoke:// for installed copies. Portable and development
-            // builds register it here, so server join links reach them too.
+            // builds register it here, so the Nexus Mods sign-in and join links reach them too.
             #[cfg(windows)]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
@@ -156,6 +158,7 @@ fn main() {
             system::is_dotnet11_installed,
             nexus::nexus_get_session,
             nexus_auth::nexus_begin_sign_in,
+            nexus_auth::nexus_finish_sign_in,
             nexus_auth::nexus_sign_out,
             nexus::nexus_fetch_sotf_mods,
             nexus::nexus_fetch_sotf_mods_graphql,
