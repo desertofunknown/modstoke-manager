@@ -129,7 +129,7 @@
             confirming = null;
             refused = !result.accepted;
             if (result.accepted) {
-                reply = `Sent ${name}. Its result appears under Recent results once the game runs it.`;
+                reply = `Sent ${name}. Its result appears under Recent results once the ${installation.target.kind === "server" ? "server" : "game"} runs it.`;
                 resultsAfter = cursor;
                 command = "";
                 args = "";
