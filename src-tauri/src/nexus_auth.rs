@@ -15,8 +15,7 @@ const REVOKE_URL: &str = "https://users.nexusmods.com/oauth/revoke";
 // The registration Nexus Mods issued. The Manager is a public client: it proves each sign-in with
 // PKCE and carries no client secret, which anyone could read out of the executable.
 const CLIENT_ID: &str = "modstoke";
-// The callback registered with Nexus. It has its own scheme, which the Manager registers next to modstoke://.
-const REDIRECT_URI: &str = "modstoke-manager://oauth/callback";
+const REDIRECT_URI: &str = "modstoke://oauth/nexus/callback";
 const SCOPE: &str = "openid public";
 const CREDENTIAL_SERVICE: &str = "Modstoke Manager";
 const REFRESH_TOKEN_ACCOUNT: &str = "nexusmods-refresh-token";
@@ -90,7 +89,7 @@ pub fn remember_app(app: &tauri::AppHandle) {
 }
 
 // Opens the Nexus Mods sign-in page in the player's browser. Nexus sends them back through the
-// registered callback, which a second launch of the Manager passes to receive_arguments.
+// modstoke:// callback, which a second launch of the Manager passes to receive_arguments.
 #[tauri::command]
 pub fn nexus_begin_sign_in() -> Result<SignInStarted, String> {
     // RFC 7636 asks for a 43 to 128 character verifier; 32 random bytes encode to 43.
@@ -127,7 +126,7 @@ pub fn receive_arguments(app: &tauri::AppHandle, arguments: &[String]) {
         return;
     }
     let Ok(callback) = reqwest::Url::parse(&arguments[1]) else { return };
-    if callback.host_str() != Some("oauth") || callback.path() != "/callback" {
+    if callback.host_str() != Some("oauth") || callback.path() != "/nexus/callback" {
         return;
     }
     let query: HashMap<String, String> = callback.query_pairs().into_owned().collect();
