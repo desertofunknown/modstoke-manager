@@ -21,7 +21,7 @@ Catalog requests use the signed-in account's access token. The Manager does not 
 
 In-memory responses expire after ten minutes and are discarded when the connection changes. The local catalog snapshot belongs to a validated Nexus user ID and expires after 24 hours. Successful catalog refreshes replace that snapshot, including empty results. Previous accounts' rows are not merged into it. Offline rows are labelled as cached and may predate changes to website preferences.
 
-The access token stays in memory and is refreshed shortly before it expires. Only the refresh token is saved, in Windows Credential Manager. Tokens are never sent to an OpenACAI service or written to catalog storage. If Nexus refuses the refresh token, for example after the player revokes the Manager's access, the Manager treats the player as signed out. Sign out deletes the saved token, asks Nexus to revoke it, and removes the local catalog snapshot. A personal API key saved by an earlier build is deleted, not used. Requests carry `Application-Name: Modstoke Manager` and an `Application-Version` derived from the Cargo package version. They have a timeout and do not follow redirects with credentials.
+The access token stays in memory and is refreshed shortly before it expires. Only the refresh token is saved, in Windows Credential Manager. Tokens are never sent to an OpenACAI service or written to catalog storage. If Nexus refuses the refresh token, for example after the player revokes the Manager's access, the Manager treats the player as signed out. Sign out deletes the saved token, asks Nexus to revoke it, and removes the local catalog snapshot. A personal API key saved by an earlier build is deleted, not used. Requests carry `Application-Name: Modstoke` and an `Application-Version` derived from the Cargo package version. They have a timeout and do not follow redirects with credentials.
 
 Browsing and refreshes follow user navigation or an explicit refresh action. There is no periodic background catalog polling or automatic endorsement. Tracking and endorsements use explicit controls. Selected file downloads are handed to Vortex through `nxm://`; the Manager does not bypass Nexus download entitlements or manage Vortex's deployment itself.
 
@@ -29,12 +29,12 @@ The API implementation is in [nexus.rs](../src-tauri/src/nexus.rs), the request 
 
 ## OAuth registration
 
-The application is **Modstoke Manager**, published **by OpenACAI**. It replaces the earlier OpenACAI Mod Manager name and its `openacai-mod-manager` slug. It is a public client: each sign-in is proven with PKCE, and the Manager carries no client secret, since anyone could read one out of the executable.
+The application is registered as **Modstoke**, published **by OpenACAI**, for Modstoke Manager. It replaces the earlier OpenACAI Mod Manager name and its `openacai-mod-manager` slug. It is a public client: each sign-in is proven with PKCE, and the Manager carries no client secret, since anyone could read one out of the executable.
 
 | Item | Value |
 | --- | --- |
 | Application | Public desktop application for Windows, using PKCE |
-| Client ID | `modstoke_manager` |
+| Client ID | `modstoke` |
 | Callback | `modstoke-manager://oauth/callback` |
 | Scopes | `openid public` |
 | Purpose | Nexus API access on behalf of the signed-in player |

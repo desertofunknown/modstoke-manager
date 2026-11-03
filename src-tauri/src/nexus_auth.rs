@@ -14,7 +14,7 @@ const TOKEN_URL: &str = "https://users.nexusmods.com/oauth/token";
 const REVOKE_URL: &str = "https://users.nexusmods.com/oauth/revoke";
 // The registration Nexus Mods issued. The Manager is a public client: it proves each sign-in with
 // PKCE and carries no client secret, which anyone could read out of the executable.
-const CLIENT_ID: &str = "modstoke_manager";
+const CLIENT_ID: &str = "modstoke";
 // The callback registered with Nexus. It has its own scheme, which the Manager registers next to modstoke://.
 const REDIRECT_URI: &str = "modstoke-manager://oauth/callback";
 const SCOPE: &str = "openid public";

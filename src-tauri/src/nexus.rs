@@ -9,7 +9,7 @@ pub(crate) const NEXUS_USER_AGENT: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     " (SonsOfTheForest; Windows; Publisher=OpenACAI)"
 );
-pub(crate) const NEXUS_APPLICATION_NAME: &str = "Modstoke Manager";
+pub(crate) const NEXUS_APPLICATION_NAME: &str = "Modstoke";
 pub(crate) const NEXUS_APPLICATION_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Serialize)]

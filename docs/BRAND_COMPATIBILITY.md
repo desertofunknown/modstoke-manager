@@ -21,8 +21,8 @@ The NSIS installer displays **Modstoke Manager**, with **OpenACAI** as publisher
 WebView's HTTPS origin and the `openacai-mod-hub-*` and `openacai-nexus-*` preferences stay unchanged.
 
 The Nexus integration moved to the new name when it moved to OAuth:
-- The Nexus Mods client ID is `modstoke_manager`, replacing the old `openacai-mod-manager` SSO slug.
-- Requests send `Application-Name: Modstoke Manager` and a `Modstoke-Manager/<version>` user agent. The version follows the package version, and the user agent names OpenACAI as publisher without claiming that a local build is signed.
+- The Nexus Mods application is **Modstoke**, client ID `modstoke`, replacing the old `openacai-mod-manager` SSO slug.
+- Requests send `Application-Name: Modstoke` and a `Modstoke-Manager/<version>` user agent. The version follows the package version, and the user agent names OpenACAI as publisher without claiming that a local build is signed.
 - The Nexus refresh token is stored under the `Modstoke Manager` credential service as `nexusmods-refresh-token`. A personal API key left by an earlier build under `OpenACAI Mod Manager` / `nexusmods-api-key` is deleted. No settings migration is required. Ownerless Nexus catalog caches are discarded and rebuilt for the connected account.
 
 The source-built installer is named `Modstoke Manager_<version>_x64-setup.exe`. Published download aliases and the existing signed 0.2.0 files keep their old names. Those signed files still contain the earlier branding; they have not been rebuilt or re-signed as part of this rename.
@@ -36,7 +36,7 @@ Upstream projects keep their own names: BepInEx, RedLoader, SonsSdk and `RedLoad
 ## Coordination with other projects
 
 - Apply the same display names and **by OpenACAI** credit in the loader, admin and SDK repositories. Their releases and assembly identities are outside this manager change. Keep existing runtime paths and package contracts, or provide explicit migrations and aliases before replacing them.
-- The Manager is registered with Nexus Mods as Modstoke Manager, client `modstoke_manager`. See the [Nexus integration notes](NEXUS_API_REVIEW.md).
+- The Manager is registered with Nexus Mods as Modstoke, client `modstoke`. See the [Nexus integration notes](NEXUS_API_REVIEW.md).
 - Set up the modstoke.com website and catalog services separately. The Manager already reads the community server list and the loader release feed from modstoke.com, because the feed's old GitHub address is no longer available. No loader release has been published there yet. Mod catalog addresses are unchanged. Before changing any other endpoint, verify manifest schemas, download integrity and support for older clients, and keep old endpoints or redirects available for released clients.
 - Sign every new manager build before uploading it, as described in [code signing](SIGNING.md). New signed releases are on hold, so the repository still offers only the signed 0.2.0 files. The repository was renamed from `openacai-mod-manager` to `modstoke-manager`; GitHub redirects the old web, clone and download addresses. A download filename change or release relocation also needs stable redirects or aliases for existing links.
 
