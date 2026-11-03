@@ -13,7 +13,7 @@ Players sign in through their browser with OAuth 2.0 and PKCE, as a public deskt
 
 Build the `openacai-tauri2-svelte5-shell` branch with `npm ci` and `npm run tauri build`. The executable is `src-tauri/target/release/OpenACAI Mod Manager.exe`. Its filename is retained for installation compatibility; the app displays Modstoke Manager.
 
-In the app, open **Browse mods**, choose **Nexus & Vortex** and select **Sign in with Nexus**. Approve Modstoke on Nexus Mods, select **Continue** on the page that follows, and let the browser open the Manager. The signed 0.2.0 downloads in `prebuilt/` are an older baseline, not this review build.
+In the app, open **Browse mods**, choose **Nexus & Vortex** and select **Sign in with Nexus**. Approve Modstoke on Nexus Mods, select **Continue** on the page that follows, and let the browser open the Manager. The signed [Manager 0.3.0 installer](https://modstoke.com/downloads/manager/0.3.0/Modstoke-Manager-0.3.0-x64-setup.exe) includes this sign-in. The 0.2.0 files in `prebuilt/` are an older baseline without it.
 
 ## Requests and account data
 

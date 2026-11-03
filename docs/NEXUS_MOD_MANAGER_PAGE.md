@@ -2,7 +2,7 @@
 
 A Windows toolkit for Sons of the Forest, **by OpenACAI**. Manage local mods and loaders, browse mod catalogs, and look after dedicated servers in one application.
 
-Modstoke Manager is based on [RedManager](https://github.com/ToniMacaroni/RedManager) by Toni Macaroni. The current source uses Tauri 2 and Svelte 5. The signed 0.2.0 downloads still contain the earlier OpenACAI branding; build the current branch for the newer workspaces and Nexus integration changes.
+Modstoke Manager is based on [RedManager](https://github.com/ToniMacaroni/RedManager) by Toni Macaroni. The current source uses Tauri 2 and Svelte 5. Download the signed [Manager 0.3.0 installer](https://modstoke.com/downloads/manager/0.3.0/Modstoke-Manager-0.3.0-x64-setup.exe) from modstoke.com; it includes the Modstoke workspaces and the Nexus Mods sign-in.
 
 ## Nexus Mods and Vortex
 

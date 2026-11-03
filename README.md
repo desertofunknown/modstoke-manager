@@ -6,21 +6,21 @@ Modstoke Manager is a Windows toolkit for **Sons of the Forest**, maintained by 
 
 ![Browse mods from SOTF Mods and Nexus Mods side by side](docs/screenshots/browse-mods.png)
 
-The current Manager source is on the [`openacai-tauri2-svelte5-shell` branch](https://github.com/desertofunknown/modstoke-manager/tree/openacai-tauri2-svelte5-shell). Some installed paths and the download filenames still use OpenACAI names for compatibility. The Manager reads the community server list and the loader release feed from modstoke.com; its mod catalog addresses are unchanged. See the [rename compatibility notes](docs/BRAND_COMPATIBILITY.md) and [changelog](CHANGELOG.md).
+The current Manager source is on the [`openacai-tauri2-svelte5-shell` branch](https://github.com/desertofunknown/modstoke-manager/tree/openacai-tauri2-svelte5-shell). Some installed paths, such as the program file `OpenACAI Mod Manager.exe`, still use OpenACAI names for compatibility. The Manager reads the community server list and the loader release feed from modstoke.com; its mod catalog addresses are unchanged. See the [rename compatibility notes](docs/BRAND_COMPATIBILITY.md) and [changelog](CHANGELOG.md).
 
 ## Download the Windows app
 
-The repository contains signed **0.2.0** downloads:
+Download **Modstoke Manager 0.3.0** for Windows x64 from modstoke.com:
 
-- [Portable app, Windows x64](https://github.com/desertofunknown/modstoke-manager/blob/openacai-tauri2-svelte5-shell/prebuilt/OpenACAI-Mod-Manager-0.2.0-x64-portable.exe?raw=1)
-- [Installer, Windows x64](https://github.com/desertofunknown/modstoke-manager/blob/openacai-tauri2-svelte5-shell/prebuilt/OpenACAI-Mod-Manager-0.2.0-x64-setup.exe?raw=1)
-- [SHA256 checksums](https://github.com/desertofunknown/modstoke-manager/blob/openacai-tauri2-svelte5-shell/prebuilt/SHA256SUMS.txt)
+- [Installer, Windows x64](https://modstoke.com/downloads/manager/0.3.0/Modstoke-Manager-0.3.0-x64-setup.exe), 5.3 MB
+- SHA256 `511f9a71c16811604a1fb27c49ac8f613395f0138ff78685b668c334b7b691b0`
+- [Release notes](https://modstoke.com/releases/#manager-0-3-0) and [install guide](https://modstoke.com/guides/install-modstoke-manager/)
 
-These signed files still display **OpenACAI Mod Manager** and predate everything listed under Unreleased in the [changelog](CHANGELOG.md), including the Modstoke name, the dedicated server tools and the server browser. They have Main, Mods, Vortex and Mod Creation tabs. A newer signed release is not available yet; to use the current app, build it from source as described below. You can [check a download's hash and signature](docs/TROUBLESHOOTING.md#check-a-downloaded-executable) before running it.
+The installer and the programs it installs are signed by **OpenACAI Inc**. You can [check a download's hash and signature](docs/TROUBLESHOOTING.md#check-a-downloaded-executable) before running it. The older signed 0.2.0 files, which still display OpenACAI Mod Manager, remain in [`prebuilt/`](prebuilt/) for reference.
 
 ## Get started
 
-These steps describe the current app, built from source.
+These steps describe Manager 0.3.0.
 
 1. Run the Manager on Windows 10 or 11. WebView2 is required; the installer bootstraps it if needed.
 2. Select **Add** and choose `SonsOfTheForest.exe` in your game installation folder.
@@ -29,7 +29,7 @@ These steps describe the current app, built from source.
 5. Open **Server browser** to find community servers. Before joining through Steam, the Manager checks the server's current details and compares its required mods with the files in your selected game installation.
 6. Use **Multiplayer** for server requirement lists, Modstoke Client participation, package recovery and Admin staff permissions for games you host. Use **Settings** to choose a skin; the default, Match the game, uses the Sons of the Forest skin when a player installation is saved.
 
-**Loader install and repair do not work yet.** A source build requests `OpenACAILoader.manifest.json` from [modstoke.com](https://modstoke.com/releases/loader/latest/OpenACAILoader.manifest.json), where no loader release has been published yet. The signed 0.2.0 downloads request an old GitHub address that is no longer available. The loader cannot be installed from a local ZIP. In a source build, install and repair will work once a compatible loader release is published on modstoke.com. See [troubleshooting](docs/TROUBLESHOOTING.md#loader-install-says-the-manifest-is-unavailable) for the errors you may see.
+**Loader install and repair need a Loader release on modstoke.com, which has not been published yet.** The Manager requests `OpenACAILoader.manifest.json` from [modstoke.com](https://modstoke.com/releases/loader/latest/OpenACAILoader.manifest.json) and downloads the package it names from `modstoke.com/downloads/loader/`. The 0.2.0 files request an old GitHub address that is no longer available. The loader cannot be installed from a local ZIP. Install and repair will work once the Loader release is published. See [troubleshooting](docs/TROUBLESHOOTING.md#loader-install-says-the-manifest-is-unavailable) for the errors you may see.
 
 Sign in with your Nexus Mods account through your browser. The Manager uses Nexus's OAuth sign-in with PKCE and never asks for a personal API key. See the [Nexus integration notes](docs/NEXUS_API_REVIEW.md) for account handling and the OAuth registration.
 

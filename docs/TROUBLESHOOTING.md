@@ -1,6 +1,6 @@
 # Manager troubleshooting
 
-This guide covers the [`openacai-tauri2-svelte5-shell` Manager branch](https://github.com/desertofunknown/modstoke-manager/tree/openacai-tauri2-svelte5-shell). The signed 0.2.0 downloads in that branch still carry the OpenACAI Mod Manager name.
+This guide covers the [`openacai-tauri2-svelte5-shell` Manager branch](https://github.com/desertofunknown/modstoke-manager/tree/openacai-tauri2-svelte5-shell). The current signed release is [Manager 0.3.0 on modstoke.com](https://modstoke.com/releases/#manager-0-3-0). The older signed 0.2.0 files in `prebuilt/` still carry the OpenACAI Mod Manager name.
 
 ## The Manager rejects my game path
 
@@ -8,7 +8,7 @@ Select **Add** and choose the game's `SonsOfTheForest.exe`, not a Steam shortcut
 
 ## Loader install says the manifest is unavailable
 
-The loader install on the **Loaders** page, **Check files** and **Update / Repair** (labelled **Verify / Repair** until a check finds a problem) all use a [fixed release manifest on modstoke.com](https://modstoke.com/releases/loader/latest/OpenACAILoader.manifest.json). No loader release has been published there yet, so the Manager cannot fetch a new loader package. The signed 0.2.0 downloads still request the old GitHub release address, which is no longer available. If a manifest was cached from an earlier successful check, the Manager may show cached status, but it still needs an available package URL to download a repair.
+The loader install on the **Loaders** page, **Check files** and **Update / Repair** (labelled **Verify / Repair** until a check finds a problem) all use a [fixed release manifest on modstoke.com](https://modstoke.com/releases/loader/latest/OpenACAILoader.manifest.json). No loader release has been published there yet, so the Manager cannot fetch a new loader package. The 0.2.0 files still request the old GitHub release address, which is no longer available. If a manifest was cached from an earlier successful check, the Manager may show cached status, but it still needs an available package URL to download a repair.
 
 The source contains a local ZIP installer class, but the current UI does not connect it to an install button. Selecting a local `OpenACAILoader.zip` is therefore not a supported workaround in this build. Loader install and repair need a compatible loader release published to that address.
 
@@ -38,12 +38,12 @@ Run `npm ci` from the Manager repository before `npm run check` or `npm run taur
 
 ## Check a downloaded executable
 
-Compare its SHA256 hash with the [checksums committed alongside the downloads](https://github.com/desertofunknown/modstoke-manager/blob/openacai-tauri2-svelte5-shell/prebuilt/SHA256SUMS.txt). In PowerShell, replace the path with the file you downloaded:
+Compare its SHA256 hash with the one published with the download. For the 0.3.0 installer it is `511f9a71c16811604a1fb27c49ac8f613395f0138ff78685b668c334b7b691b0`; the 0.2.0 files are listed in the [checksums committed alongside them](https://github.com/desertofunknown/modstoke-manager/blob/openacai-tauri2-svelte5-shell/prebuilt/SHA256SUMS.txt). In PowerShell, replace the path with the file you downloaded:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath ".\OpenACAI-Mod-Manager-0.2.0-x64-setup.exe"
-Get-AuthenticodeSignature -LiteralPath ".\OpenACAI-Mod-Manager-0.2.0-x64-setup.exe"
+Get-FileHash -Algorithm SHA256 -LiteralPath ".\Modstoke-Manager-0.3.0-x64-setup.exe"
+Get-AuthenticodeSignature -LiteralPath ".\Modstoke-Manager-0.3.0-x64-setup.exe"
 ```
 
-The signature should report `Valid` with **OpenACAI Inc** as the signer. Only the downloaded setup and portable files are signed. The `OpenACAI Mod Manager.exe` that the 0.2.0 setup installs reports `NotSigned`. A local source build is not signed unless it is signed separately.
+The signature should report `Valid` with **OpenACAI Inc** as the signer. From 0.3.0, the installed `OpenACAI Mod Manager.exe` and its uninstaller are signed too. The program that the 0.2.0 setup installs reports `NotSigned`. A local source build is not signed unless it is signed separately.
 

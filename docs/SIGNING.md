@@ -26,7 +26,7 @@ CN=OpenACAI Inc, O=OpenACAI Inc, L=Farmington, S=Missouri, C=US
 Identity validation: d00cf1a3-c3a3-4890-8b2e-c1576d258506
 ```
 
-Artifact Signing uses short-lived certificates, so the thumbprint and serial change between signings. Check the subject, not the thumbprint. The v0.2.0 files were signed with a certificate valid from 4 to 7 June 2026, thumbprint `8402188618D8D3CC02A6F885EE2AB8B7A5E5481A`.
+Artifact Signing uses short-lived certificates, so the thumbprint and serial change between signings. Check the subject, not the thumbprint. The v0.2.0 files were signed with a certificate valid from 4 to 7 June 2026, thumbprint `8402188618D8D3CC02A6F885EE2AB8B7A5E5481A`. The 0.3.0 installer was signed on 3 November 2026 with thumbprint `B63B0EF389ED72E0D29E82264A5B9C82A43C443B`.
 
 The identity validation ID is an Azure-side validation record. It is not the same thing as the certificate profile name used by SignTool.
 
@@ -83,6 +83,27 @@ The signing script:
 
 The script signs only those two files. The setup is built before they are signed, so the `OpenACAI Mod Manager.exe` and `uninstall.exe` it installs are unsigned. This is true of the signed v0.2.0 setup as well. To sign them too, give the release build a Tauri sign command: set `bundle.windows.signCommand` to a SignTool command ending in `%1`. The bundler then signs the app before packing it, and also signs the uninstaller and the setup.
 
+## Signing everything in the installer
+
+Manager 0.3.0 was built this way, so the app, the uninstaller, the installer's plugins and the setup are all signed. Keep the sign command out of `tauri.conf.json`, because it holds paths on the signing machine. Write it to a JSON file outside the repository and pass it to the build:
+
+```json
+{
+  "bundle": { "windows": { "signCommand": {
+    "cmd": "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64\\signtool.exe",
+    "args": ["sign", "/v", "/fd", "SHA256", "/tr", "http://timestamp.acs.microsoft.com", "/td", "SHA256",
+             "/d", "Modstoke Manager by OpenACAI", "/dlib", "<path to Azure.CodeSigning.Dlib.dll>",
+             "/dmdf", "<path to the metadata JSON>", "%1"]
+  } } }
+}
+```
+
+```powershell
+npm run tauri build -- --config C:\path\to\sign-config.json
+```
+
+The metadata JSON names the endpoint, account and certificate profile, as `sign-prebuilt.ps1` writes it. Build from a clean, pushed commit. Afterwards, unpack the setup with 7-Zip and check every `.exe` and `.dll` inside with `Get-AuthenticodeSignature`. The `OpenACAI Mod Manager.exe` left in `src-tauri/target/release` reports `NotSigned`, because Tauri signs a copy it has patched for the installer; that file is not shipped.
+
 Do not commit private keys, certificate passwords, service-principal secrets, generated metadata files, or token credentials.
 
 ## Before uploading binaries
@@ -94,4 +115,4 @@ Every Windows binary committed to `prebuilt/` or attached to a GitHub release mu
 - Publish SHA256 checksums in `prebuilt/SHA256SUMS.txt`, generated after signing.
 - Do not publish an MSI while its launch issue is unresolved. The build currently makes only the NSIS setup.
 
-`prebuilt/` holds the signed v0.2.0 builds, which still carry the OpenACAI Mod Manager name and branding. New signed releases are on hold, so keep those files unchanged until a new build can be signed.
+`prebuilt/` holds the signed v0.2.0 builds, which still carry the OpenACAI Mod Manager name and branding. Keep them unchanged. From 0.3.0, signed releases are published on modstoke.com.

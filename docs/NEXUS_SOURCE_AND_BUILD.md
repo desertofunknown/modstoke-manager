@@ -4,8 +4,8 @@ This document is for Nexus Mods review of Modstoke Manager, by OpenACAI, and the
 Modstoke Loader package it installs for Sons Of The Forest.
 
 For the Manager's API behavior, account handling and OAuth sign-in,
-start with the [Nexus integration notes](NEXUS_API_REVIEW.md). The signed 0.2.0
-downloads predate these changes; build the current Manager branch for review.
+start with the [Nexus integration notes](NEXUS_API_REVIEW.md). The signed 0.3.0
+installer on modstoke.com includes these changes; the 0.2.0 files predate them.
 
 The project is open source. The Manager builds from this repository alone. It installs and verifies a loader package, but the loader source is published only as a partial snapshot for review, so the loader steps below describe the maintainer's local build and can't yet be repeated from public source.
 
@@ -77,8 +77,8 @@ metadata supplies the runtime version shown in the manager.
 
 Existing repositories, package files, runtime executable, namespaces, and
 loader build paths retain their compatibility names. The source-built installer
-uses the Modstoke Manager name. Signed `0.2.0` downloads retain the OpenACAI Mod
-Manager name and branding.
+uses the Modstoke Manager name. The older signed `0.2.0` files retain the OpenACAI
+Mod Manager name and branding.
 
 The default loader build script expects this workspace layout:
 
@@ -111,10 +111,10 @@ Expected unsigned build outputs:
 
 ```text
 src-tauri/target/release/OpenACAI Mod Manager.exe
-src-tauri/target/release/bundle/nsis/Modstoke Manager_0.2.0_x64-setup.exe
+src-tauri/target/release/bundle/nsis/Modstoke Manager_<version>_x64-setup.exe
 ```
 
-`scripts\refresh-prebuilt.ps1` deletes the Manager files in `prebuilt/`, copies in the new build and rewrites `SHA256SUMS.txt`. Only signed builds go in `prebuilt/` or on a release, so always run it with `-Sign` (see below). Newer signed builds aren't available yet, so `prebuilt/` keeps the signed 0.2.0 files for now. When the version changes, pass it with `-Version`; the script defaults to 0.2.0.
+`scripts\refresh-prebuilt.ps1` deletes the Manager files in `prebuilt/`, copies in the new build and rewrites `SHA256SUMS.txt`. Only signed builds go in `prebuilt/` or on a release, so always run it with `-Sign` (see below). Releases from 0.3.0 are published on modstoke.com instead, so `prebuilt/` keeps the signed 0.2.0 files. When the version changes, pass it with `-Version`; the script defaults to 0.2.0.
 
 Expected prebuilt outputs:
 
@@ -131,7 +131,7 @@ Signing is not needed to compile or inspect the source, but every binary committ
 .\scripts\refresh-prebuilt.ps1 -Build -Sign
 ```
 
-This signs the portable exe and the installer after the build. It does not sign the copy of the app inside the installer, so the installed `OpenACAI Mod Manager.exe` stays unsigned (the signed 0.2.0 installer included) until the build signs the app before packaging it. If the build or signing stops partway, `prebuilt/` is left with missing or unsigned files: run `git restore prebuilt` and don't commit it. Check every file with `Get-AuthenticodeSignature` before committing. Signing needs OpenACAI's Azure Artifact Signing account or its certificate; see [SIGNING.md](SIGNING.md).
+This signs the portable exe and the installer after the build. It does not sign the copy of the app inside the installer, so the installed `OpenACAI Mod Manager.exe` stays unsigned, as it is in the signed 0.2.0 installer. The 0.3.0 release was built with a sign command instead, which signs everything; see [SIGNING.md](SIGNING.md#signing-everything-in-the-installer). If the build or signing stops partway, `prebuilt/` is left with missing or unsigned files: run `git restore prebuilt` and don't commit it. Check every file with `Get-AuthenticodeSignature` before committing. Signing needs OpenACAI's Azure Artifact Signing account or its certificate; see [SIGNING.md](SIGNING.md).
 
 ## Build Loader Dependencies
 
