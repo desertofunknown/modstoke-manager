@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { gameExePath, getDirectoryPath, isPathValid, processName } from './store';
 import { get } from 'svelte/store';
 import { downloadAndInstall, openWebLink } from './utils';
-import { assertCurrentGameRoot, linkedExists, pathKey, scanInstalledInventory, type InstallSource, type LoaderType } from './modInventory';
+import { assertCurrentGameRoot, linkedExists, mayHaveChildren, pathKey, scanInstalledInventory, type InstallSource, type LoaderType } from './modInventory';
 import { resolveInstallPlan, type InstallPlan } from './modInstallPlan';
 import { applyProfilePackage, completedPackage, discardModProfileRollback, freshPlanInventory, mergeRequestedRoots, pinArchive, readModProfile, rollbackModProfile, saveModProfile, type ModProfile, type ProfileState } from './modProfile';
 import * as fs from "@tauri-apps/plugin-fs"
@@ -368,7 +368,7 @@ export class ModDatabase {
                 continue;
             }
 
-            if (depth === MAX_MANIFEST_SCAN_DEPTH || name.endsWith(".dll") || name.endsWith(".disabled")) {
+            if (depth === MAX_MANIFEST_SCAN_DEPTH || !mayHaveChildren(file) || name.endsWith(".dll") || name.endsWith(".disabled")) {
                 continue;
             }
 

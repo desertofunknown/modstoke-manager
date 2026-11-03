@@ -61,6 +61,12 @@ export async function linkedExists(target: string): Promise<boolean> {
     }
 }
 
+// readDir doesn't follow links, so a linked folder (a symlink or a junction) comes back as a
+// symlink, not a directory.
+export function mayHaveChildren(entry: fs.DirEntry): boolean {
+    return entry.isDirectory || entry.isSymlink;
+}
+
 export async function scanInstalledInventory(root?: string): Promise<InstalledInventoryEntry[]> {
     const gameRoot = root ?? await getDirectoryPath();
     // A game folder outside the fs scope must fail here, not look like an empty one below.
@@ -356,7 +362,7 @@ async function findManifestFolders(rootPath: string, depth: number = 0): Promise
             continue;
         }
 
-        if (depth === MAX_SCAN_DEPTH || name.startsWith(".") || name.endsWith(".dll") || name.endsWith(".disabled")) {
+        if (depth === MAX_SCAN_DEPTH || !mayHaveChildren(file) || name.startsWith(".") || name.endsWith(".dll") || name.endsWith(".disabled")) {
             continue;
         }
 
@@ -386,7 +392,7 @@ async function findFiles(rootPath: string, predicate: (fileName: string) => bool
             continue;
         }
 
-        if (!file.name.startsWith(".") && !file.name.toLowerCase().endsWith(".dll")) {
+        if (mayHaveChildren(file) && !file.name.startsWith(".") && !file.name.toLowerCase().endsWith(".dll")) {
             results.push(...await findFiles(filePath, predicate, depth + 1));
         }
     }
@@ -503,8 +509,12 @@ async function hasVortexMarker(packagePath: string | null | undefined, depth: nu
         }
 
         for (const file of await fs.readDir(packagePath)) {
+            if (!mayHaveChildren(file) || file.name.startsWith(".")) {
+                continue;
+            }
+
             const childPath = await path.join(packagePath, file.name);
-            if (!file.name.startsWith(".") && await hasVortexMarker(childPath, depth + 1)) {
+            if (await hasVortexMarker(childPath, depth + 1)) {
                 return true;
             }
         }
