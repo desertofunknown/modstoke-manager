@@ -164,6 +164,8 @@ Needs the server stopped.
 - A disabled native mod is its folder renamed to `<Folder>.disabled`.
 - A disabled RedLoader mod has `.disabled` added to its files.
 - The records follow the rename.
+- The Loader lists such mods but never loads them. That covers native and RedLoader package or assembly paths ending in `.disabled` or `.pending`, or under a `_Disabled` folder, and BepInEx plugin paths with a segment ending in `.disabled` or named `_Disabled`.
+- `.pending` marks unapplied staging only and is never used to disable a mod.
 
 ### rollback --id <modId> [--to <version>]
 
@@ -235,5 +237,6 @@ Read-only. Returns `{ "serverState", "hostStatusUpdatedAt", "modsFolder", "pendi
 
 ## Hosting flow
 
-- **Running server:** queue the change. The panel shows `pendingMods`. On restart: stop, then take a world backup if enabled, then `apply`, then start. The Loader rewrites `server-requirements.json` on start.
+- **Running server:** queue the change. The panel shows `pendingMods`. On restart: stop, then take a world backup if enabled, then `apply`, then start.
+- **Requirements file:** when a dedicated server becomes ready, Loader 0.4.2 and later regenerate `Modstoke/Runtime/server-requirements.json` from the installed mods; `requirements generate` does it on demand. The tool never writes it. Admin's own required-mods file is separate and the tool doesn't change it.
 - **Stopped server:** run the command directly with `--server-stopped`.
