@@ -484,6 +484,7 @@ fn install_locked(context: &mut Context, zip: &Path, sha256: &str, source: Optio
         "filesRemoved": installed.removed,
         "keptPaths": kept,
     });
+    add_notices(&mut result, loader_notice(&root, archive));
     record(&sidecar, &root, &mut result);
     Ok(result)
 }
@@ -526,9 +527,14 @@ fn set_enabled_locked(context: &mut Context, id: &str, enabled: bool) -> Done {
 // Once a change is made, a sidecar that cannot be written is reported, not turned into a failure.
 fn record(sidecar: &Sidecar, root: &Path, result: &mut Value) {
     if let Err(failure) = sidecar.write(root) {
-        let notice = json!(format!("The change was made, but {SIDECAR} could not be updated: {}", failure.message));
+        add_notices(result, Some(format!("The change was made, but {SIDECAR} could not be updated: {}", failure.message)));
+    }
+}
+
+fn add_notices(result: &mut Value, notices: impl IntoIterator<Item = String>) {
+    for notice in notices {
         match result["notices"].as_array_mut() {
-            Some(notices) => notices.push(notice),
+            Some(list) => list.push(json!(notice)),
             None => result["notices"] = json!([notice]),
         }
     }
@@ -605,7 +611,10 @@ fn inspect(context: &mut Context, zip: &str, sha256: &str) -> Done {
         return Ok(inspect_redloader(&root, zip, &HashSet::new())?.0);
     }
     let sidecar = Sidecar::read(&root)?;
-    Ok(inspection_json(&native_inspection(&root, zip, &sidecar)?))
+    let inspection = native_inspection(&root, zip, &sidecar)?;
+    let mut result = inspection_json(&inspection);
+    add_notices(&mut result, loader_notice(&root, &inspection.archive));
+    Ok(result)
 }
 
 fn inspection_json(inspection: &native_cli::Inspection) -> Value {
@@ -620,7 +629,7 @@ fn inspection_json(inspection: &native_cli::Inspection) -> Value {
             "kind": "native",
             "clientRequirement": archive.extras.client,
             "dependencies": archive.required.iter().map(|(id, version)| json!({ "id": id, "version": version })).collect::<Vec<_>>(),
-            "minimumLoader": null,
+            "minimumLoader": archive.extras.min_loader,
         },
         "archiveSha256": archive.sha256,
         "size": archive.size,
@@ -710,6 +719,7 @@ fn queue(context: &mut Context, change: Command) -> Done {
     let queued = read_requests(&root);
     let sidecar = Sidecar::read(&root)?;
     let mut dependency_problems = Vec::new();
+    let mut notices = Vec::new();
     let (action, mod_id, version, archive, kind, requires) = match &change {
         Command::Install { zip, sha256 } => {
             let zip = Path::new(zip);
@@ -722,6 +732,7 @@ fn queue(context: &mut Context, change: Command) -> Done {
                 (identity.id, identity.version, violations, Vec::new())
             } else {
                 let inspection = native_inspection(&root, zip, &sidecar)?;
+                notices.extend(loader_notice(&root, &inspection.archive));
                 let requires = inspection.archive.required.clone();
                 (inspection.archive.id, inspection.archive.version, inspection.violations, requires)
             };
@@ -875,7 +886,9 @@ fn queue(context: &mut Context, change: Command) -> Done {
     safe_fs::durable_rename(&staged, &dir.join(&name), false).map_err(|message| Failure::new("io", message))?;
     remove_unused_archives(&root);
     let position = read_requests(&root).iter().position(|(path, _)| path.file_name().is_some_and(|file| file == name.as_str())).map_or(0, |index| index + 1);
-    Ok(json!({ "request": request, "position": position, "superseded": superseded }))
+    let mut result = json!({ "request": request, "position": position, "superseded": superseded });
+    add_notices(&mut result, notices);
+    Ok(result)
 }
 
 // Installed native mods by lower-case ID: the ID, its version, what it requires, and whether it is
@@ -1613,6 +1626,7 @@ fn inventory(context: &mut Context) -> Done {
         Sidecar::default()
     });
     let vortex = mod_update::vortex_paths(root);
+    let loader = installed_loader(root);
     let mut packages = Vec::new();
     for entry in &inventory.packages {
         let manifest = relative(root, &entry.manifest_path);
@@ -1633,6 +1647,10 @@ fn inventory(context: &mut Context) -> Done {
             "manual"
         };
         let extras = fs::read(root.join(&manifest)).ok().map(|bytes| native_cli::extras(&bytes));
+        if entry.state != "disabled" {
+            let minimum = extras.as_ref().and_then(|extras| extras.min_loader.as_deref());
+            notices.extend(minimum.and_then(|minimum| loader_requirement(&entry.id, minimum, loader.as_deref())));
+        }
         let side = sidecar.get(&entry.id);
         packages.push(json!({
             "id": entry.id,
@@ -1923,6 +1941,73 @@ fn sanitize(version: &str) -> String {
     version.chars().map(|character| if character.is_ascii_alphanumeric() || "._-".contains(character) { character } else { '_' }).collect()
 }
 
+// ---- Loader version ----
+
+const LOADER_MANIFEST: &str = "Modstoke/Runtime/openacai-loader.manifest.json";
+
+fn installed_loader(root: &Path) -> Option<String> {
+    let manifest: Value = serde_json::from_slice(&fs::read(root.join(LOADER_MANIFEST)).ok()?).ok()?;
+    manifest.get("version")?.as_str().map(|version| version.trim().to_owned())
+}
+
+fn loader_notice(root: &Path, archive: &native_cli::ArchiveInfo) -> Option<String> {
+    let minimum = archive.extras.min_loader.as_deref()?;
+    loader_requirement(&archive.id, minimum, installed_loader(root).as_deref())
+}
+
+// The Loader skips a mod whose minLoaderVersion is above its own version, or unreadable. This is
+// a notice, not a refusal, because the Loader may be updated alongside the mod.
+fn loader_requirement(id: &str, minimum: &str, loader: Option<&str>) -> Option<String> {
+    let Some((needed, needed_pre)) = loader_semver(minimum) else {
+        return Some(format!("{id} declares minLoaderVersion \"{minimum}\", which the Loader cannot read, so the Loader will not load it."));
+    };
+    let loader = loader?;
+    let (have, have_pre) = loader_semver(loader.split('+').next().unwrap_or_default())?;
+    // A minimum without a pre-release ignores the Loader's own pre-release tag.
+    let too_old = match needed_pre {
+        None => have < needed,
+        Some(needed_pre) => have.cmp(&needed).then_with(|| match have_pre {
+            None => Ordering::Greater,
+            Some(have_pre) => compare_prerelease(have_pre, needed_pre),
+        }) == Ordering::Less,
+    };
+    too_old.then(|| format!("{id} needs Loader {minimum} or later, but Loader {loader} is installed, so the Loader will not load it until it is updated."))
+}
+
+// major.minor.patch with an optional -pre-release, as the Loader reads minLoaderVersion.
+fn loader_semver(version: &str) -> Option<([u64; 3], Option<&str>)> {
+    let version = version.trim();
+    let (core, pre) = match version.split_once('-') {
+        Some((core, pre)) => (core, Some(pre)),
+        None => (version, None),
+    };
+    if pre.is_some_and(|pre| pre.split('.').any(|part| part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-'))) {
+        return None;
+    }
+    let number = |part: &str| (!part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit())).then(|| part.parse::<u64>().ok()).flatten();
+    match core.split('.').collect::<Vec<_>>()[..] {
+        [major, minor, patch] => Some(([number(major)?, number(minor)?, number(patch)?], pre)),
+        _ => None,
+    }
+}
+
+// SemVer pre-release order: numeric parts by value and below text parts, and more parts win a tie.
+fn compare_prerelease(left: &str, right: &str) -> Ordering {
+    let (left, right): (Vec<&str>, Vec<&str>) = (left.split('.').collect(), right.split('.').collect());
+    for (a, b) in left.iter().zip(&right) {
+        let order = match (a.parse::<u64>(), b.parse::<u64>()) {
+            (Ok(a), Ok(b)) => a.cmp(&b),
+            (Ok(_), Err(_)) => Ordering::Less,
+            (Err(_), Ok(_)) => Ordering::Greater,
+            (Err(_), Err(_)) => a.cmp(b),
+        };
+        if order != Ordering::Equal {
+            return order;
+        }
+    }
+    left.len().cmp(&right.len())
+}
+
 // Orders versions by their dotted numbers, then a release after its pre-releases (1.0.0-rc1 < 1.0.0).
 fn compare_versions(left: &str, right: &str) -> Ordering {
     fn split(version: &str) -> (&str, Option<&str>) {
@@ -2065,5 +2150,23 @@ mod tests {
         assert_eq!(compare_versions("1.0.0-rc1", "1.0.0"), Ordering::Less);
         assert_eq!(compare_versions("v0.4.2", "0.4.10"), Ordering::Less);
         assert_eq!(compare_versions("0.4.1-net11-preview", "0.4.1-net10"), Ordering::Greater);
+    }
+
+    #[test]
+    fn checks_minimum_loader_versions() {
+        let old = |minimum: &str, loader: &str| loader_requirement("example", minimum, Some(loader)).is_some();
+        assert!(!old("0.4.2", "0.4.2-net11-preview"));
+        assert!(!old("0.4.2", "0.4.10"));
+        assert!(old("0.4.2", "0.4.1-net11-preview"));
+        assert!(old("0.5.0", "0.4.9"));
+        assert!(old("0.4.2-rc.2", "0.4.2-rc.1"));
+        assert!(!old("0.4.2-rc.2", "0.4.2-rc.10"));
+        assert!(!old("0.4.2-rc", "0.4.2"));
+        assert!(old("0.4.2-rc.1", "0.4.2-rc"));
+        assert!(!old("0.4.2", "0.4.2+build.7"));
+        for malformed in ["0.4", "0.4.2.1", "v0.4.2", "0.4.x", "0.4.2-", "0.4.2-rc..1"] {
+            assert!(loader_requirement("example", malformed, None).is_some(), "{malformed}");
+        }
+        assert!(loader_requirement("example", "0.4.2", None).is_none());
     }
 }

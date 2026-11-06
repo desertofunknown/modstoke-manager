@@ -26,6 +26,7 @@ pub(crate) struct Extras {
     pub(crate) author: Option<String>,
     pub(crate) client: String,
     pub(crate) description: Option<String>,
+    pub(crate) min_loader: Option<String>,
 }
 
 pub(crate) struct ArchiveInfo {
@@ -82,7 +83,7 @@ pub(crate) fn extras(bytes: &[u8]) -> Extras {
         Some(value @ ("required" | "optional" | "server")) => value.to_owned(),
         _ => "unknown".to_owned(),
     };
-    Extras { author, client, description: text("description") }
+    Extras { author, client, description: text("description"), min_loader: text("minLoaderVersion") }
 }
 
 fn archive_info(archive: &NativeArchive, source: &Path) -> ArchiveInfo {
@@ -97,7 +98,7 @@ fn archive_info(archive: &NativeArchive, source: &Path) -> ArchiveInfo {
         size: archive.size,
         files: archive.files.iter().map(|file| FileInfo { path: file.path.clone(), size: file.size, sha256: file.sha256.clone() }).collect(),
         required: archive.required.iter().map(|dependency| (dependency.id.clone(), dependency.version.clone())).collect(),
-        extras: archive_manifest(source, archive).map(|bytes| extras(&bytes)).unwrap_or(Extras { author: None, client: "unknown".into(), description: None }),
+        extras: archive_manifest(source, archive).map(|bytes| extras(&bytes)).unwrap_or(Extras { author: None, client: "unknown".into(), description: None, min_loader: None }),
     }
 }
 

@@ -81,6 +81,8 @@ On failure `ok` is `false`, `result` is `null`, and `error` is `{"code", "messag
 
 A change that was made but whose sidecar record could not be written, or whose recovery data could not be cleaned up afterwards, still succeeds; its `result` then has `notices`, a list of plain-English lines. Leftover recovery data is finished by the next `recover` or `apply`, and until then native installs answer `pending-unfinished`.
 
+A native mod whose `minLoaderVersion` is above the installed Loader's version (from `Modstoke/Runtime/openacai-loader.manifest.json`), or cannot be read, also gets a notice from `inspect`, `install` and `queue`, and from `inventory` while it is not disabled. It is not refused, since the Loader may be updated alongside it, but the Loader will not load it until then. A minimum without a pre-release ignores the Loader's own pre-release tag, so `0.4.2` accepts Loader `0.4.2-net11-preview`; a minimum with one uses SemVer order. With no Loader installed, only an unreadable minimum is reported.
+
 `violations` is `[{"path", "rule", "message"}]`. Every per-file problem is reported at once. A structural problem, such as a missing manifest, ends the scan early and is reported the same way.
 
 ## Server state
@@ -181,8 +183,8 @@ Read-only, so it runs any time. It runs every check that `install` would, and ch
 
 Manifest fields are filled as far as the mod's manifest declares them:
 - `author` comes from `author`, `creator`, `createdBy`, `created_by` or `owner`.
-- The Loader never reads a description, so `description` is only the author's free text when present.
-- Native manifests have no minimum Loader version, so `minimumLoader` is always `null`. Dependencies are exact versions.
+- `description` is the manifest's `description`, which the Loader shows in its `mods` list.
+- `minimumLoader` is the manifest's `minLoaderVersion` (`major.minor.patch` with an optional `-pre-release`), or `null`. Dependencies are exact versions.
 
 `action` is `install` or `update`, or `null` when there is any violation, an unfinished install (rule `pending`) included. RedLoader results have `packagePath` and `manifestPath` set to `null`.
 
