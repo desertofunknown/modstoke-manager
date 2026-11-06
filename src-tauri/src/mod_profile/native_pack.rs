@@ -176,6 +176,7 @@ pub(super) fn canonicalize_document(mut document: NativePackDocument) -> Result<
 }
 
 /// Validates descriptor metadata only; this does not verify any archive bytes.
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn parse_native_pack(text: String) -> Result<NativePackDocument, String> {
     if text.len() > MAX_DOCUMENT_BYTES {
@@ -186,6 +187,7 @@ pub fn parse_native_pack(text: String) -> Result<NativePackDocument, String> {
     canonicalize_document(document)
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub async fn prepare_native_pack(
     name: String,

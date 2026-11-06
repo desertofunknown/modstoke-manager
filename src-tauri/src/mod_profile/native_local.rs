@@ -59,6 +59,7 @@ pub(super) fn same<T: Serialize>(left: &T, right: &T) -> Result<bool, String> {
         == serde_json::to_value(right).map_err(|e| e.to_string())?)
 }
 
+#[cfg(feature = "app")]
 pub(super) fn require_stopped() -> Result<(), String> {
     let running = crate::server::process::any_running(
         &["SonsOfTheForest.exe", "SonsOfTheForestDS.exe"],
@@ -609,6 +610,7 @@ pub(super) fn require_observed(root: &Path, observed: &[(PathBuf, String)]) -> R
     Ok(())
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub async fn inspect_native_package(
     game_root: String,
@@ -635,6 +637,7 @@ pub async fn inspect_native_package(
     }).await.map_err(|error| error.to_string())?
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub async fn install_native_package(
     game_root: String,
@@ -654,7 +657,7 @@ pub async fn install_native_package(
         }
         if let Some(profile) = &current.profile { rollback::require_forward(profile)?; }
         mod_update::recover_pending_updates(&root)?;
-        let current = reconcile(&root, current)?;
+        let current = reconcile(&root, current, &require_stopped)?;
         // Copy into a private temporary before validating. The later extraction
         // is bound to these exact archive bytes and the per-file descriptor.
         let snapshot = tempfile::Builder::new().prefix(".modstoke-profile-").tempfile_in(&root).map_err(|error| error.to_string())?;

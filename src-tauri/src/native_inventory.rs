@@ -46,6 +46,7 @@ pub struct NativePackage {
     pub(crate) details: Vec<String>,
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub async fn read_native_mod_inventory(game_root: String) -> Result<NativeInventory, String> {
     tauri::async_runtime::spawn_blocking(move || read_inventory(&game_root))

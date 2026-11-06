@@ -1,0 +1,13 @@
+[package]
+name = "modstoke-native"
+version = "0.1.0"
+description = "Installs and removes Modstoke mods in a Sons of the Forest game or dedicated-server folder from the command line."
+authors = ["Alex Cooper"]
+license = "GPL-3.0-or-later"
+repository = "https://github.com/desertofunknown/modstoke-manager"
+edition = "2021"
+publish = false
+
+[dependencies]
+openacai-mod-manager = { path = "..", default-features = false }
+serde_json = "1.0"

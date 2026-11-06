@@ -342,6 +342,10 @@ fn write_locked(root: &Path, profile: &ModProfile) -> Result<ProfileState, Strin
     Ok(ProfileState { profile: Some(profile.clone()), revision: Some(sha256_hex(&bytes)) })
 }
 
+// Confirms the game and its dedicated server are stopped. The Manager scans running processes;
+// modstoke-native reads the Loader's host status or the host agent's word.
+pub(crate) type StoppedCheck<'a> = &'a dyn Fn() -> Result<(), String>;
+
 fn complete_package(profile: &mut ModProfile, index: usize) {
     let plan = profile.pending_plan.as_mut().expect("validated pending plan");
     plan.steps[index].status = "applied".into();
@@ -351,13 +355,13 @@ fn complete_package(profile: &mut ModProfile, index: usize) {
     } else { profile.packages.push(pkg); }
 }
 
-fn reconcile(root: &Path, state: ProfileState) -> Result<ProfileState, String> {
+fn reconcile(root: &Path, state: ProfileState, stopped: StoppedCheck) -> Result<ProfileState, String> {
     let Some(mut profile) = state.profile.clone() else { return Ok(state); };
     if profile.rollback.as_ref().is_some_and(|checkpoint| checkpoint.phase != "available") { return Ok(state); }
     let Some(plan) = &profile.pending_plan else { return Ok(state); };
     let Some(index) = plan.steps.iter().position(|step| step.status == "applying") else { return Ok(state); };
     if plan.steps[index].package.dependency_basis == native_local::DEPENDENCY_BASIS {
-        native_local::require_stopped()?;
+        stopped()?;
     }
     mod_update::recover_pending_updates(root)?;
     let step = &plan.steps[index];
@@ -387,6 +391,7 @@ fn require_revision(state: &ProfileState, expected: &Option<String>) -> Result<(
     Ok(())
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub async fn read_mod_profile(game_root: String) -> Result<ProfileState, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -398,7 +403,7 @@ pub async fn read_mod_profile(game_root: String) -> Result<ProfileState, String>
         if !pack_recovery_active && safe_fs::validate_target(&root, Path::new("SonsOfTheForestDS.exe"))? {
             mod_update::recover_pending_updates(&root)?;
         }
-        reconcile(&root, state)
+        reconcile(&root, state, &native_local::require_stopped)
     }).await.map_err(|error| error.to_string())?
 }
 
@@ -415,6 +420,7 @@ pub(crate) fn require_launch_ready(root: &Path) -> Result<(), String> {
     mod_update::require_no_pending_updates(root)
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub async fn check_player_launch_ready(game_root: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -424,6 +430,7 @@ pub async fn check_player_launch_ready(game_root: String) -> Result<(), String> 
     }).await.map_err(|error| error.to_string())?
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub async fn write_mod_profile(game_root: String, expected_revision: Option<String>, mut profile: ModProfile) -> Result<ProfileState, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -543,6 +550,7 @@ fn validate_staged_identity(staging: &Path, pkg: &ProfilePackage) -> Result<(Pat
     identity_manifest.ok_or_else(invalid_profile)
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub async fn apply_mod_profile_package(
     game_root: String,
@@ -555,7 +563,7 @@ pub async fn apply_mod_profile_package(
     tauri::async_runtime::spawn_blocking(move || {
         let root = self::game_root(&game_root)?;
         let _lock = mod_update::acquire_update_lock(&root)?;
-        let state = reconcile(&root, read_locked(&root)?)?;
+        let state = reconcile(&root, read_locked(&root)?, &native_local::require_stopped)?;
         require_revision(&state, &expected_revision)?;
         let mut profile = state.profile.ok_or_else(invalid_profile)?;
         rollback::require_forward(&profile)?;
@@ -629,13 +637,14 @@ pub async fn apply_mod_profile_package(
     }).await.map_err(|error| error.to_string())?
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub async fn rollback_mod_profile(game_root: String, expected_revision: Option<String>, plan_id: String) -> Result<ProfileState, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let root = profile_root(&game_root, true)?;
         native_local::require_stopped()?;
         let _lock = mod_update::acquire_update_lock(&root)?;
-        let state = reconcile(&root, read_locked(&root)?)?;
+        let state = reconcile(&root, read_locked(&root)?, &native_local::require_stopped)?;
         require_revision(&state, &expected_revision)?;
         // Resolve any native package cleanup before reversing the enclosing plan.
         mod_update::recover_pending_updates(&root)?;
@@ -643,13 +652,14 @@ pub async fn rollback_mod_profile(game_root: String, expected_revision: Option<S
     }).await.map_err(|error| error.to_string())?
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub async fn discard_mod_profile_rollback(game_root: String, expected_revision: Option<String>, plan_id: String) -> Result<ProfileState, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let root = profile_root(&game_root, true)?;
         native_local::require_stopped()?;
         let _lock = mod_update::acquire_update_lock(&root)?;
-        let state = reconcile(&root, read_locked(&root)?)?;
+        let state = reconcile(&root, read_locked(&root)?, &native_local::require_stopped)?;
         require_revision(&state, &expected_revision)?;
         rollback::discard(&root, state, Some(&plan_id))
     }).await.map_err(|error| error.to_string())?

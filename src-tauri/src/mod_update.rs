@@ -116,6 +116,7 @@ fn installation_root(destination: &str) -> Result<PathBuf, String> {
     }
 }
 
+#[cfg(feature = "app")]
 pub fn install_zip_archive(source: String, destination: String) -> Result<(), String> {
     let root = installation_root(&destination)?;
     let _lock = acquire_update_lock(&root)?;
@@ -259,7 +260,7 @@ fn replace_archive_locked_inner(
             ));
         }
         validate_mod_path(&relative_path)?;
-        if crate::admin_permissions::is_admin_data(&key) {
+        if crate::admin_paths::is_admin_data(&key) {
             return Err(format!(
                 "The archive contains {}, which belongs to Modstoke Admin's staff permissions. Edit staff permissions in Manager or F7 instead.",
                 relative_path.display()
@@ -895,11 +896,17 @@ pub(crate) fn validate_mod_path(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(feature = "app")]
 pub(crate) fn acquire_update_lock(root: &Path) -> Result<File, String> {
     if validate_target(root, Path::new("SonsOfTheForestDS.exe"))? {
         crate::server::launch::reap_exited()?;
         crate::server::process::require_stopped()?;
     }
+    lock_updates(root)
+}
+
+// Only keeps two installers from working on one root at once. Callers check the game is stopped.
+pub(crate) fn lock_updates(root: &Path) -> Result<File, String> {
     validate_target(root, Path::new(LOCK_PATH))?;
     let lock = exclusive_lock_options().open(root.join(LOCK_PATH)).map_err(|error| {
         format!(

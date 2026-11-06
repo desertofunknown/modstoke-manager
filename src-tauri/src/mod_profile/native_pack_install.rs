@@ -107,6 +107,7 @@ fn empty_profile(root: &Path) -> ModProfile {
         packages: Vec::new(), archives: Vec::new(), pending_plan: None, rollback: None }
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub async fn inspect_native_pack_install(game_root: String, sources: Vec<String>, document: String) -> Result<NativePackInstallPreview, String> {
     let document = native_pack::parse_native_pack(document)?;
@@ -181,7 +182,7 @@ fn pin_archives(profile: &mut ModProfile, archives: &[NativeArchive]) {
     }
 }
 
-fn apply_step(root: &Path, profile: &mut ModProfile, index: usize, source: &Path, archive: &NativeArchive, observed: &[(PathBuf, String)]) -> Result<(), String> {
+fn apply_step(root: &Path, profile: &mut ModProfile, index: usize, source: &Path, archive: &NativeArchive, observed: &[(PathBuf, String)], stopped: StoppedCheck) -> Result<(), String> {
     let old_files: Vec<_> = native_local::known_package(Some(profile), &archive.id).and_then(|package| package.native.as_ref())
         .into_iter().flat_map(|old| &old.files).map(|file| (PathBuf::from(&file.path), file.sha256.clone())).collect();
     let owned: HashMap<_, _> = old_files.iter().map(|(path, digest)| (key(&path.to_string_lossy()), digest.clone())).collect();
@@ -193,7 +194,7 @@ fn apply_step(root: &Path, profile: &mut ModProfile, index: usize, source: &Path
     write_locked(root, profile)?;
     mod_update::replace_native_archive_locked(source.to_string_lossy().into_owned(), root.to_string_lossy().into_owned(),
         PathBuf::from(&archive.package_path), old_files, &mut |targets, staging| {
-            native_local::require_stopped()?;
+            stopped()?;
             native_local::require_observed(root, observed)?;
             for file in &archive.files {
                 if safe_fs::target_hash(staging, Path::new(&file.path))?.as_deref() != Some(&file.sha256) {
@@ -225,6 +226,7 @@ fn apply_step(root: &Path, profile: &mut ModProfile, index: usize, source: &Path
     Ok(())
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub async fn install_native_pack(game_root: String, sources: Vec<String>, document: String,
     expected_revision: Option<String>, expected_plan_id: Option<String>) -> Result<ProfileState, String> {
@@ -239,7 +241,7 @@ pub async fn install_native_pack(game_root: String, sources: Vec<String>, docume
             return Err("The pending pack changed. Review its installation again.".into());
         }
         mod_update::recover_pending_updates(&root)?;
-        let current = reconcile(&root, current)?;
+        let current = reconcile(&root, current, &native_local::require_stopped)?;
         // Keep all verified ZIP snapshots alive until the whole operation exits.
         let snapshots = snapshots(&root, &sources, document.packages.len())?;
         let paths = snapshots.iter().map(|path| path.to_string_lossy().into_owned()).collect();
@@ -271,7 +273,7 @@ pub async fn install_native_pack(game_root: String, sources: Vec<String>, docume
             let prepared = native_local::prepare_many(&root, Some(&profile), &archives)?;
             require_progress(&root, plan, &prepared)?;
             let archive_index = archives.iter().position(|archive| key(&archive.id) == key(&plan.steps[index].package.id)).ok_or_else(invalid_profile)?;
-            apply_step(&root, &mut profile, index, snapshots[archive_index].as_ref(), &archives[archive_index], &prepared.observed)?;
+            apply_step(&root, &mut profile, index, snapshots[archive_index].as_ref(), &archives[archive_index], &prepared.observed, &native_local::require_stopped)?;
         }
         // Include the final write in the same ownership and dependency check.
         let prepared = native_local::prepare_many(&root, Some(&profile), &archives)?;

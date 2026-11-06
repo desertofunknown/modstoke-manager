@@ -6,35 +6,52 @@ authors = ["Alex Cooper"]
 license = "GPL-3.0-or-later"
 repository = "https://github.com/desertofunknown/modstoke-manager"
 edition = "2021"
+default-run = "openacai-mod-manager"
 
+[workspace]
+members = ["native-cli"]
+
+# The Manager's own code, shared with modstoke-native. Without the app feature it builds the
+# native package code alone, with no Tauri, so the command-line tool also builds on Linux.
+[lib]
+name = "modstoke_manager"
+path = "src/lib.rs"
+
+[[bin]]
+name = "openacai-mod-manager"
+path = "src/main.rs"
+required-features = ["app"]
 
 [build-dependencies]
-tauri-build = { version = "2.7", features = [] }
+tauri-build = { version = "2.7", features = [], optional = true }
 
 [dependencies]
-tauri = { version = "2.12", features = [] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["raw_value"] }
-zip = "0.5"
-tokio = { version = "1", features = ["net", "time", "io-util"] }
-regex = "1"
-winreg = "0.55"
-keyring = "2"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# Deflate and stored entries everywhere; bzip2 needs C code, so only the app has it.
+zip = { version = "0.5", default-features = false, features = ["deflate", "time"] }
 sha2 = "0.10"
-base64 = "0.22"
-getrandom = "0.2"
-png = "0.17"
-texture2ddecoder = "0.1"
 tempfile = "3"
-tauri-plugin-shell = "2"
-tauri-plugin-http = "2.7"
-tauri-plugin-fs = "2.7"
-tauri-plugin-dialog = "2"
-tauri-plugin-deep-link = "2"
-tauri-plugin-single-instance = "2"
+tauri = { version = "2.12", features = [], optional = true }
+tokio = { version = "1", features = ["net", "time", "io-util"], optional = true }
+regex = { version = "1", optional = true }
+keyring = { version = "2", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+base64 = { version = "0.22", optional = true }
+getrandom = { version = "0.2", optional = true }
+png = { version = "0.17", optional = true }
+texture2ddecoder = { version = "0.1", optional = true }
+tauri-plugin-shell = { version = "2", optional = true }
+tauri-plugin-http = { version = "2.7", optional = true }
+tauri-plugin-fs = { version = "2.7", optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
+tauri-plugin-deep-link = { version = "2", optional = true }
+tauri-plugin-single-instance = { version = "2", optional = true }
 
-[dependencies.windows]
+[target.'cfg(windows)'.dependencies]
+winreg = { version = "0.55", optional = true }
+
+[target.'cfg(windows)'.dependencies.windows]
 version = "0.33.0"
 features = [
     "alloc",
@@ -48,5 +65,15 @@ features = [
 ]
 
 [features]
+default = ["app"]
+# The desktop app. tauri.conf.json requests it explicitly, because the Tauri CLI builds with
+# --no-default-features.
+app = [
+    "dep:tauri", "dep:tauri-build", "dep:tokio", "dep:regex", "dep:keyring", "dep:reqwest",
+    "dep:base64", "dep:getrandom", "dep:png", "dep:texture2ddecoder", "dep:winreg",
+    "dep:tauri-plugin-shell", "dep:tauri-plugin-http", "dep:tauri-plugin-fs",
+    "dep:tauri-plugin-dialog", "dep:tauri-plugin-deep-link", "dep:tauri-plugin-single-instance",
+    "zip/bzip2",
+]
 # Tauri enables this for production builds and when frontendDist points to the filesystem.
-custom-protocol = ["tauri/custom-protocol"]
+custom-protocol = ["app", "tauri/custom-protocol"]

@@ -1,3 +1,4 @@
+use crate::admin_paths::{FOLDER, LOCK_FILE, NODES_FILE, POLICY_FILE, STATUS_FILE};
 use crate::hashing::sha256_hex;
 use crate::installation_profiles::{self, required_nullable};
 use crate::{native_root, safe_fs};
@@ -13,11 +14,6 @@ use tauri::Manager;
 
 // Modstoke Admin keeps its data next to settings.ini in the plugin folder, on a listen host and
 // on a dedicated server alike. Admin owns permission-nodes.json and permissions-status.json.
-const FOLDER: &str = "BepInEx/plugins/OpenACAIAdminTool";
-const POLICY_FILE: &str = "permissions.json";
-const LOCK_FILE: &str = "permissions.lock";
-const STATUS_FILE: &str = "permissions-status.json";
-const NODES_FILE: &str = "permission-nodes.json";
 const ADMIN_MANIFEST: &str = "Mods/Modstoke.Admin/openacai.mod.json";
 const FORMAT: &str = "modstoke.admin.permissions";
 const STATUS_FORMAT: &str = "modstoke.admin.permissions-status";
@@ -205,12 +201,6 @@ pub async fn write_admin_permissions(
     })
     .await
     .map_err(|error| format!("Could not save staff permissions: {error}"))?
-}
-
-pub(crate) fn is_admin_data(key: &str) -> bool {
-    key.strip_prefix(&FOLDER.to_lowercase())
-        .and_then(|name| name.strip_prefix('/'))
-        .is_some_and(|name| [POLICY_FILE, LOCK_FILE, STATUS_FILE, NODES_FILE].contains(&name))
 }
 
 fn require_installation(executable: &str, installation_id: &str) -> Result<String, String> {
