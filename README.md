@@ -33,6 +33,14 @@ These steps describe Manager 0.3.0.
 
 Sign in with your Nexus Mods account through your browser. The Manager uses Nexus's OAuth sign-in with PKCE and never asks for a personal API key. See the [Nexus integration notes](docs/NEXUS_API_REVIEW.md) for account handling and the OAuth registration.
 
+## Command-line tool for hosted servers
+
+**modstoke-native 0.1.0** manages native and RedLoader mods in a dedicated-server folder without the Manager's window, for server hosting panels. It applies the Manager's own rules. See [the command reference](docs/NATIVE_CLI.md).
+
+- [Windows x64](https://modstoke.com/downloads/modstoke-native/0.1.0/modstoke-native-0.1.0-windows-x64.exe), 2.5 MB, signed by **OpenACAI Inc**
+- [Linux x64](https://modstoke.com/downloads/modstoke-native/0.1.0/modstoke-native-0.1.0-linux-x64), 3.0 MB, a static build with no dependencies
+- [SHA256SUMS.txt](https://modstoke.com/downloads/modstoke-native/0.1.0/SHA256SUMS.txt) for both
+
 ## Develop on Windows
 
 Install Node.js 22.12 or newer, Rust/Cargo, and the [Tauri 2 Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows), including Visual Studio C++ build tools and WebView2. You can build the Manager without installing the game or a .NET SDK. Building the separate loader package has different requirements.

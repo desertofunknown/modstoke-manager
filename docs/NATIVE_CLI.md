@@ -2,6 +2,15 @@
 
 `modstoke-native` is a command-line tool that installs, removes and queues mods in a dedicated-server or game folder without the Manager's window. Server hosting runs it from its host agent. It is built from the Manager's own code, so it applies the same rules: archive validation, the native package policy, Modstoke and OpenACAI folder resolution, staging with rollback, Vortex ownership and the installation profile.
 
+Version 0.1.0 is published on modstoke.com:
+
+| Build | SHA-256 |
+|---|---|
+| [Windows x64](https://modstoke.com/downloads/modstoke-native/0.1.0/modstoke-native-0.1.0-windows-x64.exe), signed by OpenACAI Inc | `7c1478ad843df72f6e45bfc7fa1693e81ab09d8ba21804b2442948f3b6fe649d` |
+| [Linux x64](https://modstoke.com/downloads/modstoke-native/0.1.0/modstoke-native-0.1.0-linux-x64), static, no dependencies | `efe6877dbb83d52d578b1204c827b2bbbab32f95601215d0a19d358ffaed6a48` |
+
+[SHA256SUMS.txt](https://modstoke.com/downloads/modstoke-native/0.1.0/SHA256SUMS.txt) lists both, for `sha256sum -c`. Mark the Linux file executable after downloading it.
+
 Its source is `src-tauri/native-cli`. The shared code is the Manager's library built without the `app` feature, so it needs no Tauri and no C compiler:
 
 ```
