@@ -128,7 +128,7 @@ pub(super) fn inspect(source: &Path, layout: &str) -> Result<NativeArchive, Stri
         let mut file = archive
             .by_index(index)
             .map_err(|error| format!("Could not read a native ZIP entry: {error}"))?;
-        let directory = file.is_dir();
+        let directory = file.name().ends_with(['/', '\\']);
         let normalized = file.name().replace('\\', "/");
         let path = if directory {
             normalized.strip_suffix('/').unwrap_or(&normalized)

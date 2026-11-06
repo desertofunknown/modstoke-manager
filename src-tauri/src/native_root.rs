@@ -31,6 +31,17 @@ pub(crate) fn rebase(path: &str, root: &str) -> String {
     }
 }
 
+/// Virginia keeps private content in its package folder that no archive may contain, replace or
+/// remove, also while the package is disabled.
+pub(crate) fn is_protected_content(path: &Path) -> bool {
+    let parts: Vec<String> = path.components().map(|part| part.as_os_str().to_string_lossy().into_owned()).collect();
+    parts.len() >= 4
+        && is_root_name(&parts[0])
+        && parts[1].eq_ignore_ascii_case("Mods")
+        && (parts[2].eq_ignore_ascii_case("Modstoke.Virginia") || parts[2].eq_ignore_ascii_case("Modstoke.Virginia.disabled"))
+        && parts[3].eq_ignore_ascii_case("assets")
+}
+
 /// Mods and UserData belong to the player under either root.
 pub(crate) fn is_player_data(path: &Path) -> bool {
     let mut parts = path.components().map(|part| part.as_os_str().to_string_lossy());
@@ -63,5 +74,14 @@ mod tests {
         assert_eq!(rebase("BepInEx/plugins/OpenACAILoader/a.dll", ROOT), "BepInEx/plugins/OpenACAILoader/a.dll");
         assert!(is_player_data(Path::new("OpenACAI/UserData/settings.json")));
         assert!(!is_player_data(Path::new("Modstoke/Runtime/Modstoke.Loader.dll")));
+    }
+
+    #[test]
+    fn protects_virginias_private_content() {
+        assert!(is_protected_content(Path::new("Modstoke/Mods/Modstoke.Virginia/assets")));
+        assert!(is_protected_content(Path::new("OpenACAI/Mods/modstoke.virginia/Assets/maps/a.bin")));
+        assert!(is_protected_content(Path::new("Modstoke/Mods/Modstoke.Virginia.disabled/assets/a.bin")));
+        assert!(!is_protected_content(Path::new("Modstoke/Mods/Modstoke.Virginia/Virginia.dll")));
+        assert!(!is_protected_content(Path::new("Modstoke/Mods/Other/assets/a.bin")));
     }
 }

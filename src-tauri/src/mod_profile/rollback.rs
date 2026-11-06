@@ -67,6 +67,25 @@ pub(super) fn validate(profile: &ModProfile) -> Result<(), String> {
     Ok(())
 }
 
+// A moved or copied folder cannot use the old folder's recovery point: its receipts name the old
+// folder. Release it and its backups, unless a restore was under way.
+pub(super) fn release_for_move(root: &Path, profile: &mut ModProfile) -> Result<(), String> {
+    let Some(checkpoint) = &profile.rollback else { return Ok(()); };
+    let name = &checkpoint.workspace;
+    let valid = name.len() == ".modstoke-pack-".len() + 12
+        && name.strip_prefix(".modstoke-pack-").is_some_and(|rest| rest.bytes().all(|byte| byte.is_ascii_alphanumeric()));
+    if checkpoint.phase == "restoring" || !valid {
+        return Err(format!("{PROFILE_FILE} was written for {} while a rollback was under way, so it was left alone.", profile.game_root));
+    }
+    let workspace = root.join(name);
+    if fs::symlink_metadata(&workspace).is_ok_and(|metadata| metadata.is_dir()) {
+        fs::remove_dir_all(&workspace).map_err(|error| format!("Could not remove the old recovery point {}: {error}", workspace.display()))?;
+    }
+    profile.rollback = None;
+    profile.schema_version = 1;
+    Ok(())
+}
+
 pub(super) fn require_forward(profile: &ModProfile) -> Result<(), String> {
     if profile.rollback.as_ref().is_some_and(|checkpoint| checkpoint.phase != "available") {
         return Err("This installation has unfinished pack recovery. Resume it from the Main page before installing mods.".into());

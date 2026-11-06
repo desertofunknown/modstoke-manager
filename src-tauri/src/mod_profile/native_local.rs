@@ -186,6 +186,24 @@ pub(super) fn known_package<'a>(profile: Option<&'a ModProfile>, id: &str) -> Op
     profile.and_then(|profile| profile.packages.iter().find(|pkg| key(&pkg.id) == key(id)))
 }
 
+// Installed native mods that require `id`, read from their manifests as dependency planning does.
+// Disabled mods count too, since they would fail to load once enabled again.
+pub(super) fn dependents(root: &Path, id: &str) -> Result<Vec<String>, String> {
+    let inventory = native_inventory::read_inventory(&root.to_string_lossy())?;
+    let mut found = Vec::new();
+    for entry in &inventory.packages {
+        if entry.package_type == "library" || entry.entry_type.is_none() || key(&entry.id) == key(id) {
+            continue;
+        }
+        let Ok(path) = relative(root, &entry.manifest_path) else { continue };
+        let Ok(manifest) = read_bytes(root, &path).and_then(|bytes| native_archive::parse_manifest(&bytes)) else { continue };
+        if manifest.required.iter().any(|dependency| key(&dependency.id) == key(id)) {
+            found.push(manifest.id);
+        }
+    }
+    Ok(found)
+}
+
 pub(super) fn check_owned(root: &Path, archive: &NativeArchive) -> Result<(), String> {
     for file in &archive.files {
         let path = Path::new(&file.path);
@@ -241,6 +259,9 @@ pub(super) fn prepare_many(
     let mut folders = HashSet::new();
     for archive in archives {
         native_archive::validate_record(archive)?;
+        if let Some(file) = archive.files.iter().find(|file| crate::native_root::is_protected_content(Path::new(&file.path))) {
+            return Err(format!("The archive contains {}, which is Virginia's private content and is never replaced.", file.path));
+        }
         if selected.insert(key(&archive.id), archive).is_some() {
             return Err(format!("Native package ID {} is selected more than once.", archive.id));
         }
@@ -650,106 +671,224 @@ pub async fn install_native_package(
         let root = profile_root(&game_root, true)?;
         require_stopped()?;
         let _lock = mod_update::acquire_update_lock(&root)?;
-        let current = read_locked(&root)?;
-        require_revision(&current, &expected_revision)?;
-        if current.profile.as_ref().and_then(|profile| profile.pending_plan.as_ref()).map(|plan| &plan.id) != expected_plan_id.as_ref() {
+        let check = InstallCheck::Manager { revision: expected_revision, plan_id: expected_plan_id };
+        install_archive_locked(&root, Path::new(&source), &expected_sha256, check, &require_stopped).map(|installed| installed.state)
+    }).await.map_err(|error| error.to_string())?
+}
+
+// What a caller already reviewed. The Manager names the profile revision and pending plan it showed;
+// modstoke-native resumes a pending plan only for the same archive.
+pub(crate) enum InstallCheck {
+    #[cfg_attr(not(feature = "app"), allow(dead_code))]
+    Manager { revision: Option<String>, plan_id: Option<String> },
+    Headless,
+}
+
+pub(super) struct InstallResult {
+    pub(super) state: ProfileState,
+    pub(super) archive: NativeArchive,
+    pub(super) action: String,
+    pub(super) previous_version: Option<String>,
+    pub(super) written: usize,
+    pub(super) removed: usize,
+}
+
+// Installs or updates one native ZIP. The caller holds the root's update lock and has confirmed
+// the game and its dedicated server are stopped; `stopped` repeats that check before files change.
+pub(super) fn install_archive_locked(
+    root: &Path,
+    source: &Path,
+    expected_sha256: &str,
+    check: InstallCheck,
+    stopped: StoppedCheck,
+) -> Result<InstallResult, String> {
+    let root = root.to_path_buf();
+    let current = read_locked(&root)?;
+    if let InstallCheck::Manager { revision, plan_id } = &check {
+        require_revision(&current, revision)?;
+        if current.profile.as_ref().and_then(|profile| profile.pending_plan.as_ref()).map(|plan| &plan.id) != plan_id.as_ref() {
             return Err("The pending install changed. Select the ZIP again to review its current plan.".into());
         }
-        if let Some(profile) = &current.profile { rollback::require_forward(profile)?; }
-        mod_update::recover_pending_updates(&root)?;
-        let current = reconcile(&root, current, &require_stopped)?;
-        // Copy into a private temporary before validating. The later extraction
-        // is bound to these exact archive bytes and the per-file descriptor.
-        let snapshot = tempfile::Builder::new().prefix(".modstoke-profile-").tempfile_in(&root).map_err(|error| error.to_string())?;
-        let source_file = File::open(&source).map_err(|error| error.to_string())?;
-        if source_file.metadata().map_err(|error| error.to_string())?.len() > 256 * 1024 * 1024 { return Err("The native archive exceeds 256 MiB.".into()); }
-        let mut limited = source_file.take(256 * 1024 * 1024 + 1);
-        let mut output = snapshot.as_file();
-        if std::io::copy(&mut limited, &mut output).map_err(|error| error.to_string())? > 256 * 1024 * 1024 { return Err("The native archive exceeds 256 MiB.".into()); }
-        snapshot.as_file().sync_all().map_err(|error| error.to_string())?;
-        let snapshot = snapshot.into_temp_path();
-        let snapshot_path: &Path = snapshot.as_ref();
-        let archive = native_archive::inspect(snapshot_path, mods_layout(&root))?;
-        if archive.sha256 != expected_sha256 { return Err("The selected ZIP changed since review. Select it again before installing.".into()); }
-        let prepared = prepare(&root, current.profile.as_ref(), &archive)?;
-        let mut profile = current.profile.clone().unwrap_or(ModProfile { schema_version: 1, game_root: root.to_string_lossy().into_owned(),
-            requested_roots: Vec::new(), packages: Vec::new(), archives: Vec::new(), pending_plan: None, rollback: None });
-        if let Some(plan) = &profile.pending_plan {
-            if !same(pending_archive(&profile)?, &archive)? { return Err("The ZIP does not match the unfinished native plan.".into()); }
-            let old = &plan.steps;
-            if old.len() != prepared.steps.len() {
+    }
+    if let Some(profile) = &current.profile { rollback::require_forward(profile)?; }
+    mod_update::recover_pending_updates(&root)?;
+    let current = reconcile(&root, current, stopped)?;
+    // Copy into a private temporary before validating. The later extraction
+    // is bound to these exact archive bytes and the per-file descriptor.
+    let snapshot = tempfile::Builder::new().prefix(".modstoke-profile-").tempfile_in(&root).map_err(|error| error.to_string())?;
+    let source_file = File::open(source).map_err(|error| error.to_string())?;
+    if source_file.metadata().map_err(|error| error.to_string())?.len() > 256 * 1024 * 1024 { return Err("The native archive exceeds 256 MiB.".into()); }
+    let mut limited = source_file.take(256 * 1024 * 1024 + 1);
+    let mut output = snapshot.as_file();
+    if std::io::copy(&mut limited, &mut output).map_err(|error| error.to_string())? > 256 * 1024 * 1024 { return Err("The native archive exceeds 256 MiB.".into()); }
+    snapshot.as_file().sync_all().map_err(|error| error.to_string())?;
+    let snapshot = snapshot.into_temp_path();
+    let snapshot_path: &Path = snapshot.as_ref();
+    let archive = native_archive::inspect(snapshot_path, mods_layout(&root))?;
+    if archive.sha256 != expected_sha256 { return Err("The selected ZIP changed since review. Select it again before installing.".into()); }
+    let prepared = prepare(&root, current.profile.as_ref(), &archive)?;
+    let action = prepared.action.clone();
+    let previous_version = known_package(current.profile.as_ref(), &archive.id).map(|package| package.version.clone());
+    let (mut written, mut removed) = (0, 0);
+    let mut profile = current.profile.clone().unwrap_or(ModProfile { schema_version: 1, game_root: root.to_string_lossy().into_owned(),
+        requested_roots: Vec::new(), packages: Vec::new(), archives: Vec::new(), pending_plan: None, rollback: None });
+    if let Some(plan) = &profile.pending_plan {
+        if !same(pending_archive(&profile)?, &archive)? { return Err("The ZIP does not match the unfinished native plan.".into()); }
+        let old = &plan.steps;
+        if old.len() != prepared.steps.len() {
+            return Err("The installed native dependencies changed since this plan began. Restore them or roll back the pending plan.".into());
+        }
+        for (a, b) in old.iter().zip(&prepared.steps) {
+            if key(&a.package.id) != key(&b.package.id) || a.package.version != b.package.version
+                || a.package.dependencies != b.package.dependencies
+                || (a.status != "applied" || a.action == "preserve") && !same_observation(&root, &a.before, &b.before)? {
                 return Err("The installed native dependencies changed since this plan began. Restore them or roll back the pending plan.".into());
             }
-            for (a, b) in old.iter().zip(&prepared.steps) {
-                if key(&a.package.id) != key(&b.package.id) || a.package.version != b.package.version
-                    || a.package.dependencies != b.package.dependencies
-                    || (a.status != "applied" || a.action == "preserve") && !same_observation(&root, &a.before, &b.before)? {
-                    return Err("The installed native dependencies changed since this plan began. Restore them or roll back the pending plan.".into());
+        }
+    } else {
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|error| error.to_string())?.as_nanos();
+        profile.pending_plan = Some(InstallPlan { id: format!("native-{stamp}-{}", &archive.sha256[..12]),
+            requested_roots: vec![archive.id.clone()], steps: prepared.steps, native_pack: None });
+        let mut validation = profile.clone(); validation.rollback = None;
+        validate_profile(&root, &validation)?;
+        rollback::begin(&root, &current, &mut profile)?;
+        write_locked(&root, &profile)?;
+    }
+    let url = format!("urn:sha256:{}", archive.sha256);
+    if !profile.archives.iter().any(|pin| pin.id == archive.id && pin.version == archive.version && pin.url == url) {
+        profile.archives.push(ArchivePin { id: archive.id.clone(), version: archive.version.clone(), url, sha256: archive.sha256.clone() });
+    }
+    let index = profile.pending_plan.as_ref().expect("plan").steps.iter().position(|step| step.action != "preserve").ok_or_else(invalid_profile)?;
+    for earlier in 0..index { complete_package(&mut profile, earlier); }
+    if profile.pending_plan.as_ref().expect("plan").steps[index].status != "applied" {
+        let step = &mut profile.pending_plan.as_mut().expect("plan").steps[index];
+        step.package.archive_sha256 = Some(archive.sha256.clone()); step.status = "downloaded".into(); step.targets = None;
+        write_locked(&root, &profile)?;
+        let old_archive = current.profile.as_ref().and_then(|profile| known_package(Some(profile), &archive.id))
+            .and_then(|package| package.native.as_ref());
+        let old_files: Vec<_> = old_archive.into_iter().flat_map(|old| &old.files)
+            .map(|file| (PathBuf::from(&file.path), file.sha256.clone())).collect();
+        let owned: HashMap<_, _> = old_files.iter().map(|(path, hash)| (key(&path.to_string_lossy()), hash.clone())).collect();
+        let expected: HashMap<_, _> = archive.files.iter().map(|file| (key(&file.path), file)).collect();
+        mod_update::replace_native_archive_locked(snapshot_path.to_string_lossy().into_owned(), root.to_string_lossy().into_owned(),
+            PathBuf::from(&archive.package_path), old_files, &mut |targets, staging| {
+                stopped()?;
+                require_observed(&root, &prepared.observed)?;
+                for file in &archive.files {
+                    if safe_fs::target_hash(staging, Path::new(&file.path))?.as_deref() != Some(&file.sha256) {
+                        return Err("Staged native package files differ from the reviewed archive.".into());
+                    }
                 }
-            }
-        } else {
-            let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|error| error.to_string())?.as_nanos();
-            profile.pending_plan = Some(InstallPlan { id: format!("native-{stamp}-{}", &archive.sha256[..12]),
-                requested_roots: vec![archive.id.clone()], steps: prepared.steps, native_pack: None });
-            let mut validation = profile.clone(); validation.rollback = None;
-            validate_profile(&root, &validation)?;
-            rollback::begin(&root, &current, &mut profile)?;
-            write_locked(&root, &profile)?;
-        }
-        let url = format!("urn:sha256:{}", archive.sha256);
-        if !profile.archives.iter().any(|pin| pin.id == archive.id && pin.version == archive.version && pin.url == url) {
-            profile.archives.push(ArchivePin { id: archive.id.clone(), version: archive.version.clone(), url, sha256: archive.sha256.clone() });
-        }
-        let index = profile.pending_plan.as_ref().expect("plan").steps.iter().position(|step| step.action != "preserve").ok_or_else(invalid_profile)?;
-        for earlier in 0..index { complete_package(&mut profile, earlier); }
-        if profile.pending_plan.as_ref().expect("plan").steps[index].status != "applied" {
-            let step = &mut profile.pending_plan.as_mut().expect("plan").steps[index];
-            step.package.archive_sha256 = Some(archive.sha256.clone()); step.status = "downloaded".into(); step.targets = None;
-            write_locked(&root, &profile)?;
-            let old_archive = current.profile.as_ref().and_then(|profile| known_package(Some(profile), &archive.id))
-                .and_then(|package| package.native.as_ref());
-            let old_files: Vec<_> = old_archive.into_iter().flat_map(|old| &old.files)
-                .map(|file| (PathBuf::from(&file.path), file.sha256.clone())).collect();
-            let owned: HashMap<_, _> = old_files.iter().map(|(path, hash)| (key(&path.to_string_lossy()), hash.clone())).collect();
-            let expected: HashMap<_, _> = archive.files.iter().map(|file| (key(&file.path), file)).collect();
-            mod_update::replace_native_archive_locked(snapshot_path.to_string_lossy().into_owned(), root.to_string_lossy().into_owned(),
-                PathBuf::from(&archive.package_path), old_files, &mut |targets, staging| {
-                    require_stopped()?;
-                    require_observed(&root, &prepared.observed)?;
-                    for file in &archive.files {
-                        if safe_fs::target_hash(staging, Path::new(&file.path))?.as_deref() != Some(&file.sha256) {
-                            return Err("Staged native package files differ from the reviewed archive.".into());
-                        }
+                for target in targets {
+                    let name = key(&target.relative_path.to_string_lossy());
+                    let replacement = expected.get(&name).map(|file| file.sha256.as_str());
+                    if target.replacement_sha256.as_deref() != replacement
+                        || target.original_sha256.as_ref().is_some_and(|hash| owned.get(&name) != Some(hash)) {
+                        return Err(format!("Native package ownership or bytes changed at {}. Existing files were preserved.", target.relative_path.display()));
                     }
-                    for target in targets {
-                        let name = key(&target.relative_path.to_string_lossy());
-                        let replacement = expected.get(&name).map(|file| file.sha256.as_str());
-                        if target.replacement_sha256.as_deref() != replacement
-                            || target.original_sha256.as_ref().is_some_and(|hash| owned.get(&name) != Some(hash)) {
-                            return Err(format!("Native package ownership or bytes changed at {}. Existing files were preserved.", target.relative_path.display()));
-                        }
-                    }
-                    if targets.is_empty() { return Err("The native package has no installable files.".into()); }
-                    rollback::retain_step(&root, &mut profile, index, targets)?;
-                    let step = &mut profile.pending_plan.as_mut().expect("plan").steps[index];
-                    step.status = "applying".into(); step.targets = Some(targets.iter().map(|target| TargetReceipt {
-                        relative_path: target.relative_path.clone(), original_sha256: target.original_sha256.clone(),
-                        replacement_sha256: target.replacement_sha256.clone() }).collect());
-                    let mut completed = profile.clone(); complete_package(&mut completed, index); encode_profile(&root, &completed)?;
-                    write_locked(&root, &profile).map(|_| ())
-                })?;
-            complete_package(&mut profile, index);
-            write_locked(&root, &profile)?;
-        }
-        if !profile.requested_roots.iter().any(|id| key(id) == key(&archive.id)) { profile.requested_roots.push(archive.id); }
-        profile.pending_plan = None;
-        write_locked(&root, &profile)
-    }).await.map_err(|error| error.to_string())?
+                }
+                if targets.is_empty() { return Err("The native package has no installable files.".into()); }
+                written = targets.iter().filter(|target| target.replacement_sha256.is_some()).count();
+                removed = targets.len() - written;
+                rollback::retain_step(&root, &mut profile, index, targets)?;
+                let step = &mut profile.pending_plan.as_mut().expect("plan").steps[index];
+                step.status = "applying".into(); step.targets = Some(targets.iter().map(|target| TargetReceipt {
+                    relative_path: target.relative_path.clone(), original_sha256: target.original_sha256.clone(),
+                    replacement_sha256: target.replacement_sha256.clone() }).collect());
+                let mut completed = profile.clone(); complete_package(&mut completed, index); encode_profile(&root, &completed)?;
+                write_locked(&root, &profile).map(|_| ())
+            })?;
+        complete_package(&mut profile, index);
+        write_locked(&root, &profile)?;
+    }
+    if !profile.requested_roots.iter().any(|id| key(id) == key(&archive.id)) { profile.requested_roots.push(archive.id.clone()); }
+    profile.pending_plan = None;
+    let state = write_locked(&root, &profile)?;
+    Ok(InstallResult { state, archive, action, previous_version, written, removed })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::on_layout;
+    use super::*;
+    use std::io::Write;
+
+    fn package(folder: &Path, version: &str) -> PathBuf {
+        let path = folder.join(format!("Example.Mod-{version}.zip"));
+        let mut zip = zip::ZipWriter::new(File::create(&path).unwrap());
+        let options = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        let manifest = serde_json::json!({ "id": "Example.Mod", "name": "Example", "version": version,
+            "assembly": "Example.Mod.dll", "entryType": "Example.Mod.Plugin", "client": "required" });
+        zip.start_file("Modstoke/Mods/Example.Mod/openacai.mod.json", options).unwrap();
+        zip.write_all(manifest.to_string().as_bytes()).unwrap();
+        zip.start_file("Modstoke/Mods/Example.Mod/Example.Mod.dll", options).unwrap();
+        zip.write_all(format!("MZ {version}").as_bytes()).unwrap();
+        zip.finish().unwrap();
+        path
+    }
+
+    #[test]
+    fn virginia_assets_are_refused_before_a_plan_is_recorded() {
+        let server = tempfile::tempdir().unwrap();
+        let downloads = tempfile::tempdir().unwrap();
+        fs::create_dir_all(server.path().join("Modstoke").join("Mods")).unwrap();
+        fs::write(server.path().join("SonsOfTheForestDS.exe"), b"").unwrap();
+        let root = profile_root(&server.path().to_string_lossy(), true).unwrap();
+        let _lock = mod_update::lock_updates(&root).unwrap();
+        let path = downloads.path().join("Virginia.zip");
+        let mut zip = zip::ZipWriter::new(File::create(&path).unwrap());
+        let options = zip::write::FileOptions::default();
+        let manifest = serde_json::json!({ "id": "Modstoke.Virginia", "name": "Virginia", "version": "1.0.0",
+            "assembly": "Virginia.dll", "entryType": "Virginia.Plugin" });
+        for (name, bytes) in [("openacai.mod.json", manifest.to_string().into_bytes()), ("Virginia.dll", b"MZ".to_vec()), ("assets/a.bin", b"private".to_vec())] {
+            zip.start_file(format!("Modstoke/Mods/Modstoke.Virginia/{name}"), options).unwrap();
+            zip.write_all(&bytes).unwrap();
+        }
+        zip.finish().unwrap();
+        let archive = native_archive::inspect(&path, mods_layout(&root)).unwrap();
+        assert!(prepare(&root, None, &archive).err().unwrap().contains("private content"));
+        let check = InstallCheck::Manager { revision: None, plan_id: None };
+        assert!(install_archive_locked(&root, &path, &archive.sha256, check, &|| Ok(())).is_err());
+        assert!(read_locked(&root).unwrap().profile.is_none_or(|profile| profile.pending_plan.is_none()));
+    }
+
+    #[test]
+    fn manager_install_checks_the_reviewed_revision_and_server_state() {
+        let server = tempfile::tempdir().unwrap();
+        let downloads = tempfile::tempdir().unwrap();
+        fs::create_dir_all(server.path().join("Modstoke").join("Mods")).unwrap();
+        fs::create_dir_all(server.path().join("Modstoke").join("Runtime")).unwrap();
+        fs::write(server.path().join("SonsOfTheForestDS.exe"), b"").unwrap();
+        let root = profile_root(&server.path().to_string_lossy(), true).unwrap();
+        let _lock = mod_update::lock_updates(&root).unwrap();
+        let first = package(downloads.path(), "1.0.0");
+        let sha = native_archive::inspect(&first, mods_layout(&root)).unwrap().sha256;
+        let manager = |revision: Option<String>| InstallCheck::Manager { revision, plan_id: None };
+        let reviewed = |root: &Path| {
+            let state = read_locked(root).unwrap();
+            let plan_id = state.profile.as_ref().and_then(|profile| profile.pending_plan.as_ref()).map(|plan| plan.id.clone());
+            InstallCheck::Manager { revision: state.revision, plan_id }
+        };
+        let dll = root.join("Modstoke").join("Mods").join("Example.Mod").join("Example.Mod.dll");
+
+        let stale = install_archive_locked(&root, &first, &sha, manager(Some("stale".into())), &|| Ok(()));
+        assert!(stale.err().unwrap().contains("profile changed"));
+        let running = install_archive_locked(&root, &first, &sha, manager(None), &|| Err("The server is running.".into()));
+        assert_eq!(running.err().unwrap(), "The server is running.");
+        assert!(!dll.exists());
+        // The interrupted install stays pending, and only the plan the Manager showed resumes it.
+        assert!(install_archive_locked(&root, &first, &sha, manager(None), &|| Ok(())).err().unwrap().contains("changed"));
+
+        let installed = install_archive_locked(&root, &first, &sha, reviewed(&root), &|| Ok(())).unwrap();
+        assert_eq!((installed.action.as_str(), installed.written, installed.removed), ("install", 2, 0));
+        assert_eq!(fs::read(&dll).unwrap(), b"MZ 1.0.0");
+        assert!(installed.state.profile.as_ref().unwrap().pending_plan.is_none());
+
+        let second = package(downloads.path(), "1.1.0");
+        let sha = native_archive::inspect(&second, mods_layout(&root)).unwrap().sha256;
+        let updated = install_archive_locked(&root, &second, &sha, reviewed(&root), &|| Ok(())).unwrap();
+        assert_eq!((updated.action.as_str(), updated.previous_version.as_deref()), ("update", Some("1.0.0")));
+        assert_eq!(fs::read(&dll).unwrap(), b"MZ 1.1.0");
+    }
 
     #[test]
     fn moves_absolute_paths_onto_the_active_folder() {

@@ -177,7 +177,6 @@ fn replace_archive_locked_inner(
         .tempdir_in(&root)
         .map_err(|error| format!("Could not create an update staging folder: {error}"))?;
     let staging = workspace.path().join("staging");
-    let backup = workspace.path().join("backup");
     fs::create_dir(&staging).map_err(|error| error.to_string())?;
     validate_archive(&source)?;
     if let Some(policy) = &native {
@@ -260,6 +259,12 @@ fn replace_archive_locked_inner(
             ));
         }
         validate_mod_path(&relative_path)?;
+        if native_root::is_protected_content(&relative_path) {
+            return Err(format!(
+                "The archive contains {}, which is Virginia's private content and is never replaced.",
+                relative_path.display()
+            ));
+        }
         if crate::admin_paths::is_admin_data(&key) {
             return Err(format!(
                 "The archive contains {}, which belongs to Modstoke Admin's staff permissions. Edit staff permissions in Manager or F7 instead.",
@@ -304,16 +309,81 @@ fn replace_archive_locked_inner(
         return Ok(()); // An archive containing only existing configuration defaults.
     }
 
+    commit_replacements(&root, workspace, &staging, replacements, before_commit)
+}
+
+// Removes a native package's recorded files through the same backed-up transaction as an update.
+// Changed files stop the removal; configuration and protected content stay in place.
+pub(crate) fn remove_native_files_locked(
+    root: &Path,
+    package_path: PathBuf,
+    old_files: Vec<(PathBuf, String)>,
+    before_commit: &mut BeforeCommit,
+) -> Result<(), String> {
+    let policy = NativePackagePolicy { package_path, old_files };
+    validate_native_policy(&policy)?;
+    let root = fs::canonicalize(root).map_err(|error| error.to_string())?;
+    let workspace = tempfile::Builder::new()
+        .prefix(WORKSPACE_PREFIX)
+        .tempdir_in(&root)
+        .map_err(|error| format!("Could not create an update staging folder: {error}"))?;
+    let staging = workspace.path().join("staging");
+    fs::create_dir(&staging).map_err(|error| error.to_string())?;
+    let mut replacements = Vec::new();
+    plan_native_removals(&root, &policy, &HashSet::new(), &mut replacements)?;
+    if replacements.is_empty() {
+        before_commit(&[], &staging)?;
+        return Ok(());
+    }
+    commit_replacements(&root, workspace, &staging, replacements, before_commit)
+}
+
+// Removes the files a RedLoader mod installed, recorded with their hashes, through the same
+// backed-up transaction. Validated like any mod path; changed files stop the removal.
+pub(crate) fn remove_files_locked(
+    root: &Path,
+    files: Vec<(PathBuf, String)>,
+    before_commit: &mut BeforeCommit,
+) -> Result<(), String> {
+    for (path, _) in &files {
+        validate_mod_path(path)?;
+    }
+    let root = fs::canonicalize(root).map_err(|error| error.to_string())?;
+    let workspace = tempfile::Builder::new()
+        .prefix(WORKSPACE_PREFIX)
+        .tempdir_in(&root)
+        .map_err(|error| format!("Could not create an update staging folder: {error}"))?;
+    let staging = workspace.path().join("staging");
+    fs::create_dir(&staging).map_err(|error| error.to_string())?;
+    let mut replacements = Vec::new();
+    plan_removals(&root, &files, &HashSet::new(), &mut replacements)?;
+    if replacements.is_empty() {
+        before_commit(&[], &staging)?;
+        return Ok(());
+    }
+    commit_replacements(&root, workspace, &staging, replacements, before_commit)
+}
+
+// Backs up every target, publishes the transaction and applies it. A failure restores the
+// previous files, and a crash leaves the workspace for recover_pending_updates.
+fn commit_replacements(
+    root: &Path,
+    workspace: tempfile::TempDir,
+    staging: &Path,
+    replacements: Vec<Replacement>,
+    before_commit: &mut BeforeCommit,
+) -> Result<(), String> {
+    let backup = workspace.path().join("backup");
     // Publish a complete, immutable manifest only after every backup is durable.
     fs::create_dir(&backup).map_err(|error| error.to_string())?;
     let mut transaction = UpdateTransaction {
         kind: TRANSACTION_KIND.into(),
         version: 2,
-        root_sha256: root_identity(&root),
+        root_sha256: root_identity(root),
         targets: Vec::new(),
     };
     for (index, replacement) in replacements.iter().enumerate() {
-        let original_sha256 = target_hash(&root, &replacement.relative_path)?;
+        let original_sha256 = target_hash(root, &replacement.relative_path)?;
         if original_sha256.is_some() != replacement.existed {
             return Err(format!("{} changed while the update was being prepared. The installed mod was not changed.", replacement.relative_path.display()));
         }
@@ -353,7 +423,7 @@ fn replace_archive_locked_inner(
     let manifest = serde_json::to_vec(&transaction).map_err(|error| error.to_string())?;
     let manifest_hash = sha256_hex(&manifest);
     write_durable(workspace.path(), MANIFEST_PATH, &manifest)?;
-    before_commit(&transaction.targets, &staging)?;
+    before_commit(&transaction.targets, staging)?;
 
     // From here on, neither an error nor unwinding may discard recovery data.
     let workspace = workspace.into_path();
@@ -361,15 +431,15 @@ fn replace_archive_locked_inner(
         for (index, (replacement, target)) in
             replacements.iter().zip(&transaction.targets).enumerate()
         {
-            ensure_unmanaged(&root, &target.relative_path)?;
-            require_original(&root, target)?;
+            ensure_unmanaged(root, &target.relative_path)?;
+            require_original(root, target)?;
             write_durable(
                 &workspace,
                 &format!("intent-{index}"),
                 manifest_hash.as_bytes(),
             )?;
             if let Some(source) = &replacement.source {
-                create_parent_dirs(&root, &target.relative_path)?;
+                create_parent_dirs(root, &target.relative_path)?;
                 // Recheck after preparation, immediately before the live replacement.
                 if Some(hash_file(source)?) != target.replacement_sha256 {
                     return Err(format!(
@@ -377,16 +447,16 @@ fn replace_archive_locked_inner(
                         target.relative_path.display()
                     ));
                 }
-                ensure_unmanaged(&root, &target.relative_path)?;
-                require_original(&root, target)?;
+                ensure_unmanaged(root, &target.relative_path)?;
+                require_original(root, target)?;
                 durable_rename(
                     source,
                     &root.join(&target.relative_path),
                     target.originally_existed,
                 )?;
             } else {
-                ensure_unmanaged(&root, &target.relative_path)?;
-                require_original(&root, target)?;
+                ensure_unmanaged(root, &target.relative_path)?;
+                require_original(root, target)?;
                 // Keep both the verified backup and the removed file until commit.
                 durable_rename(
                     &root.join(&target.relative_path),
@@ -398,7 +468,7 @@ fn replace_archive_locked_inner(
         write_durable(&workspace, "committed", manifest_hash.as_bytes())
     })();
     if let Err(error) = result {
-        return match recover_workspace(&root, &workspace) {
+        return match recover_workspace(root, &workspace) {
             Ok(RecoveryOutcome::Committed | RecoveryOutcome::Cleaned) => Err(format!(
                 "The update was applied, but finalization reported an error: {error}"
             )),
@@ -440,16 +510,16 @@ fn validate_archive(source: &str) -> Result<(), String> {
         if declared > MAX_EXTRACTED_BYTES {
             return Err("The archive expands to more than the Manager accepts.".into());
         }
-        let relative = file
-            .enclosed_name()
+        let relative = entry_path(file.name())
             .ok_or_else(|| format!("Unsafe path in zip entry: {}", file.name()))?;
+        let relative = relative.as_path();
         validate_mod_path(relative)?;
         let kind = file.unix_mode().unwrap_or_default() & 0o170000;
         if kind != 0 && kind != 0o100000 && kind != 0o040000 {
             return Err(format!("The archive contains a linked or special file: {}", file.name()));
         }
         let key = path_key(relative);
-        if entries.insert(key, file.is_dir()).is_some() {
+        if entries.insert(key, is_dir_entry(file.name())).is_some() {
             return Err(format!("The archive contains duplicate paths: {}", file.name()));
         }
     }
@@ -472,12 +542,10 @@ fn extract_archive(source: &str, staging: &Path) -> Result<(), String> {
     let mut archive = zip::ZipArchive::new(reader).map_err(|error| error.to_string())?;
     for index in 0..archive.len() {
         let mut file = archive.by_index(index).map_err(|error| error.to_string())?;
-        let relative = file
-            .enclosed_name()
-            .ok_or_else(|| format!("Unsafe path in zip entry: {}", file.name()))?
-            .to_owned();
+        let relative = entry_path(file.name())
+            .ok_or_else(|| format!("Unsafe path in zip entry: {}", file.name()))?;
         let target = staging.join(relative);
-        if file.is_dir() {
+        if is_dir_entry(file.name()) {
             fs::create_dir_all(&target).map_err(|error| error.to_string())?;
             continue;
         }
@@ -497,6 +565,55 @@ fn extract_archive(source: &str, staging: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+// A ZIP entry name as a relative path on every platform. Windows tools may write backslashes,
+// which Unix would otherwise keep inside a single file name.
+fn entry_path(name: &str) -> Option<PathBuf> {
+    let name = name.replace('\\', "/");
+    if name.starts_with('/') {
+        return None;
+    }
+    let mut path = PathBuf::new();
+    for part in name.split('/') {
+        match part {
+            "" => {}
+            "." if path.as_os_str().is_empty() => return None,
+            "." => {}
+            ".." => return None,
+            part if part.contains(':') => return None,
+            part => path.push(part),
+        }
+    }
+    Some(path)
+}
+
+fn is_dir_entry(name: &str) -> bool {
+    name.ends_with(['/', '\\'])
+}
+
+// The archive checks every install runs before staging, for an inspection that should refuse what
+// the install would.
+pub(crate) fn check_archive(source: &Path) -> Result<(), String> {
+    validate_archive(&source.to_string_lossy())
+}
+
+// How many interrupted transactions wait in the root for recover_pending_updates.
+pub(crate) fn interrupted_changes(root: &Path) -> usize {
+    fs::read_dir(root).map(|entries| entries.flatten()
+        .filter(|entry| entry.file_name().to_string_lossy().to_lowercase().starts_with(WORKSPACE_PREFIX))
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .count()).unwrap_or(0)
+}
+
+// The archive and native package checks an install runs before staging, for an inspection that
+// should refuse what the install would.
+pub(crate) fn check_native_archive(source: &Path, package_path: PathBuf, old_files: Vec<(PathBuf, String)>) -> Result<(), String> {
+    let source = source.to_string_lossy();
+    validate_archive(&source)?;
+    let policy = NativePackagePolicy { package_path, old_files };
+    validate_native_policy(&policy)?;
+    validate_native_archive(&source, &policy)
 }
 
 fn is_bepinex_config(path: &Path) -> bool {
@@ -624,12 +741,13 @@ fn validate_native_archive(source: &str, policy: &NativePackagePolicy) -> Result
     let layout = native_layout(policy);
     for index in 0..archive.len() {
         let entry = archive.by_index(index).map_err(|error| error.to_string())?;
-        let name = if entry.is_dir() { entry.name().trim_end_matches(['/', '\\']) } else { entry.name() };
+        let directory = is_dir_entry(entry.name());
+        let name = if directory { entry.name().trim_end_matches(['/', '\\']) } else { entry.name() };
         let name = native_root::rebase(&name.replace('\\', "/"), &layout);
         let path = Path::new(&name);
         validate_native_path(path)?;
         // ZIPs may explicitly include the package's ancestor directories.
-        if !entry.is_dir() || strip_path_prefix(&policy.package_path, path).is_none() {
+        if !directory || strip_path_prefix(&policy.package_path, path).is_none() {
             validate_native_payload_path(path, &policy.package_path)?;
         }
         record_native_path_case(path, &mut spellings)?;
@@ -643,8 +761,19 @@ fn plan_native_removals(
     staged_paths: &HashSet<String>,
     replacements: &mut Vec<Replacement>,
 ) -> Result<(), String> {
-    for (path, expected) in &policy.old_files {
-        if staged_paths.contains(&path_key(path)) || is_native_user_file(path) {
+    plan_removals(root, &policy.old_files, staged_paths, replacements)
+}
+
+// Removes recorded files the new contents no longer include. Files already gone are skipped, and
+// a changed file stops the change.
+fn plan_removals(
+    root: &Path,
+    old_files: &[(PathBuf, String)],
+    staged_paths: &HashSet<String>,
+    replacements: &mut Vec<Replacement>,
+) -> Result<(), String> {
+    for (path, expected) in old_files {
+        if staged_paths.contains(&path_key(path)) || is_native_user_file(path) || native_root::is_protected_content(path) {
             continue;
         }
         let Some(current) = target_hash(root, path)? else { continue; };
@@ -1013,6 +1142,33 @@ fn abandoned_preparation(workspace: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
+// Workspaces a transaction left while still backing up files: no manifest was written, so no live
+// file changed, and only its staging folder and numbered backup copies remain. Returns how many
+// were deleted. Used by modstoke-native's recover; anything else in a workspace keeps it.
+pub(crate) fn remove_interrupted_preparations(root: &Path) -> usize {
+    let Ok(entries) = fs::read_dir(root) else { return 0 };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let is_workspace = entry.file_name().to_string_lossy().to_lowercase().starts_with(WORKSPACE_PREFIX)
+            && fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.is_dir() && !is_linked(&metadata));
+        if !is_workspace {
+            continue;
+        }
+        let Ok(children) = fs::read_dir(&path) else { continue };
+        let only_preparation = children.flatten().all(|child| {
+            let name = child.file_name().to_string_lossy().to_lowercase();
+            let directory = fs::symlink_metadata(child.path()).is_ok_and(|metadata| metadata.is_dir() && !is_linked(&metadata));
+            directory && (name == "staging" || (name == "backup" && fs::read_dir(child.path()).is_ok_and(|copies| copies.flatten()
+                .all(|copy| copy.file_type().is_ok_and(|kind| kind.is_file()) && copy.file_name().to_string_lossy().bytes().all(|byte| byte.is_ascii_digit())))))
+        });
+        if only_preparation && fs::remove_dir_all(&path).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
 pub(crate) fn require_no_pending_updates(root: &Path) -> Result<(), String> {
     validate_directory(root)?;
     for entry in fs::read_dir(root).map_err(|error| error.to_string())? {
@@ -1282,6 +1438,11 @@ fn cleanup_transaction(workspace: &Path, finished: bool) -> Result<(), String> {
     fs::remove_dir(workspace).map_err(|error| error.to_string())
 }
 
+// Files Vortex deployed, keyed like vortex_key. Unreadable metadata lists nothing.
+pub(crate) fn vortex_paths(root: &Path) -> HashSet<String> {
+    vortex_deployed_files(root).unwrap_or_default()
+}
+
 fn vortex_deployed_files(root: &Path) -> Result<HashSet<String>, String> {
     validate_target(root, Path::new("vortex.deployment.json"))?;
     let text = match fs::read_to_string(root.join("vortex.deployment.json")) {
@@ -1307,6 +1468,6 @@ fn vortex_deployed_files(root: &Path) -> Result<HashSet<String>, String> {
 
 // Vortex records native files where it deployed them. The Loader treats OpenACAI/ and Modstoke/
 // spellings of a path as one file, and so does this ownership check.
-fn vortex_key(path: &Path) -> String {
+pub(crate) fn vortex_key(path: &Path) -> String {
     native_root::rebase(&path_key(path), &native_root::ROOT.to_lowercase())
 }

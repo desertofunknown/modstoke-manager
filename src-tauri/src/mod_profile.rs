@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 mod rollback;
 mod rollback_store;
 mod native_archive;
+pub(crate) mod native_cli;
 pub(crate) mod native_local;
 pub(crate) mod native_pack;
 pub(crate) mod native_pack_install;

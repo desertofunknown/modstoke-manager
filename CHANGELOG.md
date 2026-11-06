@@ -3,6 +3,9 @@
 - Unreleased
   - Install Loader packages whose own file list leaves out the Loader's descriptor, as Loader 0.4.0-net11-preview does. The whole package is still checked against the release's published hash first.
   - Name modstoke.com, not GitHub, as the source of the Loader release a file check used.
+  - Add `modstoke-native`, a command-line tool for hosted dedicated servers that lists, checks, installs, updates, removes, enables, disables and rolls back native and RedLoader mods, and queues changes while the server runs. It prints one JSON result per command and builds for Windows and as a static Linux binary. See docs/NATIVE_CLI.md.
+  - Build the mod installation code as a library the tool shares, so it needs neither Tauri nor a C compiler.
+  - Never write to or remove Modstoke Virginia's `assets` folder during an install or removal.
 
 - 0.3.0
   - Limit what the Manager's window can reach. Files are limited to its downloads folder and the selected game or server folder, where nothing can be written as text. Downloads come only from the catalog and release hosts, over HTTPS, with size limits and the Loader's published hash checked. Archives install only into a game or dedicated server folder. The window can no longer run programs, and system libraries load only from System32.
