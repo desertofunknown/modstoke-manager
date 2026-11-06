@@ -1962,7 +1962,8 @@ fn loader_requirement(id: &str, minimum: &str, loader: Option<&str>) -> Option<S
         return Some(format!("{id} declares minLoaderVersion \"{minimum}\", which the Loader cannot read, so the Loader will not load it."));
     };
     let loader = loader?;
-    let (have, have_pre) = loader_semver(loader.split('+').next().unwrap_or_default())?;
+    // A Loader version that cannot be read passes, as it does in the Loader.
+    let (have, have_pre) = loader_semver(loader)?;
     // A minimum without a pre-release ignores the Loader's own pre-release tag.
     let too_old = match needed_pre {
         None => have < needed,
@@ -1974,17 +1975,19 @@ fn loader_requirement(id: &str, minimum: &str, loader: Option<&str>) -> Option<S
     too_old.then(|| format!("{id} needs Loader {minimum} or later, but Loader {loader} is installed, so the Loader will not load it until it is updated."))
 }
 
-// major.minor.patch with an optional -pre-release, as the Loader reads minLoaderVersion.
+// major.minor.patch, digits only, with an optional -pre-release and any +build ignored, as the
+// Loader reads versions. Pre-release identifiers are not checked beyond being present.
 fn loader_semver(version: &str) -> Option<([u64; 3], Option<&str>)> {
     let version = version.trim();
+    let version = version.split('+').next().unwrap_or_default();
     let (core, pre) = match version.split_once('-') {
         Some((core, pre)) => (core, Some(pre)),
         None => (version, None),
     };
-    if pre.is_some_and(|pre| pre.split('.').any(|part| part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-'))) {
+    if pre == Some("") {
         return None;
     }
-    let number = |part: &str| (!part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit())).then(|| part.parse::<u64>().ok()).flatten();
+    let number = |part: &str| digits(part).then(|| part.parse::<u64>().ok()).flatten();
     match core.split('.').collect::<Vec<_>>()[..] {
         [major, minor, patch] => Some(([number(major)?, number(minor)?, number(patch)?], pre)),
         _ => None,
@@ -1995,17 +1998,21 @@ fn loader_semver(version: &str) -> Option<([u64; 3], Option<&str>)> {
 fn compare_prerelease(left: &str, right: &str) -> Ordering {
     let (left, right): (Vec<&str>, Vec<&str>) = (left.split('.').collect(), right.split('.').collect());
     for (a, b) in left.iter().zip(&right) {
-        let order = match (a.parse::<u64>(), b.parse::<u64>()) {
-            (Ok(a), Ok(b)) => a.cmp(&b),
-            (Ok(_), Err(_)) => Ordering::Less,
-            (Err(_), Ok(_)) => Ordering::Greater,
-            (Err(_), Err(_)) => a.cmp(b),
+        let order = match (digits(a), digits(b)) {
+            (true, true) => a.trim_start_matches('0').len().cmp(&b.trim_start_matches('0').len()).then_with(|| a.trim_start_matches('0').cmp(b.trim_start_matches('0'))),
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
+            (false, false) => a.cmp(b),
         };
         if order != Ordering::Equal {
             return order;
         }
     }
     left.len().cmp(&right.len())
+}
+
+fn digits(text: &str) -> bool {
+    !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 // Orders versions by their dotted numbers, then a release after its pre-releases (1.0.0-rc1 < 1.0.0).
@@ -2164,7 +2171,14 @@ mod tests {
         assert!(!old("0.4.2-rc", "0.4.2"));
         assert!(old("0.4.2-rc.1", "0.4.2-rc"));
         assert!(!old("0.4.2", "0.4.2+build.7"));
-        for malformed in ["0.4", "0.4.2.1", "v0.4.2", "0.4.x", "0.4.2-", "0.4.2-rc..1"] {
+        assert!(!old("0.4.2+build.1", "0.4.2"));
+        assert!(!old("00.4.02", "0.4.2"));
+        assert!(old("0.4.2-rc.1", "0.4.2-rc"));
+        assert!(old("0.4.2-beta", "0.4.2-99"));
+        assert!(old("0.4.2-rc.100000000000000000000001", "0.4.2-rc.100000000000000000000000"));
+        assert!(!old("0.4.2-rc..1", "0.4.2"));
+        assert!(!old("0.4.2", "not a version"));
+        for malformed in ["0.4", "0.4.2.1", "v0.4.2", "0.4.x", "0.4.2-", "+0.4.2", "0.+4.2", "1"] {
             assert!(loader_requirement("example", malformed, None).is_some(), "{malformed}");
         }
         assert!(loader_requirement("example", "0.4.2", None).is_none());

@@ -83,7 +83,12 @@ pub(crate) fn extras(bytes: &[u8]) -> Extras {
         Some(value @ ("required" | "optional" | "server")) => value.to_owned(),
         _ => "unknown".to_owned(),
     };
-    Extras { author, client, description: text("description"), min_loader: text("minLoaderVersion") }
+    // The Loader treats a blank minLoaderVersion as none and any non-string value as unreadable.
+    let min_loader = object.iter().find(|(key, _)| key.eq_ignore_ascii_case("minLoaderVersion")).and_then(|(_, value)| match value {
+        Value::String(text) => Some(text.trim().to_owned()).filter(|text| !text.is_empty()),
+        other => Some(other.to_string()),
+    });
+    Extras { author, client, description: text("description"), min_loader }
 }
 
 fn archive_info(archive: &NativeArchive, source: &Path) -> ArchiveInfo {
